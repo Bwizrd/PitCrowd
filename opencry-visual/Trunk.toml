@@ -1,0 +1,13 @@
+[build]
+target = "index.html"
+
+[watch]
+# Only these are watched, so target/ and dist/ need no ignore entry (one that names a
+# folder not yet created stops trunk at startup, as on a fresh clone).
+watch = ["src", "index.html", "static"]
+
+[serve]
+addresses = ["0.0.0.0"]
+port = 8180
+open = false
+

@@ -1,0 +1,54 @@
+# Environment & Secrets
+.env
+*.env
+.env.*
+*.key
+*.pem
+*.token
+
+# Local Replay Caches (Contains private note contents)
+notes_cache.json
+**/notes_cache.json
+
+# Rust build artifacts
+target/
+**/target/
+dist/
+**/dist/
+*.rs.bk
+
+# OS & Editor metadata
+.DS_Store
+**/.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Shared cargo target for overnight agent worktrees
+.agent_target/
+
+__pycache__/
+# The evolving pit's live state and logs (the rules and code are committed)
+evolve/genomes.jsonl
+evolve/registry.jsonl
+evolve/pit.json
+evolve/pit.json.tmp
+evolve/*.out
+evolve/*.log
+evolve/*.pid
+evolve/edge_lab/
+evolve/audit/*.jsonl
+evolve/audit/out/
+evolve/audit/data/
+evolve/audit/.venv/
+evolve/holders/
+# Strategy research and bar data from edge-lab stay outside this repo (EDGE_LAB_DIR)
+edge-lab/
+data_cache/
+# Runtime logs
+log/
+**/log/
+
+# Generated market history (floor_tape --write-cache), recordings and samples
+/data/

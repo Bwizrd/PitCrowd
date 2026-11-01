@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="theme-color" content="#080b10" />
+    <title>OpenCry Market Floor • Web Trading Visualizer</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            position: fixed;
+            touch-action: none;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+            background-color: #080b10;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+        canvas {
+            display: block;
+            width: 100% !important;
+            height: 100% !important;
+            position: absolute;
+            top: 0;
+            left: 0;
+            touch-action: none;
+            outline: none;
+        }
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #7b9bb6;
+            font-size: 18px;
+            font-weight: 500;
+            letter-spacing: 1px;
+            pointer-events: none;
+            z-index: 1000;
+        }
+    </style>
+    <link data-trunk rel="rust" data-bin="opencry-visual" />
+    <link data-trunk rel="copy-file" href="static/explainer.html" />
+    <!-- the desk board page, served at /desk.html (plain HTML, polls the relay; Copy for AI; click a close to see its chart; Lena and Kit back) -->
+    <link data-trunk rel="copy-file" href="static/desk.html" />
+    <!-- TradingView Lightweight Charts 4.2.3, Apache-2.0 (static/vendor/LICENSE-lightweight-charts), bundled so the page needs no CDN. -->
+    <link data-trunk rel="copy-dir" href="static/vendor" />
+    <script src="vendor/lightweight-charts.standalone.production.js"></script>
+</head>
+<body>
+    <div id="loading">Loading OpenCry Market Floor...</div>
+    <script>
+        // Prevent iOS document bounce, rubber-banding, and browser-level pinch-zoom
+        document.addEventListener('gesturestart', function(e) { e.preventDefault(); }, { passive: false });
+        document.addEventListener('gesturechange', function(e) { e.preventDefault(); }, { passive: false });
+        document.addEventListener('gestureend', function(e) { e.preventDefault(); }, { passive: false });
+        document.body.addEventListener('touchmove', function(e) { e.preventDefault(); }, { passive: false });
+
+        // Remove loading banner once canvas is mounted
+        const observer = new MutationObserver((mutations, obs) => {
+            const canvas = document.querySelector('canvas');
+            if (canvas) {
+                const loading = document.getElementById('loading');
+                if (loading) loading.style.display = 'none';
+                obs.disconnect();
+            }
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+    </script>
+    <!-- Option 2: TradingView Lightweight Charts over the canvas, driven from wasm (H toggles).
+         Prices come from the market tape on :8083 — the same socket the floor itself runs on —
+         never from the bridge: backfill is the tape's /bars (OHLC from its tick bucket, bar open
+         ms), and the live bar is built from ticks the way candles.rs does it (bid, volume =
+         tick count, 1m/5m/15m by flooring the tick time). -->
+    <style>
+        #webchart { position: absolute; left: 16px; bottom: 136px; width: 720px; height: 320px; display: none; z-index: 40;
+                    background: rgba(5, 8, 16, 0.94); border: 1px solid rgba(217, 179, 64, 0.55); border-radius: 6px; overflow: hidden; }
+        #webchart .hdr { height: 24px; line-height: 24px; padding: 0 10px; font: 12px/24px Menlo, monospace; color: #d9b340;
+                         border-bottom: 1px solid rgba(217, 179, 64, 0.25); white-space: nowrap; overflow: hidden; }
+        #webchart .hdr .q { color: #aab6c4; }
+        #webchart .hdr .bid { color: #ff5252; }
+        #webchart .hdr .ask { color: #40ff73; }
+        #webchart .hdr .warn { color: #ff9f43; }
+        #webchart .body { position: absolute; top: 25px; left: 0; right: 0; bottom: 0; }
+    </style>
+    <div id="webchart"><div class="hdr"></div><div class="body"></div></div>
+    <script>
+    // Where each service is: the page's own host on its usual port, unless the address bar
+    // says otherwise (?tape=18083, ?tape=host:8083, ?tape=https://host; same for ?relay=).
+    // The Rust side reads the same parameters (src/endpoints.rs).
+    window.__opencrySvc = function (name, port) {
+        const v = (new URLSearchParams(location.search).get(name) || '').trim().replace(/\/$/, '');
+        const host = location.hostname || 'localhost';
+        const scheme = location.protocol === 'https:' ? 'https:' : 'http:';
+        if (!v) return `${scheme}//${host}:${port}`;
+        if (/^\d+$/.test(v)) return `${scheme}//${host}:${v}`;
+        return v.includes('://') ? v : `http://${v}`;
+    };
+        window.__opencryChart = (function () {
+            const el = document.getElementById('webchart');
+            const hdr = el.querySelector('.hdr');
+            const body = el.querySelector('.body');
+            const tapeHttp = () => window.__opencrySvc('tape', 8083);
+            const tapeWs = () => tapeHttp().replace(/^http/, 'ws');
+            let chart = null, series = null, delta = null, rate = null, cur = null, ws = null, markers = [], dealsOn = false;
+            let socketUp = false, note = '';
+            const TF_SEC = { '1m': 60, '5m': 300, '15m': 900 };
+            const RANGE = { '1m': '-6h', '5m': '-2d', '15m': '-5d' };
+            function ensure() {
+                if (chart || !window.LightweightCharts) return;
+                chart = LightweightCharts.createChart(body, {
+                    layout: { background: { color: '#070a10' }, textColor: '#aab6c4', fontFamily: 'Menlo, monospace' },
+                    grid: { vertLines: { color: '#141a24' }, horzLines: { color: '#141a24' } },
+                    timeScale: { timeVisible: true, secondsVisible: false, borderColor: '#2a3340' },
+                    rightPriceScale: { borderColor: '#2a3340' },
+                    crosshair: { mode: 0 },
+                });
+                series = chart.addCandlestickSeries({ upColor: '#40ff73', downColor: '#ff5252', wickUpColor: '#40ff73', wickDownColor: '#ff5252', borderVisible: false });
+                series.priceScale().applyOptions({ scaleMargins: { top: 0.04, bottom: 0.34 } });
+                // Tick delta (upticks minus downticks per bar, this session) and tick count per bar.
+                delta = chart.addHistogramSeries({ priceScaleId: 'delta', priceFormat: { type: 'volume' }, base: 0, lastValueVisible: false, priceLineVisible: false });
+                chart.priceScale('delta').applyOptions({ scaleMargins: { top: 0.68, bottom: 0.16 }, visible: false });
+                rate = chart.addHistogramSeries({ priceScaleId: 'rate', color: '#3b566f', priceFormat: { type: 'volume' }, lastValueVisible: false, priceLineVisible: false });
+                chart.priceScale('rate').applyOptions({ scaleMargins: { top: 0.86, bottom: 0 }, visible: false });
+                new ResizeObserver(() => chart.resize(body.clientWidth, body.clientHeight)).observe(body);
+            }
+            // Backfill from the tape's own tick bucket. Timestamps are bar-open ms; volume is the
+            // tick count in the bar, which is exactly what the live bar below keeps counting.
+            async function load(symbol, tf) {
+                const want = cur;
+                try {
+                    const r = await fetch(`${tapeHttp()}/bars?symbol=${encodeURIComponent(symbol)}&timeframe=${tf}&range=${RANGE[tf]}`);
+                    const j = await r.json();
+                    if (cur !== want || !series) return;
+                    if (!r.ok) throw new Error(j.error || r.status);
+                    const rows = Array.isArray(j) ? j : (j.data || []);
+                    series.setData(rows.map(b => ({ time: Math.floor(b.timestamp / 1000), open: b.open, high: b.high, low: b.low, close: b.close })));
+                    rate.setData(rows.map(b => ({ time: Math.floor(b.timestamp / 1000), value: b.volume || 0, color: '#3b566f' })));
+                    delta.setData([]);
+                    // The newest backfilled bar is usually the one still forming: carry it on
+                    // from the ticks instead of opening a second copy of it.
+                    const last = rows[rows.length - 1];
+                    cur.bar = last ? { time: Math.floor(last.timestamp / 1000), open: last.open, high: last.high, low: last.low, close: last.close, volume: last.volume || 0 } : null;
+                    cur.loaded = true;
+                    note = rows.length ? '' : 'no bars in the tape yet';
+                    header();
+                    // Show the last ~120 bars with a little room on the right, whatever zoom the
+                    // chart had while it held only the live bar.
+                    chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, rows.length - 120), to: rows.length + 6 });
+                } catch (e) { note = 'backfill failed: ' + e; header(); }
+            }
+            // One tick from the tape → the bar that contains it (same rule as candles.rs: floor
+            // the tick time to the timeframe, open on the first tick, extend on every other one,
+            // count the tick). The delta pane is fed by the wasm side's CandleStore (updateFlow)
+            // so the two charts can never disagree about session flow.
+            function onTick(d) {
+                if (!cur || d.symbol !== cur.symbol) return;
+                cur.bid = d.bid; cur.ask = d.ask; cur.spread = d.spread; cur.t = d.t;
+                header();
+                if (!cur.loaded || !series) return;
+                const sec = TF_SEC[cur.tf] || 60;
+                const t = Math.floor(d.t / 1000 / sec) * sec;
+                const px = d.bid;
+                let b = cur.bar;
+                if (b && b.time === t) {
+                    b.high = Math.max(b.high, px); b.low = Math.min(b.low, px); b.close = px; b.volume += 1;
+                } else if (!b || t > b.time) {
+                    b = cur.bar = { time: t, open: px, high: px, low: px, close: px, volume: 1 };
+                } else {
+                    return; // a tick older than the bar we hold (clock skew on reconnect): drop it
+                }
+                try {
+                    series.update({ time: b.time, open: b.open, high: b.high, low: b.low, close: b.close });
+                    rate.update({ time: b.time, value: b.volume, color: '#3b566f' });
+                } catch (e) { }
+            }
+            function connect() {
+                if (ws) return;
+                ws = new WebSocket(tapeWs());
+                ws.onopen = () => { socketUp = true; header(); };
+                ws.onmessage = ev => {
+                    try {
+                        const j = JSON.parse(ev.data);
+                        if (j.type === 'tick' && j.data) onTick(j.data);
+                    } catch (e) { }
+                };
+                ws.onclose = () => { ws = null; socketUp = false; header(); if (cur) setTimeout(connect, 3000); };
+                ws.onerror = () => { try { ws && ws.close(); } catch (e) { } };
+            }
+            function redrawMarkers() {
+                if (!series) return;
+                if (!dealsOn) { series.setMarkers([]); return; }
+                markers.sort((a, b) => a.time - b.time || (a.buy ? 1 : -1));
+                series.setMarkers(markers.map(m => ({
+                    time: m.time, position: m.buy ? 'belowBar' : 'aboveBar', color: m.buy ? '#8cfff2' : '#ffbf4d',
+                    shape: m.buy ? 'arrowUp' : 'arrowDown', text: (m.buy ? 'B' : 'S') + (m.n > 1 ? m.n : ''),
+                })));
+            }
+            // symbolId: cTrader id (markers, flow). symbol: the tape's name (XAGUSD) for /bars and
+            // for matching ticks. title/tf/decimals: display.
+            function show(symbolId, symbol, title, tf, decimals) {
+                ensure();
+                if (!chart) { el.style.display = 'block'; hdr.textContent = 'Lightweight Charts failed to load (no internet?)'; return; }
+                const changed = !cur || cur.symbol !== symbol || cur.tf !== tf;
+                const keep = changed ? { loaded: false, bar: null } : { loaded: cur.loaded, bar: cur.bar };
+                const quote = cur && cur.symbol === symbol ? { bid: cur.bid, ask: cur.ask, spread: cur.spread, t: cur.t } : {};
+                cur = Object.assign({ symbolId, symbol, title, tf, decimals }, keep, quote);
+                el.style.display = 'block';
+                note = '';
+                header();
+                if (changed) {
+                    markers = []; series.setMarkers([]);
+                    series.applyOptions({ priceFormat: { type: 'price', precision: decimals, minMove: Math.pow(10, -decimals) } });
+                    load(symbol, tf);
+                }
+                connect();
+            }
+            const esc = s => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+            function header() {
+                if (!cur) return;
+                const f = v => (typeof v === 'number' && isFinite(v)) ? v.toFixed(cur.decimals) : '—';
+                const quote = cur.bid == null
+                    ? `<span class="q">${socketUp ? 'waiting for a tick…' : 'connecting to tape…'}</span>`
+                    : `<span class="q">bid</span> <span class="bid">${f(cur.bid)}</span>  <span class="q">ask</span> <span class="ask">${f(cur.ask)}</span>  <span class="q">spread</span> ${f(cur.spread)}`;
+                const src = socketUp ? `tape :${TAPE_PORT}` : `<span class="warn">tape :${TAPE_PORT} down</span>`;
+                const extra = (note ? `   <span class="warn">(${esc(note)})</span>` : '') + (dealsOn ? '   |   PIT DEALS (debug) as markers' : '');
+                hdr.innerHTML = `${esc(cur.title)}   ${esc(cur.tf)}   ${src}   |   ${quote}   |   lower panes: tick delta (session), ticks per bar${extra}`;
+            }
+            function hide() { el.style.display = 'none'; cur = null; }
+            function addDeal(symbolId, timeMs, price, isBuy) {
+                if (!cur || cur.symbolId !== symbolId) return;
+                const sec = TF_SEC[cur.tf] || 60;
+                const t = Math.floor(timeMs / 1000 / sec) * sec;
+                let m = markers.find(x => x.time === t && x.buy === isBuy);
+                if (!m) { m = { time: t, buy: isBuy, n: 0 }; markers.push(m); }
+                m.n++;
+                redrawMarkers();
+            }
+            // Session flow from the wasm CandleStore for the newest bar: delta (upticks minus
+            // downticks) owns the middle pane. The tick count is already kept here from the
+            // socket, so only a bar this side has not seen (no tick since backfill) takes it.
+            function updateFlow(symbolId, timeMs, d, ticks) {
+                if (!cur || !delta || cur.symbolId !== symbolId || !cur.loaded) return;
+                const t = Math.floor(timeMs / 1000);
+                try {
+                    delta.update({ time: t, value: d, color: d >= 0 ? '#40ff73' : '#ff5252' });
+                    if (ticks > 0 && !(cur.bar && cur.bar.time === t)) rate.update({ time: t, value: ticks, color: '#3b566f' });
+                } catch (e) { }
+            }
+            function setDeals(on) { dealsOn = !!on; redrawMarkers(); header(); }
+            return { show, hide, addDeal, updateFlow, setDeals };
+        })();
+    </script>
+</body>
+</html>

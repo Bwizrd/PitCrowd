@@ -1,0 +1,47 @@
+[package]
+name = "opencry-visual"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+default-run = "opencry-visual"
+
+[dependencies]
+bevy = "0.18.1"
+ewebsock = "0.8.0"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+ehttp = "0.5"
+
+[features]
+default = []
+# The original 2.5D isometric floor with sprite traders. Retired 2026-10-20 in favour of the 3D
+# market view; build with `--features legacy_2d_floor` to bring it back (Space/Esc toggle views).
+legacy_2d_floor = []
+
+[profile.dev]
+opt-level = 1
+debug = 0
+strip = "debuginfo"
+
+[profile.dev.package."*"]
+opt-level = 3
+debug = 0
+strip = "debuginfo"
+
+[profile.test]
+opt-level = 1
+debug = 0
+strip = "debuginfo"
+
+# Shipping wasm: small and fast. `trunk build --release` uses this; `trunk serve` stays on dev.
+[profile.release]
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[target.wasm32-unknown-unknown.dependencies]
+web-sys = { version = "0.3.106", features = ["Window", "Location", "Storage"] }
+wasm-bindgen = "0.2"
+js-sys = "0.3"

@@ -1,0 +1,558 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Desk Board</title>
+<meta name="description" content="Live board of the OpenCry paper desk: every trader's trades, progress and open positions, polled from the relay.">
+<style>
+:root{
+  --bg:#0b0f16;--panel:#111826;--panel2:#162032;--line:#223049;--text:#e6ecf5;--dim:#8b98ad;--muted:#5d6a80;
+  --green:#3ddc84;--red:#ff5d5d;--gold:#f2c14e;--blue:#5ab4ff;--violet:#b48cff;--cyan:#52e0d6;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+a{color:var(--blue);text-decoration:none}
+header{position:sticky;top:0;z-index:5;background:linear-gradient(180deg,#0f1521,#0b0f16);border-bottom:1px solid var(--line);padding:10px 16px;display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center}
+header h1{font-size:16px;margin:0;letter-spacing:.04em;text-transform:uppercase;color:var(--gold)}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--muted);margin-right:6px;vertical-align:middle}
+.dot.live{background:var(--green);box-shadow:0 0 8px var(--green)}
+.dot.down{background:var(--red)}
+.pill{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:3px 10px;color:var(--dim);font-size:12px;white-space:nowrap}
+.pill b{color:var(--text);font-weight:600}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{background:transparent;border:0;color:var(--dim);padding:5px 11px;cursor:pointer;font:inherit;font-size:12px}
+.seg button.on{background:var(--panel2);color:var(--text)}
+main{padding:14px 16px 40px;max-width:1500px;margin:0 auto}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.stat .k{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+.stat .v{font-size:20px;font-weight:600;margin-top:2px;font-variant-numeric:tabular-nums}
+.stat .s{color:var(--dim);font-size:12px}
+section{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:14px}
+section h2{font-size:13px;margin:0 0 8px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+section h2 .sub{text-transform:none;letter-spacing:0;font-weight:400}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+th,td{padding:5px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th{color:var(--dim);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.05em;cursor:pointer;user-select:none;background:var(--panel)}
+th.l,td.l{text-align:left}
+th.on{color:var(--text)}
+tbody tr{cursor:pointer}
+tbody tr:hover{background:var(--panel2)}
+tbody tr.sel{background:#1b2a44}
+.pos{color:var(--green)}.neg{color:var(--red)}.zero{color:var(--dim)}
+.tag{display:inline-block;font-size:10px;padding:1px 6px;border-radius:4px;border:1px solid var(--line);color:var(--dim);margin-left:6px;vertical-align:middle;text-transform:uppercase;letter-spacing:.04em}
+.tag.q{border-color:#3b5a8a;color:var(--blue)}.tag.c{border-color:#6a4aa8;color:var(--violet)}.tag.o{border-color:#4f5d2a;color:#b9d36a}.tag.ctl{border-color:#7a6a2a;color:var(--gold)}.tag.x{border-color:#5a2f2f;color:#d08383}
+.sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+.open{font-size:12px;color:var(--dim)}
+.open b{color:var(--text);font-weight:600}
+.wrap{overflow-x:auto}
+svg{width:100%;height:auto;display:block}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--dim);margin-top:6px}
+.legend span{cursor:pointer}
+.legend span.off{opacity:.35}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media (max-width:900px){.two{grid-template-columns:1fr}}
+.why{max-width:520px;white-space:normal;color:var(--dim);font-size:12px;text-align:left}
+.small{font-size:12px;color:var(--dim)}
+.err{color:var(--red);font-size:12px}
+#detail:empty{display:none}
+.btn{background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:3px 9px;font:inherit;font-size:12px;cursor:pointer}
+</style>
+</head>
+<body>
+<header>
+  <h1>Desk Board</h1>
+  <span class="pill"><span id="dot" class="dot"></span><span id="alive">connecting…</span></span>
+  <span class="pill" id="feed">feed —</span>
+  <span class="pill" id="jev">Jev —</span>
+  <span class="seg" id="win">
+    <button data-w="today">Today</button><button data-w="24h" class="on">24 h</button><button data-w="7d">7 d</button><button data-w="all">All</button>
+  </span>
+  <span class="seg" id="grp">
+    <button data-g="all" class="on">Everyone</button><button data-g="question">Question traders</button><button data-g="crew">Common read</button><button data-g="original">Originals</button><button data-g="retired">Retired</button>
+  </span>
+  <span class="pill" id="updated">—</span>
+  <button class="btn" id="copy" title="Copy the whole board as plain text, ready to paste into an AI for analysis">Copy for AI</button>
+  <span class="pill"><a href="/" id="floorlink">← the floor</a> · <a href="/explainer.html">guide</a></span>
+</header>
+<div id="tradebox" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:21;padding:30px 16px;overflow:auto">
+  <div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;max-width:1000px;margin:0 auto;padding:14px 16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><b id="tradetitle"></b><button class="btn" id="tradeclose">close</button></div>
+    <div id="tradechart" style="margin:10px 0"></div>
+    <div id="tradewhy" style="font-size:14px;line-height:1.6"></div>
+    <details style="margin-top:10px"><summary class="small">The desk's own wording</summary><div id="traderaw" class="small" style="margin-top:6px"></div></details>
+  </div>
+</div>
+<div id="copybox" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:20;padding:40px 16px" >
+  <div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;max-width:900px;margin:0 auto;padding:14px;height:100%;display:flex;flex-direction:column;gap:8px">
+    <div style="display:flex;justify-content:space-between;align-items:center"><b>Select all and copy</b><span><button class="btn" id="copyagain">copy</button> <button class="btn" id="copyclose">close</button></span></div>
+    <textarea id="copytext" style="flex:1;width:100%;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:10px;font:12px/1.4 ui-monospace,Menlo,monospace;resize:none"></textarea>
+  </div>
+</div>
+<main>
+  <div class="grid" id="stats"></div>
+  <section>
+    <h2>Leaderboard <span class="sub" id="lbsub"></span></h2>
+    <div class="wrap"><table id="lb"><thead><tr>
+      <th class="l" data-k="rank">#</th><th class="l" data-k="trader">Trader</th><th data-k="net">Net R</th><th data-k="trades">Trades</th><th data-k="win">Win %</th>
+      <th data-k="exp">R / trade</th><th data-k="avgw">Avg win</th><th data-k="avgl">Avg loss</th><th data-k="spread">Spread R</th><th data-k="dd">Max DD</th><th data-k="open" class="l">Open now</th><th data-k="last">Last</th>
+    </tr></thead><tbody></tbody></table></div>
+  </section>
+  <section>
+    <h2>Equity, cumulative R over the window <span class="sub">click a name to hide or show it · </span><span class="sub"><button class="btn" id="allcurves">show everyone</button></span></h2>
+    <div id="curves"></div><div class="legend" id="legend"></div>
+  </section>
+  <div id="detail"></div>
+  <div class="two">
+    <section><h2>By pit</h2><div class="wrap"><table id="bysym"><thead><tr><th class="l">Pit</th><th>Net R</th><th>Trades</th><th>Win %</th><th>Spread R</th><th>Best</th><th>Worst</th></tr></thead><tbody></tbody></table></div></section>
+    <section><h2>By group</h2><div class="wrap"><table id="bygrp"><thead><tr><th class="l">Group</th><th>Traders</th><th>Net R</th><th>Trades</th><th>Win %</th><th>R / trade</th><th>Spread R</th></tr></thead><tbody></tbody></table></div>
+      <h2 style="margin-top:14px">Question traders: what they traded</h2><div class="wrap"><table id="asks"><thead><tr><th class="l">Trader</th><th class="l">Question</th><th class="l">Answers traded (count, net R)</th></tr></thead><tbody></tbody></table></div></section>
+  </div>
+  <section>
+    <h2>Latest closes <span class="sub" id="latestsub"></span></h2><p class="small" style="margin:0 0 6px">Click any close, here or in a trader's panel, to see it on the chart with its reasons in plain English.</p>
+    <div class="wrap"><table id="latest"><thead><tr><th class="l">Closed</th><th class="l">Trader</th><th class="l">Pit</th><th class="l">Side</th><th>R</th><th>Held</th><th class="l">Why in</th><th class="l">Why out</th></tr></thead><tbody></tbody></table></div>
+  </section>
+  <p class="small" id="foot"></p>
+</main>
+<script>
+(() => {
+  // Where each service is: the page's own host on its usual port, unless the address bar
+    // says otherwise (?tape=18083, ?tape=host:8083, ?tape=https://host; same for ?relay=).
+    // The Rust side reads the same parameters (src/endpoints.rs).
+    window.__opencrySvc = function (name, port) {
+        const v = (new URLSearchParams(location.search).get(name) || '').trim().replace(/\/$/, '');
+        const host = location.hostname || 'localhost';
+        const scheme = location.protocol === 'https:' ? 'https:' : 'http:';
+        if (!v) return `${scheme}//${host}:${port}`;
+        if (/^\d+$/.test(v)) return `${scheme}//${host}:${v}`;
+        return v.includes('://') ? v : `http://${v}`;
+    };
+  const RELAY = window.__opencrySvc('relay', 8099);
+  document.getElementById('floorlink').href = '/' + location.search;   // keep ?tape= / ?relay=
+  const GROUPS = {
+    original: ['Vinnie','Grace','Harold','Priya','Tomasz','Maggie','Dev','Rosa'],
+    control: ['Colin'],
+    crew: ['Tess','Gus','Ivo','Sol','Lena','Kit'],
+    question: ['Vera','Wren','Xi','Yusuf','Zara','Ana','Ben','Cy','Dee'],
+  };
+  const QUESTION = {Vera:'touch_outcome',Wren:'absorbing',Xi:'stop_run',Yusuf:'carry_through',Zara:'tape_state',Ana:'bar_shape',Ben:'bar_shape',Cy:'magnet',Dee:'delta_divergence'};
+  const groupOf = n => GROUPS.original.includes(n) ? 'original' : GROUPS.control.includes(n) ? 'control' : GROUPS.crew.includes(n) ? 'crew' : GROUPS.question.includes(n) ? 'question' : 'retired';
+  const TAG = {original:['o','orig'],control:['ctl','control'],crew:['c','read'],question:['q','asks'],retired:['x','retired']};
+  const PALETTE = ['#f2c14e','#5ab4ff','#3ddc84','#ff5d5d','#b48cff','#52e0d6','#ff9f43','#f78fb3','#9bd36a','#7fa7ff','#e0b0ff','#ffd27f','#6ee7b7','#fca5a5','#93c5fd','#c4b5fd','#fde68a','#a7f3d0','#fbcfe8','#bae6fd','#d9f99d','#fecaca'];
+
+  const state = { board: null, trades: [], seen: new Set(), since: null, window: '24h', group: 'all', sort: {k:'net', dir:-1}, selected: null, all: false, hidden: new Set(['DESK']), err: '' };
+  const $ = s => document.querySelector(s);
+  const fmt = (x, d=2) => (x == null || isNaN(x)) ? '—' : (x > 0 ? '+' : '') + x.toFixed(d);
+  const cls = x => x > 0.005 ? 'pos' : x < -0.005 ? 'neg' : 'zero';
+  const pct = x => isNaN(x) ? '—' : Math.round(x*100) + '%';
+  const hhmm = ms => new Date(ms).toISOString().slice(11,16);
+  const dayhm = ms => { const d = new Date(ms).toISOString(); return d.slice(5,10) + ' ' + d.slice(11,16); };
+  const ago = ms => { const s = Math.max(0,(Date.now()-ms)/1000); return s < 90 ? Math.round(s)+'s' : s < 5400 ? Math.round(s/60)+'m' : s < 172800 ? (s/3600).toFixed(1)+'h' : Math.round(s/86400)+'d'; };
+  const held = (a,b) => { const s=(b-a)/1000; return s < 90 ? Math.round(s)+'s' : s < 5400 ? Math.round(s/60)+'m' : (s/3600).toFixed(1)+'h'; };
+
+  function windowStart() {
+    const now = Date.now();
+    if (state.window === 'today') { const d = new Date(now); d.setUTCHours(0,0,0,0); return d.getTime(); }
+    if (state.window === '24h') return now - 86400e3;
+    if (state.window === '7d') return now - 7*86400e3;
+    return 0;
+  }
+
+  async function pollBoard() {
+    try {
+      const r = await fetch(`${RELAY}/paper/board`, {cache:'no-store'});
+      state.board = await r.json();
+      state.err = '';
+    } catch (e) { state.err = `relay unreachable at ${RELAY}: ${e.message}`; }
+    render();
+  }
+
+  async function pollTrades() {
+    try {
+      const since = state.since == null ? Date.now() - 8*86400e3 : state.since + 1;
+      const r = await fetch(`${RELAY}/paper/trades?since_ms=${since}&limit=20000&source=desk`, {cache:'no-store'});
+      const d = await r.json();
+      for (const t of d.trades) {
+        const key = `${t.trader}|${t.closed_ms}|${t.symbol}|${t.entry}`;
+        if (state.seen.has(key)) continue;
+        state.seen.add(key); t._i = state.trades.length; state.trades.push(t);
+        if (state.since == null || t.closed_ms > state.since) state.since = t.closed_ms;
+      }
+      if (d.truncated && state.trades.length === d.count) state.err = 'trade history truncated to the last 20,000 closes';
+    } catch (e) { state.err = `trades: ${e.message}`; }
+    render();
+  }
+
+  function stats(trades) {
+    const s = { trades: trades.length, wins:0, losses:0, net:0, spread:0, sumw:0, sumL:0, dd:0, last:0, curve:[] };
+    let eq=0, peak=0;
+    for (const t of trades) {
+      s.net += t.pnl_r; eq += t.pnl_r; peak = Math.max(peak, eq); s.dd = Math.max(s.dd, peak-eq);
+      s.spread += (t.spread_ticks_in||0) / Math.max(1, t.stop_ticks||1);
+      if (t.pnl_r > 0) { s.wins++; s.sumw += t.pnl_r; } else { s.losses++; s.sumL += t.pnl_r; }
+      s.last = Math.max(s.last, t.closed_ms);
+      s.curve.push([t.closed_ms, eq]);
+    }
+    s.win = s.trades ? s.wins/s.trades : NaN; s.exp = s.trades ? s.net/s.trades : NaN;
+    s.avgw = s.wins ? s.sumw/s.wins : NaN; s.avgl = s.losses ? s.sumL/s.losses : NaN;
+    return s;
+  }
+
+  function render() {
+    const b = state.board; const start = windowStart();
+    const inWin = state.trades.filter(t => t.closed_ms >= start).sort((a,b)=>a.closed_ms-b.closed_ms);
+    // header
+    const alive = b && b.desk_alive;
+    $('#dot').className = 'dot ' + (alive ? 'live' : (b ? 'down' : ''));
+    $('#alive').textContent = !b ? (state.err || 'connecting…') : alive ? `desk alive · heartbeat ${((b.heartbeat_age_ms||0)/1000).toFixed(0)}s ago` : 'desk not heard from';
+    $('#feed').textContent = b ? `feed ${b.feed || '—'}` : 'feed —';
+    $('#jev').textContent = b ? `Jev ${b.jev_mode||''} · ${b.jev_calls||0} calls, ${b.jev_failures||0} failed · every ${b.jev_every_secs||0}s + touches` : 'Jev —';
+    $('#updated').textContent = 'updated ' + new Date().toISOString().slice(11,19) + ' UTC';
+    // traders: union of board rows and anyone in the trade log
+    const names = new Set((b ? b.traders : []).map(t => t.trader)); for (const t of inWin) names.add(t.trader);
+    const boardBy = Object.fromEntries((b ? b.traders : []).map(t => [t.trader, t]));
+    let rows = [...names].map(n => {
+      const st = stats(inWin.filter(t => t.trader === n));
+      const br = boardBy[n] || {};
+      return { trader: n, label: br.archetype || '', group: groupOf(n), open: br.open || null, ...st };
+    });
+    if (state.group !== 'all') rows = rows.filter(r => r.group === state.group || (state.group === 'original' && r.group === 'control'));
+    rows.sort((a,b) => b.net - a.net); rows.forEach((r,i) => r.rank = i+1);
+    const k = state.sort.k, dir = state.sort.dir;
+    rows.sort((a,b) => { const x = k==='trader' ? a.trader.localeCompare(b.trader) : k==='open' ? ((b.open?1:0)-(a.open?1:0)) : (isNaN(a[k])?-1e9:a[k]) - (isNaN(b[k])?-1e9:b[k]); return x*dir; });
+    // stats strip
+    const all = stats(inWin);
+    const openRows = (b ? b.traders : []).filter(t => t.open);
+    const openR = openRows.reduce((s,t)=>s+(t.open.open_r||0),0);
+    const best = [...rows].sort((a,b)=>b.net-a.net)[0], worst = [...rows].sort((a,b)=>a.net-b.net)[0];
+    $('#stats').innerHTML = [
+      ['Net R', fmt(all.net), `${all.trades} trades · ${pct(all.win)} win`, cls(all.net)],
+      ['R per trade', fmt(all.exp,3), `avg win ${fmt(all.avgw)} · avg loss ${fmt(all.avgl)}`, cls(all.exp)],
+      ['Spread paid', fmt(-all.spread), `${all.trades ? (all.spread/all.trades).toFixed(2) : '—'} R a trade`, 'neg'],
+      ['Open now', `${openRows.length}`, `marked ${fmt(openR)} R`, cls(openR)],
+      ['Best', best ? best.trader : '—', best ? `${fmt(best.net)} R on ${best.trades}` : '', 'pos'],
+      ['Worst', worst ? worst.trader : '—', worst ? `${fmt(worst.net)} R on ${worst.trades}` : '', 'neg'],
+    ].map(([k,v,s,c]) => `<div class="stat"><div class="k">${k}</div><div class="v ${c}">${v}</div><div class="s">${s}</div></div>`).join('');
+    $('#lbsub').textContent = `${rows.length} traders · window ${state.window} · ${inWin.length} closes` + (rows.some(r => r.group === 'retired') ? ' · RETIRED = taken out of the book on 23 Oct (Lena and Kit came back on 24 Oct); their past closes stay here until they age out of the window' : '');
+    // leaderboard
+    document.querySelectorAll('#lb th').forEach(th => th.classList.toggle('on', th.dataset.k === k));
+    $('#lb tbody').innerHTML = rows.map(r => {
+      const [tc, tt] = TAG[r.group];
+      const o = r.open ? `<b>${r.open.symbol}</b> ${r.open.side} <span class="${cls(r.open.open_r)}">${fmt(r.open.open_r)}R</span> · ${ago(r.open.opened_ms)}` : '';
+      return `<tr data-t="${r.trader}" class="${state.selected===r.trader?'sel':''}">
+        <td class="l">${r.rank}</td><td class="l"><span class="sw" style="background:${colour(r.trader)}"></span>${r.trader} <span class="small">${r.label}</span><span class="tag ${tc}">${tt}</span></td>
+        <td class="${cls(r.net)}">${fmt(r.net)}</td><td>${r.trades}</td><td>${pct(r.win)}</td><td class="${cls(r.exp)}">${fmt(r.exp,3)}</td>
+        <td class="pos">${fmt(r.avgw)}</td><td class="neg">${fmt(r.avgl)}</td><td class="neg">${fmt(-r.spread)}</td><td class="neg">${r.dd ? '-' + r.dd.toFixed(2) : '—'}</td>
+        <td class="l open">${o}</td><td class="small">${r.last ? ago(r.last) : '—'}</td></tr>`;
+    }).join('');
+    state.last = { rows, inWin, all, openRows };
+    renderCurves(rows, inWin, start);
+    renderDetail(rows, inWin);
+    renderBreakdowns(rows, inWin);
+    $('#latestsub').textContent = 'newest first';
+    $('#latest tbody').innerHTML = [...inWin].reverse().slice(0, 40).map(t => `<tr data-i="${t._i}" title="chart this trade">
+      <td class="l">${dayhm(t.closed_ms)}</td><td class="l">${t.trader}</td><td class="l">${t.symbol}</td><td class="l">${t.side}</td>
+      <td class="${cls(t.pnl_r)}">${fmt(t.pnl_r)}</td><td>${held(t.opened_ms,t.closed_ms)}</td><td class="why">${esc(t.why_in)}</td><td class="why">${esc(t.why_out)}</td></tr>`).join('');
+    $('#foot').innerHTML = `Relay ${RELAY} · board every 2 s, closes every 10 s · all times UTC · R = profit over the initial stop; spread paid = entry spread over the stop. ${state.err ? `<span class="err">${esc(state.err)}</span>` : ''}`;
+  }
+
+  const colourMap = {}; let ci = 0;
+  function colour(name) { if (!(name in colourMap)) colourMap[name] = PALETTE[ci++ % PALETTE.length]; return colourMap[name]; }
+
+  function renderCurves(rows, inWin, start) {
+    const W = 1200, H = 320, L = 46, R = 12, T = 10, B = 24;
+    const end = Date.now(); const t0 = start || (inWin.length ? inWin[0].closed_ms : end - 3600e3);
+    const shown = state.all ? rows : [...rows].sort((a,b)=>Math.abs(b.net)-Math.abs(a.net)).slice(0,8);
+    if (state.selected && !shown.find(r => r.trader === state.selected)) { const s = rows.find(r => r.trader === state.selected); if (s) shown.push(s); }
+    const series = shown.filter(r => !state.hidden.has(r.trader) && r.curve.length).map(r => ({name:r.trader, pts:[[t0,0], ...r.curve, [end, r.net]]}));
+    const total = stats(inWin); if (!state.hidden.has('DESK')) series.unshift({name:'DESK', pts:[[t0,0], ...total.curve, [end,total.net]], total:true});
+    let lo = 0, hi = 0; for (const s of series) for (const p of s.pts) { lo = Math.min(lo,p[1]); hi = Math.max(hi,p[1]); }
+    if (hi - lo < 1) { hi += 0.5; lo -= 0.5; }
+    const x = t => L + (W-L-R) * (t - t0) / Math.max(1, end - t0);
+    const y = v => T + (H-T-B) * (1 - (v - lo) / (hi - lo));
+    const ticks = []; const step = niceStep((hi-lo)/5); for (let v = Math.ceil(lo/step)*step; v <= hi; v += step) ticks.push(v);
+    const hours = (end - t0)/3600e3; const nx = hours <= 30 ? Math.round(hours/3) : Math.round(hours/24);
+    let g = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="height:${H}px">`;
+    for (const v of ticks) g += `<line x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}" stroke="${Math.abs(v)<1e-9?'#3a4a66':'#1c2638'}" stroke-width="1"/><text x="${L-6}" y="${y(v)+4}" fill="#8b98ad" font-size="11" text-anchor="end">${v.toFixed(Math.abs(step)<1?1:0)}</text>`;
+    for (let i = 0; i <= nx; i++) { const t = t0 + (end-t0)*i/nx; g += `<text x="${x(t)}" y="${H-6}" fill="#5d6a80" font-size="11" text-anchor="middle">${hours<=30?hhmm(t):dayhm(t).slice(0,5)}</text>`; }
+    for (const s of series) {
+      const d = s.pts.map((p,i) => (i?'L':'M') + x(p[0]).toFixed(1) + ' ' + y(p[1]).toFixed(1)).join(' ');
+      g += `<path d="${d}" fill="none" stroke="${s.total ? '#ffffff' : colour(s.name)}" stroke-width="${s.total ? 2.2 : (s.name===state.selected ? 2.4 : 1.3)}" opacity="${s.total?0.9:0.85}" vector-effect="non-scaling-stroke"/>`;
+    }
+    g += '</svg>';
+    $('#curves').innerHTML = g;
+    $('#legend').innerHTML = [`<span data-h="DESK" class="${state.hidden.has('DESK')?'off':''}"><span class="sw" style="background:#fff"></span>DESK total ${fmt(total.net)}</span>`, ...shown.map(r => `<span data-h="${r.trader}" class="${state.hidden.has(r.trader)?'off':''}"><span class="sw" style="background:${colour(r.trader)}"></span>${r.trader} ${fmt(r.net)}</span>`)].join('');
+    $('#allcurves').textContent = state.all ? 'show the top eight' : 'show everyone';
+  }
+  function niceStep(raw) { const p = Math.pow(10, Math.floor(Math.log10(raw||1))); const m = raw/p; return (m < 1.5 ? 1 : m < 3.5 ? 2 : m < 7.5 ? 5 : 10) * p; }
+
+  function renderDetail(rows, inWin) {
+    const el = $('#detail');
+    if (!state.selected) { el.innerHTML = ''; return; }
+    const r = rows.find(x => x.trader === state.selected); const b = state.board && state.board.traders.find(t => t.trader === state.selected);
+    if (!r) { el.innerHTML = ''; return; }
+    const mine = inWin.filter(t => t.trader === r.trader).reverse();
+    const bySym = {}; for (const t of mine) { (bySym[t.symbol] ||= []).push(t); }
+    const symRows = Object.entries(bySym).map(([s,v]) => { const st = stats(v); return `<tr><td class="l">${s}</td><td class="${cls(st.net)}">${fmt(st.net)}</td><td>${st.trades}</td><td>${pct(st.win)}</td></tr>`; }).join('');
+    const waiting = b && b.waiting ? b.waiting.map(w => `<div class="small"><b>${w.symbol}</b> ${esc(w.why)}</div>`).join('') : '';
+    el.innerHTML = `<section><h2>${r.trader} <span class="small">${r.label} · ${TAG[r.group][1]}${QUESTION[r.trader] ? ' · question ' + QUESTION[r.trader] : ''}</span><span class="sub"><button class="btn" id="close">close</button></span></h2>
+      <div class="two">
+        <div><table><thead><tr><th class="l">Pit</th><th>Net R</th><th>Trades</th><th>Win %</th></tr></thead><tbody>${symRows || '<tr><td class="l small" colspan="4">no closes in this window</td></tr>'}</tbody></table>
+          ${b && b.open ? `<p class="open">Open: <b>${b.open.symbol}</b> ${b.open.side} from ${b.open.entry} · stop ${b.open.stop} · ${b.open.target ? 'target ' + b.open.target : 'trail'} · <span class="${cls(b.open.open_r)}">${fmt(b.open.open_r)}R</span> · ${ago(b.open.opened_ms)} ago<br><span class="small">${esc(b.open.why)}</span></p>` : '<p class="small">Flat.</p>'}
+          ${waiting ? `<p class="small" style="margin-bottom:4px">Last pass per pit:</p>${waiting}` : ''}</div>
+        <div class="wrap"><table><thead><tr><th class="l">Closed</th><th class="l">Pit</th><th class="l">Side</th><th>R</th><th>Held</th><th class="l">Why in</th><th class="l">Why out</th></tr></thead><tbody>
+          ${mine.slice(0,60).map(t => `<tr data-i="${t._i}" title="chart this trade"><td class="l">${dayhm(t.closed_ms)}</td><td class="l">${t.symbol}</td><td class="l">${t.side}</td><td class="${cls(t.pnl_r)}">${fmt(t.pnl_r)}</td><td>${held(t.opened_ms,t.closed_ms)}</td><td class="why">${esc(t.why_in)}</td><td class="why">${esc(t.why_out)}</td></tr>`).join('')}
+        </tbody></table></div></div></section>`;
+    $('#close').onclick = () => { state.selected = null; render(); };
+    el.querySelectorAll('tr[data-i]').forEach(tr => tr.onclick = () => openTrade(state.trades[+tr.dataset.i]));
+  }
+
+  function renderBreakdowns(rows, inWin) {
+    const bySym = {}; for (const t of inWin) (bySym[t.symbol] ||= []).push(t);
+    $('#bysym tbody').innerHTML = Object.entries(bySym).map(([s,v]) => [s, stats(v), v]).sort((a,b)=>b[1].net-a[1].net).map(([s,st,v]) => {
+      const byT = {}; for (const t of v) byT[t.trader] = (byT[t.trader]||0) + t.pnl_r;
+      const e = Object.entries(byT).sort((a,b)=>b[1]-a[1]);
+      return `<tr><td class="l">${s}</td><td class="${cls(st.net)}">${fmt(st.net)}</td><td>${st.trades}</td><td>${pct(st.win)}</td><td class="neg">${fmt(-st.spread)}</td><td class="pos">${e.length?`${e[0][0]} ${fmt(e[0][1])}`:'—'}</td><td class="neg">${e.length?`${e[e.length-1][0]} ${fmt(e[e.length-1][1])}`:'—'}</td></tr>`;
+    }).join('');
+    const groups = ['question','crew','original','control','retired'];
+    $('#bygrp tbody').innerHTML = groups.map(g => {
+      const v = inWin.filter(t => groupOf(t.trader) === g); if (!v.length) return '';
+      const st = stats(v); const n = new Set(v.map(t=>t.trader)).size;
+      return `<tr><td class="l">${TAG[g][1]}</td><td>${n}</td><td class="${cls(st.net)}">${fmt(st.net)}</td><td>${st.trades}</td><td>${pct(st.win)}</td><td class="${cls(st.exp)}">${fmt(st.exp,3)}</td><td class="neg">${fmt(-st.spread)}</td></tr>`;
+    }).join('');
+    $('#asks tbody').innerHTML = GROUPS.question.map(n => {
+      const v = inWin.filter(t => t.trader === n); const by = {};
+      for (const t of v) { const m = /^Jev (\w+) = (\S+)/.exec(t.why_in || ''); const a = m ? m[2] : '?'; (by[a] ||= {n:0,r:0}); by[a].n++; by[a].r += t.pnl_r; }
+      const cells = Object.entries(by).sort((a,b)=>b[1].n-a[1].n).map(([a,x]) => `${a} <b>${x.n}</b> <span class="${cls(x.r)}">${fmt(x.r)}</span>`).join(' · ');
+      return `<tr><td class="l">${n}</td><td class="l small">${QUESTION[n]}</td><td class="l small">${cells || 'nothing yet'}</td></tr>`;
+    }).join('');
+  }
+
+  const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+  // ---- one trade on the chart, with its reasons in plain English ----
+  const TICK = {'XAU/USD':0.1,'XAG/USD':0.01,'GBP/USD':0.0001,'EUR/USD':0.0001,'UK100':0.5,'US500':0.25,'NAS100':0.25,'US30':1,'BTC/USD':5};
+  const DEC = {'XAU/USD':2,'XAG/USD':3,'GBP/USD':5,'EUR/USD':5,'UK100':1,'US500':2,'NAS100':2,'US30':1,'BTC/USD':2};
+  const TAPE = window.__opencrySvc('tape', 8083);
+  const barCache = {};
+  // Only as far back as the trade needs: a week of bars is ~3 s from the tape, an hour is instant.
+  async function barsFor(sym, fromMs) {
+    const c = barCache[sym];
+    if (c && Date.now() - c.at < 60e3 && c.from <= fromMs) return c.data;
+    const hours = Math.min(24 * 8, Math.ceil((Date.now() - fromMs) / 3600e3) + 1);
+    const r = await fetch(`${TAPE}/bars?symbol=${sym.replace('/','')}&timeframe=1m&range=-${hours}h`, {cache:'no-store'});
+    const d = await r.json();
+    barCache[sym] = {at: Date.now(), from: Date.now() - hours * 3600e3, data: d.data || []};
+    return barCache[sym].data;
+  }
+
+  const LEVEL = {'OB BULL':'bullish order block','OB BEAR':'bearish order block','FVG BULL':'bullish fair value gap','FVG BEAR':'bearish fair value gap','SWING HI':'swing high','SWING LO':'swing low','SESSION HI':'session high','SESSION LO':'session low','ROUND':'round number','OANDA LONG':'cluster of OANDA retail buy orders','OANDA SHORT':'cluster of OANDA retail sell orders'};
+  const lvl = t => LEVEL[t] || t;
+  const REACT = {absorbing:'absorbing (price arriving but not getting through)',rejecting:'rejecting (price turning away from it)',sweeping:'sweeping (a stop run through it and back)',breaking:'breaking (price going through cleanly)',no_level:'no level nearby'};
+  const ANSWER = {
+    touch_outcome: {q:'what the level would have done fifteen minutes later', reject:'it would hold and price would bounce back the way it came', break:'price would go through and stay beyond it', sweep:'price would poke through, run the stops, and come back', stall:'price would still be sitting on it'},
+    tape_state: {q:'what the last twenty seconds of ticks looked like', one_way_buying:'buyers lifting the offers, mostly upticks at a rising pace', one_way_selling:'sellers hitting the bids, mostly downticks at a rising pace', two_way:'two-way trade with nobody in charge', dead:'almost nothing trading'},
+    bar_shape: {q:'the shape of the last twenty one-minute bars', climax_up:'a buying climax: an accelerating rise with the biggest bars at the end', climax_down:'a selling climax: an accelerating fall with the biggest bars at the end', trend_up:'a steady uptrend of higher highs and higher lows', trend_down:'a steady downtrend of lower highs and lower lows', compression:'ranges squeezing tighter', chop:'overlapping bars going nowhere'},
+    magnet: {q:'which nearby level price would reach first', above:'the nearest level above', below:'the nearest level below', neither:'neither within fifteen minutes'},
+    absorbing: {q:'whether resting orders at the level were soaking up the arrivals'},
+    stop_run: {q:'whether the push into the level was a stop run that was already fading'},
+    carry_through: {q:'whether a break of the level would carry at least one average bar range beyond it'},
+    delta_divergence: {q:'whether the move was making new extremes with less and less buying or selling behind it'},
+  };
+  const longShort = side => side === 'long' ? 'bought (went long)' : 'sold (went short)';
+
+  function plainEntry(t, name) {
+    const raw = t.why_in || ''; const [head, ...rest] = raw.split(' | ');
+    const out = []; let m;
+    if (/^coin flip/.test(head)) out.push(`${name} is the control. ${name} flipped a coin and ${longShort(t.side)}. There is no reason behind this trade by design: it pays the same spread and uses the same exits, so it shows what luck alone earns.`);
+    else if ((m = /^(with|against) Jev (UP|DOWN) (\d+)% \(conviction ([\d.]+), continuation (\d+)%, exhaustion (\d+)%, (\w+)\)/.exec(head))) {
+      const dir = m[2] === 'UP' ? 'higher' : 'lower';
+      out.push(`Jev, the AI classifier, read this market as more likely to go ${dir} (${m[3]}% sure, conviction ${m[4]} out of 2). It put the chance of the move continuing at ${m[5]}% and of the side in control running out of steam at ${m[6]}%, and it saw the nearest level as ${REACT[m[7]] || m[7]}.`);
+      out.push(m[1] === 'with' ? `${name} trades with Jev's lean, so ${name} ${longShort(t.side)}.` : `${name} trades against Jev's lean, so ${name} ${longShort(t.side)}, betting Jev was wrong.`);
+    } else if ((m = /^Jev flat (\d+)% after a ([-+]?\d+)-tick (\d+)-bar move/.exec(head))) {
+      out.push(`Jev called this market flat (${m[1]}% sure) straight after a ${Math.abs(+m[2])}-tick move ${+m[2] > 0 ? 'up' : 'down'} over the last ${m[3]} bars. ${name} bets that a move with no follow-through comes back, so ${name} ${longShort(t.side)}.`);
+    } else if ((m = /^Jev (\w+) = (\S+) (\d+)%(?: at (.+?) ([\d.,]+)\.\.([\d.,]+) from (above|below))?/.exec(head))) {
+      const [, key, ans, pc, lv, lo, hi, from] = m; const A = ANSWER[key] || {q:key};
+      if (lv) out.push(`Price had just touched a ${lvl(lv)} between ${lo} and ${hi}, arriving from ${from}. The desk asked Jev straight away.`);
+      const said = ans === 'yes' ? `yes, ${pc}% likely` : `${A[ans] || ans} (${pc}% sure)`;
+      out.push(`${name}'s question to Jev is ${A.q}. Jev's answer: ${said}.`);
+      const dirWord = t.side === 'long' ? 'up' : 'down';
+      out.push(`${name}'s rule turns that answer into a trade ${dirWord}, so ${name} ${longShort(t.side)}.`);
+    } else if ((m = /^Jev (UP|DOWN) with (\d+)-bar drift ([-+]?\d+) ticks; stop behind the swing ([\d.]+) ticks away/.exec(head))) {
+      out.push(`Jev leaned ${m[1] === 'UP' ? 'up' : 'down'} and the last ${m[2]} bars had already drifted ${Math.abs(+m[3])} ticks the same way, so ${name} joined the trend and ${longShort(t.side)}, with the stop behind the last swing.`);
+    } else if ((m = /^(SWING HI|SWING LO) swept at ([\d.,]+), price back in a fresh (.+?) ([\d.,]+)\.\.([\d.,]+)/.exec(head))) {
+      out.push(`Price ran through the ${lvl(m[1])} at ${m[2]}, taking out the stops resting there, then came back into a fresh ${lvl(m[3])} (${m[4]} to ${m[5]}). ${name} reads that as the stop run being over and ${longShort(t.side)}, with the stop beyond the zone.`);
+    } else if ((m = /^first return into (FVG BULL|FVG BEAR) ([\d.,]+)\.\.([\d.,]+)/.exec(head))) {
+      out.push(`Price came back for the first time into an unfilled ${lvl(m[1])} (${m[2]} to ${m[3]}), a gap the market left behind. ${name} expects the first return to hold and ${longShort(t.side)}.`);
+    } else if (/opening range/.test(head)) {
+      out.push(`The first fifteen minutes of the session drew a range. A one-minute bar then closed outside it, which ${name} treats as the breakout, so ${name} ${longShort(t.side)} with the stop at the middle of the range.`);
+    } else if (/VWAP/.test(head)) {
+      out.push(`Price had stayed well clear of the session's volume-weighted average price (VWAP) for twenty minutes, a trend, and had just come back to touch it for the first time. ${name} ${longShort(t.side)} expecting the trend to resume.`);
+    } else if (/session (high|low)/.test(head)) {
+      out.push(`Price printed a new session extreme on a fading tick rate with a rejection wick. ${name} faded it and ${longShort(t.side)}.`);
+    } else out.push(`${name} ${longShort(t.side)}: ${head}.`);
+    for (const r of rest) {
+      const w = /stop widened from ([\d.]+) to ([\d.]+) ticks/.exec(r);
+      if (w) out.push(`The idea's own stop was ${(+w[1]).toFixed(0)} ticks away. The desk never lets a stop be closer than twenty spreads, because a tight stop makes the spread most of the risk, so it was widened to ${(+w[2]).toFixed(0)} ticks.`);
+    }
+    return out;
+  }
+
+  function plainExit(t, name, stopPx) {
+    const r = t.pnl_r, res = r > 0 ? `a gain of ${r.toFixed(2)} R` : `a loss of ${Math.abs(r).toFixed(2)} R`;
+    const h = held(t.opened_ms, t.closed_ms), dec = DEC[t.symbol] ?? 2;
+    switch (t.why_out) {
+      case 'target': return `Price reached ${name}'s profit target after ${h}, so the trade closed at ${t.exit.toFixed(dec)} for ${res}.`;
+      case 'stop': return r > 0.05
+        ? `After the trade moved in its favour the stop was moved up behind price (a trailing stop). Price then came back and hit it after ${h}, closing at ${t.exit.toFixed(dec)} and keeping ${res}.`
+        : `Price went the wrong way and hit the stop${stopPx ? ' near ' + stopPx.toFixed(dec) : ''} after ${h}, closing at ${t.exit.toFixed(dec)} for ${res}. One R is exactly what the trade risked.`;
+      case 'time stop': return `Neither the target nor the stop was reached within ${name}'s time limit, so after ${h} the trade was closed at the market price of ${t.exit.toFixed(dec)} for ${res}.`;
+      case 'session close': return `Every trader is flat by 20:55 UTC, so the trade was closed at the end of the session at ${t.exit.toFixed(dec)} for ${res}.`;
+      default: return `Closed (${t.why_out}) after ${h} at ${t.exit.toFixed(dec)} for ${res}.`;
+    }
+  }
+
+  async function openTrade(t) {
+    if (!t) return;
+    const box = $('#tradebox'); box.style.display = 'block';
+    const dec = DEC[t.symbol] ?? 2, tick = TICK[t.symbol] || 1;
+    const stopPx = t.stop_ticks ? (t.side === 'long' ? t.entry - t.stop_ticks * tick : t.entry + t.stop_ticks * tick) : null;
+    $('#tradetitle').dataset.i = String(t._i);
+    $('#tradetitle').innerHTML = `${esc(t.trader)} · ${esc(t.symbol)} ${t.side} · <span class="${cls(t.pnl_r)}">${fmt(t.pnl_r)} R</span> · ${dayhm(t.opened_ms)} to ${hhmm(t.closed_ms)} UTC`;
+    const ent = plainEntry(t, t.trader);
+    $('#tradewhy').innerHTML = `<p style="margin:0 0 6px"><b>Why it entered.</b> ${ent.map(esc).join(' ')}</p><p style="margin:0"><b>Why it exited.</b> ${esc(plainExit(t, t.trader, stopPx))}</p>`;
+    $('#traderaw').innerHTML = `In: ${esc(t.why_in)}<br>Out: ${esc(t.why_out)}<br>Entry ${t.entry.toFixed(dec)}, exit ${t.exit.toFixed(dec)}, stop ${t.stop_ticks ? t.stop_ticks.toFixed(1) + ' ticks' : '-'}, spread at entry ${t.spread_ticks_in != null ? t.spread_ticks_in.toFixed(1) + ' ticks' : '-'}.`;
+    $('#tradechart').innerHTML = '<p class="small">loading the price…</p>';
+    const dur = t.closed_ms - t.opened_ms, pad = Math.max(15 * 60e3, dur * 0.6);
+    const a = t.opened_ms - pad, z = t.closed_ms + Math.max(10 * 60e3, dur * 0.3);
+    let bars;
+    try { bars = await barsFor(t.symbol, a); } catch (e) { $('#tradechart').innerHTML = `<p class="err">price history unavailable from the tape at ${TAPE}: ${esc(e.message)}</p>`; return; }
+    if ($('#tradetitle').dataset.i !== String(t._i)) return; // another trade was opened meanwhile
+    const v = bars.filter(b => b.timestamp >= a && b.timestamp <= z);
+    if (!v.length) { $('#tradechart').innerHTML = '<p class="small">The tape has no bars for this time (it keeps history from 21 Oct onward).</p>'; return; }
+    const W = 960, H = 340, L = 70, R = 12, T = 14, B = 26;
+    let lo = Math.min(...v.map(b => b.low), t.entry, t.exit), hi = Math.max(...v.map(b => b.high), t.entry, t.exit);
+    if (stopPx && Math.abs(stopPx - t.entry) < (hi - lo) * 3) { lo = Math.min(lo, stopPx); hi = Math.max(hi, stopPx); }
+    const padP = (hi - lo) * 0.06 || tick * 4; lo -= padP; hi += padP;
+    const t0 = v[0].timestamp, t1 = v[v.length - 1].timestamp + 60e3;
+    const x = ms => L + (W - L - R) * (ms - t0) / (t1 - t0), y = p => T + (H - T - B) * (1 - (p - lo) / (hi - lo));
+    const bw = Math.max(1.5, (W - L - R) / v.length * 0.7);
+    let g = `<svg viewBox="0 0 ${W} ${H}" style="height:${H}px">`;
+    const step = niceStep((hi - lo) / 5);
+    for (let p = Math.ceil(lo / step) * step; p <= hi; p += step) g += `<line x1="${L}" x2="${W - R}" y1="${y(p)}" y2="${y(p)}" stroke="#1c2638"/><text x="${L - 6}" y="${y(p) + 4}" fill="#8b98ad" font-size="11" text-anchor="end">${p.toFixed(dec)}</text>`;
+    const nx = 6; for (let i = 0; i <= nx; i++) { const ms = t0 + (t1 - t0) * i / nx; g += `<text x="${x(ms)}" y="${H - 7}" fill="#5d6a80" font-size="11" text-anchor="middle">${hhmm(ms)}</text>`; }
+    g += `<rect x="${x(t.opened_ms)}" y="${T}" width="${Math.max(1, x(t.closed_ms) - x(t.opened_ms))}" height="${H - T - B}" fill="${t.pnl_r > 0 ? '#3ddc84' : '#ff5d5d'}" opacity="0.07"/>`;
+    for (const b of v) {
+      const cx = x(b.timestamp + 30e3), up = b.close >= b.open, col = up ? '#3ddc84' : '#ff5d5d';
+      g += `<line x1="${cx}" x2="${cx}" y1="${y(b.high)}" y2="${y(b.low)}" stroke="${col}" opacity="0.8"/><rect x="${cx - bw / 2}" y="${y(Math.max(b.open, b.close))}" width="${bw}" height="${Math.max(1, Math.abs(y(b.open) - y(b.close)))}" fill="${col}" opacity="0.85"/>`;
+    }
+    const hl = (p, col, label, dash, left) => `<line x1="${L}" x2="${W - R}" y1="${y(p)}" y2="${y(p)}" stroke="${col}" stroke-width="1.2" ${dash ? 'stroke-dasharray="5 4"' : ''}/><text x="${left ? L + 4 : W - R - 4}" y="${y(p) - 4}" fill="${col}" font-size="11" text-anchor="${left ? 'start' : 'end'}">${label} ${p.toFixed(dec)}</text>`;
+    g += hl(t.entry, '#f2c14e', 'entry', false);
+    if (stopPx && stopPx > lo && stopPx < hi) g += hl(stopPx, '#ff5d5d', 'initial stop', true);
+    g += hl(t.exit, '#5ab4ff', 'exit', true, true);
+    const ex = x(t.opened_ms), ey = y(t.entry), up = t.side === 'long';
+    g += `<path d="M ${ex} ${ey + (up ? 2 : -2)} l -8 ${up ? 13 : -13} l 16 0 z" fill="${up ? '#3ddc84' : '#ff5d5d'}" stroke="#0b0f16"/>`;
+    g += `<text x="${ex}" y="${ey + (up ? 28 : -20)}" fill="#e6ecf5" font-size="12" text-anchor="middle">${up ? 'BUY' : 'SELL'}</text>`;
+    const xx = x(t.closed_ms), xy = y(t.exit);
+    g += `<circle cx="${xx}" cy="${xy}" r="6" fill="#5ab4ff" stroke="#0b0f16" stroke-width="2"/><text x="${xx}" y="${xy - 11}" fill="#e6ecf5" font-size="12" text-anchor="middle">EXIT · ${esc(t.why_out)}</text>`;
+    g += '</svg>';
+    $('#tradechart').innerHTML = g + `<p class="small" style="margin:4px 0 0">One-minute bars from the market tape. The yellow line is the entry, the red dashed line the initial stop, the blue dashed line the exit price; the shaded band is the time the trade was open.</p>`;
+  }
+  $('#tradeclose').addEventListener('click', () => { $('#tradebox').style.display = 'none'; });
+  $('#tradebox').addEventListener('click', e => { if (e.target.id === 'tradebox') $('#tradebox').style.display = 'none'; });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { $('#tradebox').style.display = 'none'; $('#copybox').style.display = 'none'; } });
+  $('#latest tbody').addEventListener('click', e => { const tr = e.target.closest('tr[data-i]'); if (tr) openTrade(state.trades[+tr.dataset.i]); });
+  window.__deskReport = () => report();
+
+  // ---- the board as plain text, for pasting into an AI ----
+  function report() {
+    const L = state.last; if (!L) return 'no data yet';
+    const b = state.board || {};
+    const f = (x, d=2) => (x == null || isNaN(x)) ? '-' : x.toFixed(d);
+    const pad = (x, n) => String(x).padStart(n);
+    const padr = (x, n) => String(x).padEnd(n);
+    const out = [];
+    out.push(`OPENCRY PAPER DESK BOARD, copied ${new Date().toISOString().slice(0,19)}Z`);
+    out.push(`Window: ${state.window} (closes from ${L.inWin.length ? new Date(L.inWin[0].closed_ms).toISOString().slice(0,16) : '-'}Z to now). Group filter: ${state.group}.`);
+    out.push(`Desk: ${b.desk_alive ? 'alive' : 'not heard from'}; feed ${b.feed || '-'}; Jev ${b.jev_mode || '-'}, ${b.jev_calls || 0} calls, ${b.jev_failures || 0} failed, timed every ${b.jev_every_secs || '-'} s plus a read the moment price touches a level and a follow-up 30 s later.`);
+    out.push('');
+    out.push('DEFINITIONS');
+    out.push('- These are paper trades on the tape's prices (synthetic unless a real source is wired in): buys fill at the ask, sells at the bid, so every trade starts behind by the spread. No commission, no slippage beyond the spread.');
+    out.push('- R = profit over the initial stop distance (+1 R = made what it risked). Stops are at least 20 spreads wide. Spread paid = entry spread over the stop, in R, summed. Max DD = largest peak-to-trough fall of cumulative R inside the window.');
+    out.push('- Groups: orig = the nine original archetypes (three on Jev, five on structure, Colin the coin-flip control); read = six crew trading Jev\'s common read (Tess every lean, Gus fades every lean, Ivo fades unconvinced leans, Sol trades flat calls, Lena fades the lean when Jev sees absorption at a level, Kit when it sees a sweep; Lena and Kit were retired 23 Oct and reinstated 24 Oct); asks = question traders, each on one question Jev is asked per read; retired = traders removed from the book but still in the history.');
+    out.push('- Question traders: Vera touch_outcome (what the touched level will have done in 15 min: away on reject/sweep, through on break), Wren absorbing (yes>=60% trades away from the level), Xi stop_run (yes>=60% trades away), Yusuf carry_through (yes>=65% trades through on a trail), Zara tape_state (last 20 s of tape: one_way_buying buys, one_way_selling sells), Ana bar_shape (fades a climax), Ben bar_shape (joins a trend leg), Cy magnet (trades toward the level Jev says is reached first), Dee delta_divergence (yes>=60% fades Jev\'s lean). Vera/Wren/Xi/Yusuf act only on touch reads. Choice answers need Jev 40-50% sure.');
+    out.push('- Jev is TypeSafe System One, a typed classifier shown the last 20 1m bars, the last 20 s of tape, the broker ladder and the nearest resting-order levels. Its 5-minute direction calls scored at chance on the first 1,105 reads; the point of the desk is to find out, after costs and against the control, which question (if any) carries an edge.');
+    out.push('- The control, Colin, flips a coin inside everyone else\'s hours with the same costs and exits. Anyone with an edge must beat him over weeks.');
+    out.push('');
+    const A = L.all;
+    out.push(`TOTALS: net ${f(A.net)} R over ${A.trades} closes, win ${pct(A.win)}, R/trade ${f(A.exp,3)}, avg win ${f(A.avgw)}, avg loss ${f(A.avgl)}, spread paid ${f(A.spread)} R (${A.trades ? f(A.spread/A.trades) : '-'} R a trade), max DD ${f(A.dd)} R. Open now: ${L.openRows.length} positions marked ${f(L.openRows.reduce((s,t)=>s+(t.open.open_r||0),0))} R.`);
+    out.push('');
+    out.push('LEADERBOARD (net R, trades, win %, R/trade, avg win, avg loss, spread R, max DD, open position, last close)');
+    const rows = [...L.rows].sort((a,b)=>b.net-a.net);
+    for (const r of rows) {
+      const o = r.open ? `${r.open.symbol} ${r.open.side} ${f(r.open.open_r)}R` : '-';
+      out.push(`${padr(r.trader, 7)} ${padr(r.label, 12)} ${padr(TAG[r.group][1], 8)} net ${pad(f(r.net),8)}  n ${pad(r.trades,4)}  win ${pad(pct(r.win),4)}  R/t ${pad(f(r.exp,3),7)}  avgW ${pad(f(r.avgw),6)}  avgL ${pad(f(r.avgl),6)}  spread ${pad(f(r.spread),6)}  dd ${pad(f(r.dd),6)}  open ${o}  last ${r.last ? ago(r.last) : '-'}`);
+    }
+    out.push('');
+    const bySym = {}; for (const t of L.inWin) (bySym[t.symbol] ||= []).push(t);
+    out.push('BY PIT (net R, closes, win %, spread R)');
+    for (const [sym, v] of Object.entries(bySym).sort((a,b)=>stats(b[1]).net-stats(a[1]).net)) { const st = stats(v); out.push(`${padr(sym,8)} net ${pad(f(st.net),8)}  n ${pad(st.trades,4)}  win ${pad(pct(st.win),4)}  spread ${f(st.spread)}`); }
+    out.push('');
+    out.push('BY GROUP');
+    for (const g of ['question','crew','original','control','retired']) { const v = L.inWin.filter(t => groupOf(t.trader) === g); if (!v.length) continue; const st = stats(v); out.push(`${padr(TAG[g][1],8)} traders ${new Set(v.map(t=>t.trader)).size}  net ${pad(f(st.net),8)}  n ${pad(st.trades,4)}  win ${pad(pct(st.win),4)}  R/t ${f(st.exp,3)}  spread ${f(st.spread)}`); }
+    out.push('');
+    out.push('QUESTION TRADERS: answers traded (answer: count, net R)');
+    for (const n of GROUPS.question) {
+      const v = L.inWin.filter(t => t.trader === n); const by = {};
+      for (const t of v) { const m = /^Jev (\w+) = (\S+)/.exec(t.why_in || ''); const a = m ? m[2] : '?'; (by[a] ||= {n:0,r:0}); by[a].n++; by[a].r += t.pnl_r; }
+      out.push(`${padr(n,6)} ${padr(QUESTION[n],17)} ${Object.entries(by).sort((a,b)=>b[1].n-a[1].n).map(([a,x]) => `${a}: ${x.n}, ${f(x.r)}R`).join('; ') || 'nothing yet'}`);
+    }
+    out.push('');
+    if (L.openRows.length) {
+      out.push('OPEN NOW');
+      for (const t of L.openRows) out.push(`${padr(t.trader,7)} ${t.open.symbol} ${t.open.side} from ${t.open.entry} stop ${t.open.stop} ${t.open.target ? 'target ' + t.open.target : 'trail'} marked ${f(t.open.open_r)}R, ${ago(t.open.opened_ms)} ago: ${t.open.why}`);
+      out.push('');
+    }
+    const sel = state.selected ? L.inWin.filter(t => t.trader === state.selected) : [];
+    if (sel.length) {
+      out.push(`EVERY CLOSE FOR ${state.selected} IN THE WINDOW (closed, pit, side, R, held, why in | why out)`);
+      for (const t of [...sel].reverse()) out.push(`${dayhm(t.closed_ms)} ${padr(t.symbol,8)} ${padr(t.side,5)} ${pad(f(t.pnl_r),6)} ${pad(held(t.opened_ms,t.closed_ms),4)}  ${t.why_in} | ${t.why_out}`);
+      out.push('');
+    }
+    const N = 60;
+    out.push(`LATEST ${Math.min(N, L.inWin.length)} CLOSES, newest first (closed, trader, pit, side, R, held, why in | why out)`);
+    for (const t of [...L.inWin].reverse().slice(0, N)) out.push(`${dayhm(t.closed_ms)} ${padr(t.trader,7)} ${padr(t.symbol,8)} ${padr(t.side,5)} ${pad(f(t.pnl_r),6)} ${pad(held(t.opened_ms,t.closed_ms),4)}  ${t.why_in} | ${t.why_out}`);
+    out.push('');
+    out.push('Questions worth asking: who beats Colin after spread and by how much; whether any question trader\'s answers pay on more than a handful of trades; which pits are paying and which are a spread tax; whether losses cluster by hour; what the open positions are risking.');
+    return out.join('\n');
+  }
+
+  function copyReport() {
+    const text = report();
+    const done = ok => { const b = $('#copy'); b.textContent = ok ? 'Copied' : 'Select and copy'; setTimeout(() => { b.textContent = 'Copy for AI'; }, 2500); if (!ok) { $('#copytext').value = text; $('#copybox').style.display = 'block'; $('#copytext').focus(); $('#copytext').select(); } };
+    // navigator.clipboard needs a secure context; this page is plain HTTP on the LAN, so the
+    // older execCommand path is the one that usually works, with a textarea fallback.
+    const legacy = () => { const ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.focus(); ta.select(); let ok = false; try { ok = document.execCommand('copy'); } catch {} document.body.removeChild(ta); return ok; };
+    if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(() => done(true), () => done(legacy()));
+    else done(legacy());
+  }
+  $('#copy').addEventListener('click', copyReport);
+  $('#copyagain').addEventListener('click', () => { $('#copytext').focus(); $('#copytext').select(); try { document.execCommand('copy'); } catch {} });
+  $('#copyclose').addEventListener('click', () => { $('#copybox').style.display = 'none'; });
+
+  // controls
+  $('#win').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; state.window = b.dataset.w; document.querySelectorAll('#win button').forEach(x => x.classList.toggle('on', x === b)); try { localStorage.setItem('desk.window', state.window); } catch {} render(); });
+  $('#grp').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; state.group = b.dataset.g; document.querySelectorAll('#grp button').forEach(x => x.classList.toggle('on', x === b)); render(); });
+  $('#lb thead').addEventListener('click', e => { const th = e.target.closest('th'); if (!th) return; const k = th.dataset.k; state.sort = state.sort.k === k ? {k, dir: -state.sort.dir} : {k, dir: (k==='trader'||k==='rank') ? 1 : -1}; render(); });
+  $('#lb tbody').addEventListener('click', e => { const tr = e.target.closest('tr'); if (!tr) return; state.selected = state.selected === tr.dataset.t ? null : tr.dataset.t; render(); window.scrollTo({top: $('#detail').offsetTop - 70, behavior: 'smooth'}); });
+  $('#allcurves').addEventListener('click', () => { state.all = !state.all; render(); });
+  $('#legend').addEventListener('click', e => { const s = e.target.closest('span[data-h]'); if (!s) return; const n = s.dataset.h; state.hidden.has(n) ? state.hidden.delete(n) : state.hidden.add(n); render(); });
+  try { const w = localStorage.getItem('desk.window'); if (w) { state.window = w; document.querySelectorAll('#win button').forEach(x => x.classList.toggle('on', x.dataset.w === w)); } } catch {}
+
+  pollBoard(); pollTrades();
+  setInterval(pollBoard, 2000); setInterval(pollTrades, 10000);
+})();
+</script>
+</body>
+</html>
