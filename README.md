@@ -38,7 +38,7 @@ uncorrelated). Whatever the paper traders or the evolving pit "earn" on it is lu
 it a measuring stick for false positives, not a place to find a strategy.
 
 **Trading as yourself:** the trade ticket books paper trades under the author's name, Paul
-Leppard, until you press its **Name...** button and type yours. Your browser remembers it and
+Leppard, until you press **Change name** (next to "Your name" on the ticket) and type yours. Your browser remembers it and
 the paper desk keeps it across restarts. You can also open the floor with
 `?trader=Your%20Name`, or start the desk with `OPENCRY_TRADER_NAME="Your Name"`.
 

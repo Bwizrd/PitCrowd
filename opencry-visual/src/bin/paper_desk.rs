@@ -899,7 +899,7 @@ mod desk {
         placed_ms: i64,
         /// "paper" (the desk's own book). This build books nothing anywhere else.
         account: String,
-        /// The name the ticket's user goes by (set with its Name button).
+        /// The name the ticket's user goes by (set with its Change name button).
         trader: Option<String>,
     }
 
@@ -945,7 +945,7 @@ mod desk {
         Some(bars[n - 14..].iter().zip(&bars[n - 15..n - 1]).map(|(b, p)| b.h.max(p.c) - b.l.min(p.c)).sum::<f64>() / 14.0)
     }
 
-    /// The trader the trade ticket trades as. The ticket's Name button sets it (an order with
+    /// The trader the trade ticket trades as. The ticket's Change name button sets it (an order with
     /// action "name"), and it is kept in `<log dir>/ticket_trader.txt` across restarts; before
     /// that, `OPENCRY_TRADER_NAME`, else the author's name. The seat's id stays "manual", so
     /// renaming never splits its trade log.

@@ -5,8 +5,9 @@
 //! trader, with the desk's own costs and rules, so it is listed, walks the floor and is logged
 //! like any other trader's. Nothing here or on the desk talks to a broker.
 //!
-//! The trader is "Paul Leppard" (the author) until you name yourself: the **Name** button
-//! asks for a name, this browser remembers it, and the desk renames the seat and keeps the
+//! The trader is "Paul Leppard" (the author) until you name yourself: **Change name**, next
+//! to "Your name" on the ticket, opens a box on the page (`#namebox` in `index.html`; not
+//! `window.prompt`, which browsers may suppress). This browser remembers the name, and the desk renames the seat and keeps the
 //! name across restarts. `?trader=Your%20Name` in the address does the same without a click,
 //! and `OPENCRY_TRADER_NAME` sets the desk's starting name.
 //!
@@ -70,6 +71,8 @@ pub struct TicketStatus;
 pub struct TicketStopText;
 #[derive(Component)]
 pub struct TicketTargetText;
+#[derive(Component)]
+pub struct TicketNameText;
 
 #[derive(Resource)]
 pub struct Ticket {
@@ -78,7 +81,7 @@ pub struct Ticket {
     /// What the relay said to the last order sent from this tab.
     sent: Arc<Mutex<Option<String>>>,
     pub last_sent: String,
-    /// The name this browser's user chose (Name button or `?trader=`), if any.
+    /// The name this browser's user chose (Change name or `?trader=`), if any.
     pub name: Option<String>,
     /// The name last sent to the desk, so a returning user's name is sent once, not every frame.
     name_sent: Option<String>,
@@ -118,21 +121,38 @@ fn stored_name() -> Option<String> {
     }
 }
 
-/// Ask for a name in a browser dialog and remember it. `None` if cancelled or blank, or natively.
-fn ask_name(current: &str) -> Option<String> {
+/// Open the page's name box (`__opencryAskName` in `index.html`). It does not block: the name
+/// typed arrives later through [`take_chosen_name`]. `false` natively or without the box.
+fn open_name_box(current: &str) -> bool {
     #[cfg(target_arch = "wasm32")]
     {
-        let w = web_sys::window()?;
-        let typed = w.prompt_with_message_and_default("Your name on the floor: your paper trades from this ticket are booked and listed under it (up to 32 characters).", current).ok().flatten()?;
-        let n = clean_name(&typed)?;
-        if let Ok(Some(s)) = w.local_storage() {
-            let _ = s.set_item(NAME_KEY, &n);
-        }
-        Some(n)
+        use wasm_bindgen::{JsCast, JsValue};
+        let Some(w) = web_sys::window() else { return false };
+        let Ok(f) = js_sys::Reflect::get(&w, &JsValue::from_str("__opencryAskName")) else { return false };
+        let Some(f) = f.dyn_ref::<js_sys::Function>() else { return false };
+        f.call1(&JsValue::NULL, &JsValue::from_str(current)).is_ok()
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
         let _ = current;
+        false
+    }
+}
+
+/// The name saved in the page's name box since the last call, if any (it also saved it to
+/// this browser's storage).
+fn take_chosen_name() -> Option<String> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        use wasm_bindgen::JsValue;
+        let w = web_sys::window()?;
+        let key = JsValue::from_str("__opencryNameChosen");
+        let v = js_sys::Reflect::get(&w, &key).ok()?.as_string()?;
+        let _ = js_sys::Reflect::set(&w, &key, &JsValue::UNDEFINED);
+        clean_name(&v)
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
         None
     }
 }
@@ -235,7 +255,10 @@ pub fn setup_ticket_panel(mut commands: Commands) {
                 let (bg, border) = (Color::srgba(0.06, 0.09, 0.14, 0.9), Color::srgba(0.18, 0.28, 0.40, 0.7));
                 button(row, TicketButton::Stop, "", bg, border, 100.0);
                 button(row, TicketButton::Target, "", bg, border, 100.0);
-                button(row, TicketButton::Name, "Name...", bg, border, 100.0);
+            });
+            panel.spawn(Node { flex_direction: FlexDirection::Row, column_gap: Val::Px(8.0), align_items: AlignItems::Center, ..default() }).with_children(|row| {
+                row.spawn((TicketNameText, Text::new("Your name:"), TextFont { font_size: 12.0, ..default() }, TextColor(Color::srgb(0.85, 0.90, 0.96))));
+                button(row, TicketButton::Name, "Change name", Color::srgba(0.05, 0.22, 0.12, 0.95), Color::srgb(0.35, 0.85, 0.50), 110.0);
             });
             panel.spawn((TicketStatus, Text::new(""), TextFont { font_size: 10.0, ..default() }, TextColor(Color::srgb(0.75, 0.80, 0.88)), Node { max_width: Val::Px(420.0), ..default() }));
         });
@@ -250,6 +273,12 @@ pub fn handle_ticket_buttons(
     mut ticket: ResMut<Ticket>,
 ) {
     let board = desk.live_board(time.elapsed_secs_f64());
+    if let Some(n) = take_chosen_name() {
+        ticket.name = Some(n.clone());
+        ticket.name_sent = Some(n.clone());
+        ticket.last_sent = format!("Renaming you to {n}...");
+        post_order(serde_json::json!({"action": "name", "trader": n, "from": "ticket"}), format!("Name {n}"), ticket.sent.clone());
+    }
     // A name chosen in this browser (or with ?trader=) that the running desk does not have yet:
     // send it once, so a returning user is themselves again without clicking anything.
     if let (Some(b), Some(n)) = (board, ticket.name.clone()) {
@@ -265,15 +294,12 @@ pub fn handle_ticket_buttons(
         let action = match which {
             TicketButton::Name => {
                 let current = shown_trader(board, ticket.name.as_deref()).to_string();
-                match ask_name(&current) {
-                    Some(n) => {
-                        ticket.name = Some(n.clone());
-                        ticket.name_sent = Some(n.clone());
-                        ticket.last_sent = format!("Name {n}: sending...");
-                        post_order(serde_json::json!({"action": "name", "trader": n, "from": "ticket"}), format!("Name {n}"), ticket.sent.clone());
-                    }
-                    None if cfg!(target_arch = "wasm32") => {}
-                    None => ticket.last_sent = "Natively, set OPENCRY_TRADER_NAME before starting the desk.".into(),
+                if !open_name_box(&current) {
+                    ticket.last_sent = if cfg!(target_arch = "wasm32") {
+                        "Could not open the name box: add ?trader=Your%20Name to the address instead.".into()
+                    } else {
+                        "Natively, set OPENCRY_TRADER_NAME before starting the desk.".into()
+                    };
                 }
                 continue;
             }
@@ -317,6 +343,7 @@ pub fn update_ticket_panel(
         Query<&mut Text, With<TicketStatus>>,
         Query<&mut Text, With<TicketStopText>>,
         Query<&mut Text, With<TicketTargetText>>,
+        Query<&mut Text, With<TicketNameText>>,
     )>,
 ) {
     let taken = ticket.sent.lock().ok().and_then(|mut s| s.take());
@@ -331,7 +358,7 @@ pub fn update_ticket_panel(
     let board = desk.live_board(time.elapsed_secs_f64());
     for mut t in texts.p0().iter_mut() {
         set_ui_text(&mut t, match inst {
-            Some(i) => format!("TRADE  {}  |  paper, as {}  (Name... to change)", i.symbol(), shown_trader(board, ticket.name.as_deref())),
+            Some(i) => format!("TRADE  {}  |  paper", i.symbol()),
             None => "TRADE  |  pick a pit".to_string(),
         });
     }
@@ -341,6 +368,9 @@ pub fn update_ticket_panel(
             format!("bid {}   ask {}", format_price_with_commas(q.price, d), format_price_with_commas(q.ask, d))
         });
         set_ui_text(&mut t, line.unwrap_or_else(|| "no price yet".into()));
+    }
+    for mut t in texts.p5().iter_mut() {
+        set_ui_text(&mut t, format!("Your name: {}", shown_trader(board, ticket.name.as_deref())));
     }
     for mut t in texts.p3().iter_mut() {
         set_ui_text(&mut t, format!("Stop {} ATR", STOPS[ticket.stop]));

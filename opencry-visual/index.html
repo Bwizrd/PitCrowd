@@ -233,7 +233,8 @@
                 const quote = cur.bid == null
                     ? `<span class="q">${socketUp ? 'waiting for a tick…' : 'connecting to tape…'}</span>`
                     : `<span class="q">bid</span> <span class="bid">${f(cur.bid)}</span>  <span class="q">ask</span> <span class="ask">${f(cur.ask)}</span>  <span class="q">spread</span> ${f(cur.spread)}`;
-                const src = socketUp ? `tape :${TAPE_PORT}` : `<span class="warn">tape :${TAPE_PORT} down</span>`;
+                const where = esc(tapeHttp().replace(/^https?:\/\//, ""));
+                const src = socketUp ? `tape ${where}` : `<span class="warn">tape ${where} down</span>`;
                 const extra = (note ? `   <span class="warn">(${esc(note)})</span>` : '') + (dealsOn ? '   |   PIT DEALS (debug) as markers' : '');
                 hdr.innerHTML = `${esc(cur.title)}   ${esc(cur.tf)}   ${src}   |   ${quote}   |   lower panes: tick delta (session), ticks per bar${extra}`;
             }
@@ -261,6 +262,64 @@
             function setDeals(on) { dealsOn = !!on; redrawMarkers(); header(); }
             return { show, hide, addDeal, updateFlow, setDeals };
         })();
+    </script>
+    <!-- The trade ticket's "Change name" box. A page dialog, not window.prompt, which browsers can
+         suppress. The wasm side opens it with __opencryAskName(current) and picks up the result
+         from __opencryNameChosen (src/ticket.rs). -->
+    <style>
+        #namebox { position: fixed; inset: 0; display: none; z-index: 2000; background: rgba(0, 0, 0, 0.55);
+                   align-items: center; justify-content: center; }
+        #namebox.open { display: flex; }
+        #namebox .card { width: min(380px, calc(100vw - 32px)); background: #0b111c; color: #dfe7f1;
+                         border: 1px solid rgba(89, 217, 128, 0.6); border-radius: 8px; padding: 18px 18px 14px;
+                         font-size: 14px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6); }
+        #namebox h2 { margin: 0 0 6px; font-size: 16px; color: #8cffa6; font-weight: 600; }
+        #namebox p { margin: 0 0 12px; color: #9fb0c3; font-size: 13px; line-height: 1.4; }
+        #namebox input { width: 100%; font-size: 16px; padding: 8px 10px; border-radius: 5px; border: 1px solid #2d4560;
+                         background: #050a12; color: #fff; -webkit-user-select: text; user-select: text; outline: none; }
+        #namebox input:focus { border-color: #59d980; }
+        #namebox .err { min-height: 18px; color: #ff8a80; font-size: 12px; margin-top: 4px; }
+        #namebox .btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+        #namebox button { font-size: 14px; padding: 7px 14px; border-radius: 5px; cursor: pointer; border: 1px solid #2d4560;
+                          background: #131c2a; color: #dfe7f1; }
+        #namebox button.save { background: #0d5a26; border-color: #4de07a; color: #fff; }
+    </style>
+    <div id="namebox" role="dialog" aria-modal="true" aria-labelledby="namebox-title">
+        <form class="card">
+            <h2 id="namebox-title">Your trader name</h2>
+            <p>The trades you place from this ticket appear under this name on the desk board and in Positions.</p>
+            <input name="n" maxlength="32" autocomplete="name" spellcheck="false" aria-label="Your trader name" />
+            <div class="err"></div>
+            <div class="btns"><button type="button" class="cancel">Cancel</button><button type="submit" class="save">Save</button></div>
+        </form>
+    </div>
+    <script>
+    window.__opencryAskName = (function () {
+        const box = document.getElementById('namebox');
+        const form = box.querySelector('form'), input = form.elements.n, err = box.querySelector('.err');
+        const close = () => { box.classList.remove('open'); const c = document.querySelector('canvas'); if (c) c.focus(); };
+        // Keys typed here are for the box, not the floor's keyboard shortcuts.
+        for (const ev of ['keydown', 'keyup', 'keypress']) box.addEventListener(ev, (e) => {
+            e.stopPropagation();
+            if (ev === 'keydown' && e.key === 'Escape') close();
+        });
+        box.addEventListener('pointerdown', (e) => { if (e.target === box) close(); });
+        form.querySelector('.cancel').addEventListener('click', close);
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const n = input.value.trim().slice(0, 32);
+            if (!n) { err.textContent = 'Type a name first.'; input.focus(); return; }
+            try { localStorage.setItem('opencry.ticket_trader', n); } catch (x) { }
+            window.__opencryNameChosen = n;
+            close();
+        });
+        return function (current) {
+            input.value = current || '';
+            err.textContent = '';
+            box.classList.add('open');
+            setTimeout(() => { input.focus(); input.select(); }, 0);
+        };
+    })();
     </script>
 </body>
 </html>
