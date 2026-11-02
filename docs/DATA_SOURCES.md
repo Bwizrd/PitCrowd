@@ -110,7 +110,9 @@ Kraken's public API (no key), backfill then a quote a second, stdlib Python, six
 it for any other source. Only `history()` and `quote()` change.
 
 Ingest is off unless `--ingest` names symbols, because anyone who can reach the port could
-post prices. The tape listens on every address (`--bind 127.0.0.1` keeps it to this machine).
+post prices. Under `start-floor.sh` the tape listens on this machine only unless you start it
+with `FLOOR_LAN=1`; run by hand, `floor_tape` listens on every address (`--bind 127.0.0.1`
+keeps it to this machine).
 
 ## 4. The tape protocol
 

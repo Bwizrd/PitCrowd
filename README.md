@@ -23,9 +23,21 @@ cargo install trunk && rustup target add wasm32-unknown-unknown
 (cd opencry-visual && cargo build --release --bin paper_desk --bin genome_backtest) && ./start-floor.sh
 ```
 
-Open <http://localhost:8180> once trunk has built the page (`opencry-visual/log/trunk.out`).
-`./start-floor.sh --status` shows each service; [`docs/SERVICES.md`](docs/SERVICES.md) explains
-them. To watch real Bitcoin instead of the synthetic one:
+Open <http://localhost:8180> once trunk has built the page (`opencry-visual/log/trunk.out`; the
+first build takes several minutes). `./start-floor.sh --status` shows each service, and
+[`docs/SERVICES.md`](docs/SERVICES.md) explains them.
+
+`start-floor.sh` is the easy way in, not a requirement: it builds what is missing and starts the
+five services in order with matching ports. `docs/SERVICES.md` shows how to run each by hand.
+
+**From another device** (a phone, a laptop, over Tailscale or any VPN): by default everything
+listens on this machine only. Start it with `FLOOR_LAN=1 ./start-floor.sh` and open the address
+the launcher prints. On a Mac, that page is on port **8188**, not 8180: the macOS firewall
+silently blocks a freshly built binary from other devices, so small node forwarders take the
+outside ports (`docs/SERVICES.md`).
+
+If Rust also came from Homebrew (`brew install rust`), that cargo cannot build for the browser;
+the launcher then uses rustup's toolchain for the page, and says so. To watch real Bitcoin instead of the synthetic one:
 
 ```sh
 FLOOR_TAPE_ARGS="--ingest BTCUSD" ./start-floor.sh --restart tape
