@@ -38,10 +38,10 @@ use crate::jev::JevDesk;
 use crate::levels::tape_symbol;
 use crate::live_feed::LiveFeed;
 use crate::market::Instrument;
-use crate::panels::{spawn_close_button, PanelClose};
-use crate::paper::{day_start_ms, Archetype, PaperBook, Session, Trade};
+use crate::panels::{PanelClose, spawn_close_button};
+use crate::paper::{Archetype, PaperBook, Session, Trade, day_start_ms};
 use crate::pit::{format_price_with_commas, instrument_decimals, set_ui_text};
-use crate::pit_3d::{pit_3d_origin, PIT_3D_ORIGIN, PULPIT_OFFSET_Z};
+use crate::pit_3d::{PIT_3D_ORIGIN, PULPIT_OFFSET_Z, pit_3d_origin};
 use crate::pit_engine::XorShift;
 
 // ---------------------------------------------------------------------------
@@ -77,7 +77,11 @@ pub struct DayStats {
 impl DayStats {
     pub fn win_rate(&self) -> f32 {
         let n = self.wins + self.losses;
-        if n == 0 { 0.0 } else { self.wins as f32 / n as f32 }
+        if n == 0 {
+            0.0
+        } else {
+            self.wins as f32 / n as f32
+        }
     }
 }
 
@@ -91,7 +95,11 @@ pub fn day_stats_from_trades(trades: &[Trade], day_start: i64) -> DayStats {
     let mut peak = 0.0f32;
     for t in today {
         d.trades += 1;
-        if t.pnl_r > 0.0 { d.wins += 1 } else { d.losses += 1 }
+        if t.pnl_r > 0.0 {
+            d.wins += 1
+        } else {
+            d.losses += 1
+        }
         d.net_r += t.pnl_r;
         d.spread_paid_r += t.spread_ticks_in / t.stop_ticks.max(1.0);
         peak = peak.max(d.net_r);
@@ -144,7 +152,17 @@ pub struct TraderSnapshot {
 
 impl TraderSnapshot {
     pub fn empty(arch: Archetype, source: Source) -> Self {
-        TraderSnapshot { arch, source, day: DayStats::default(), open: None, last_trades: Vec::new(), last_pit: None, waiting: Vec::new(), on_desk: true, board: None }
+        TraderSnapshot {
+            arch,
+            source,
+            day: DayStats::default(),
+            open: None,
+            last_trades: Vec::new(),
+            last_pit: None,
+            waiting: Vec::new(),
+            on_desk: true,
+            board: None,
+        }
     }
 
     /// The R and trade count shown over the figure and on its panel: the table's own numbers
@@ -160,12 +178,18 @@ impl TraderSnapshot {
 
 /// A pit from either name it goes by: the floor's ("XAG/USD") or the tape's ("XAGUSD").
 pub fn instrument_for_symbol(s: &str) -> Option<Instrument> {
-    Instrument::ALL.iter().copied().find(|i| i.symbol() == s || tape_symbol(*i) == s)
+    Instrument::ALL
+        .iter()
+        .copied()
+        .find(|i| i.symbol() == s || tape_symbol(*i) == s)
 }
 
 /// The in-tab book notes decisions as "<symbol> <side> ..." lines; the symbol leads.
 fn instrument_from_note(note: &str) -> Option<Instrument> {
-    Instrument::ALL.iter().copied().find(|i| note.starts_with(i.symbol()))
+    Instrument::ALL
+        .iter()
+        .copied()
+        .find(|i| note.starts_with(i.symbol()))
 }
 
 /// One trader's snapshot from its row on the desk's board.
@@ -181,7 +205,10 @@ fn snapshot_of(arch: Archetype, t: &DeskTrader) -> TraderSnapshot {
         opened_ms: o.opened_ms,
         why: o.why.clone(),
     });
-    let last_pit = t.last_trades.first().and_then(|lt| instrument_for_symbol(&lt.symbol));
+    let last_pit = t
+        .last_trades
+        .first()
+        .and_then(|lt| instrument_for_symbol(&lt.symbol));
     TraderSnapshot {
         arch,
         source: Source::Desk,
@@ -194,7 +221,12 @@ fn snapshot_of(arch: Archetype, t: &DeskTrader) -> TraderSnapshot {
             max_drawdown_r: t.day_max_drawdown_r,
         },
         open,
-        last_trades: t.last_trades.iter().take(LAST_TRADES_KEEP).cloned().collect(),
+        last_trades: t
+            .last_trades
+            .iter()
+            .take(LAST_TRADES_KEEP)
+            .cloned()
+            .collect(),
         last_pit,
         waiting: t.waiting.clone(),
         on_desk: true,
@@ -206,9 +238,16 @@ fn snapshot_of(arch: Archetype, t: &DeskTrader) -> TraderSnapshot {
 /// the board's pit block (id and description), or by name alone from an older desk.
 pub fn genome_arch(board: &DeskBoard, name: &str) -> Archetype {
     let seat = board.pit.as_ref().and_then(|p| p.seat(name));
-    let id = seat.map(|s| s.id.clone()).unwrap_or_else(|| format!("name:{name}"));
+    let id = seat
+        .map(|s| s.id.clone())
+        .unwrap_or_else(|| format!("name:{name}"));
     let creed = seat.map(|s| s.creed.as_str()).unwrap_or("");
-    Archetype::Genome(crate::genome::register_display(&id, name, creed, seat.and_then(|s| s.tag.as_deref())))
+    Archetype::Genome(crate::genome::register_display(
+        &id,
+        name,
+        creed,
+        seat.and_then(|s| s.tag.as_deref()),
+    ))
 }
 
 /// Snapshots in `Archetype::ALL` order from the desk's board, then one per genome on it. A
@@ -218,13 +257,25 @@ pub fn snapshots_from_board(board: &DeskBoard) -> Vec<TraderSnapshot> {
     let mut snaps: Vec<TraderSnapshot> = Archetype::ALL
         .iter()
         .map(|&arch| match board.trader(arch) {
-            Some(t) => TraderSnapshot { on_desk: t.is_active(), ..snapshot_of(arch, t) },
-            None => TraderSnapshot { on_desk: false, ..TraderSnapshot::empty(arch, Source::Desk) },
+            Some(t) => TraderSnapshot {
+                on_desk: t.is_active(),
+                ..snapshot_of(arch, t)
+            },
+            None => TraderSnapshot {
+                on_desk: false,
+                ..TraderSnapshot::empty(arch, Source::Desk)
+            },
         })
         .collect();
     // Only traders who have traded in the window or hold a position walk the floor; an idle
     // genome gets no body until it trades.
-    snaps.extend(board.traders.iter().filter(|t| t.is_genome() && t.is_active()).map(|t| snapshot_of(genome_arch(board, &t.trader), t)));
+    snaps.extend(
+        board
+            .traders
+            .iter()
+            .filter(|t| t.is_genome() && t.is_active())
+            .map(|t| snapshot_of(genome_arch(board, &t.trader), t)),
+    );
     snaps
 }
 
@@ -234,7 +285,12 @@ pub fn snapshots_from_book(book: &PaperBook, feed: &LiveFeed, now_ms: i64) -> Ve
     Archetype::ALL
         .iter()
         .map(|&arch| {
-            let Some((i, tr)) = book.traders.iter().enumerate().find(|(_, t)| t.archetype == arch) else {
+            let Some((i, tr)) = book
+                .traders
+                .iter()
+                .enumerate()
+                .find(|(_, t)| t.archetype == arch)
+            else {
                 return TraderSnapshot::empty(arch, Source::InTab);
             };
             let open = tr.position.as_ref().map(|p| OpenPosition {
@@ -248,14 +304,38 @@ pub fn snapshots_from_book(book: &PaperBook, feed: &LiveFeed, now_ms: i64) -> Ve
                 opened_ms: p.opened_ms,
                 why: p.why.clone(),
             });
-            let last_trades: Vec<DeskTrade> = tr.trades.iter().rev().take(LAST_TRADES_KEEP).map(DeskTrade::from_trade).collect();
+            let last_trades: Vec<DeskTrade> = tr
+                .trades
+                .iter()
+                .rev()
+                .take(LAST_TRADES_KEEP)
+                .map(DeskTrade::from_trade)
+                .collect();
             let last_pit = tr
                 .whys
                 .front()
                 .and_then(|w| instrument_from_note(w))
-                .or_else(|| tr.trades.last().and_then(|t| instrument_for_symbol(t.symbol)));
-            let waiting = tr.passes().into_iter().map(|(inst, why)| DeskPass::new(inst.symbol(), why)).collect();
-            TraderSnapshot { arch, source: Source::InTab, day: day_stats_from_trades(&tr.trades, day_start), open, last_trades, last_pit, waiting, on_desk: true, board: None }
+                .or_else(|| {
+                    tr.trades
+                        .last()
+                        .and_then(|t| instrument_for_symbol(t.symbol))
+                });
+            let waiting = tr
+                .passes()
+                .into_iter()
+                .map(|(inst, why)| DeskPass::new(inst.symbol(), why))
+                .collect();
+            TraderSnapshot {
+                arch,
+                source: Source::InTab,
+                day: day_stats_from_trades(&tr.trades, day_start),
+                open,
+                last_trades,
+                last_pit,
+                waiting,
+                on_desk: true,
+                board: None,
+            }
         })
         .collect()
 }
@@ -336,7 +416,12 @@ pub fn label_text(name: &str, r: f32, trades: u32) -> String {
 
 /// The second line while a position is open: `LONG XAG/USD  +0.35R`.
 pub fn open_line(open: &OpenPosition) -> String {
-    format!("{} {}  {:+.2}R", open.side.to_uppercase(), open.symbol, open.open_r)
+    format!(
+        "{} {}  {:+.2}R",
+        open.side.to_uppercase(),
+        open.symbol,
+        open.open_r
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -377,7 +462,10 @@ fn in_bounds(p: Vec2) -> bool {
 
 /// On the concourse: inside the floor and clear of every pit.
 pub fn is_free(p: Vec2) -> bool {
-    in_bounds(p) && Instrument::ALL.iter().all(|i| p.distance(pit_xz(*i)) >= AVOID_RADIUS)
+    in_bounds(p)
+        && Instrument::ALL
+            .iter()
+            .all(|i| p.distance(pit_xz(*i)) >= AVOID_RADIUS)
 }
 
 /// The straight line stays on the concourse (sampled every two units).
@@ -388,7 +476,10 @@ pub fn segment_clear(a: Vec2, b: Vec2) -> bool {
 
 fn cell_of(p: Vec2) -> (usize, usize) {
     let c = ((p - GRID_MIN) / CELL).floor();
-    (c.x.clamp(0.0, (GRID_W - 1) as f32) as usize, c.y.clamp(0.0, (GRID_H - 1) as f32) as usize)
+    (
+        c.x.clamp(0.0, (GRID_W - 1) as f32) as usize,
+        c.y.clamp(0.0, (GRID_H - 1) as f32) as usize,
+    )
 }
 
 fn cell_centre(cx: usize, cy: usize) -> Vec2 {
@@ -518,10 +609,13 @@ pub fn route(from: Vec2, to: Vec2) -> Vec<Vec2> {
 /// stand and the point to face (the pulpit on the north rim).
 pub fn rail_stand(inst: Instrument, k: usize) -> (Vec2, Vec2) {
     use std::f32::consts::FRAC_PI_2;
-    let side = if k % 2 == 0 { 1.0 } else { -1.0 };
+    let side = if k.is_multiple_of(2) { 1.0 } else { -1.0 };
     let angle = -FRAC_PI_2 + side * (0.75 + 0.30 * (k / 2) as f32);
     let c = pit_xz(inst);
-    (c + Vec2::new(angle.cos(), angle.sin()) * RAIL_STAND_RADIUS, c + Vec2::new(0.0, PULPIT_OFFSET_Z))
+    (
+        c + Vec2::new(angle.cos(), angle.sin()) * RAIL_STAND_RADIUS,
+        c + Vec2::new(0.0, PULPIT_OFFSET_Z),
+    )
 }
 
 /// Standing inside the pit while in a trade: on the top step, at the same angle as the
@@ -537,7 +631,10 @@ pub fn pit_stand(inst: Instrument, k: usize) -> (Vec2, Vec2) {
 }
 
 /// The two aisles between the district rows (metals | indices | forex), midway between rows.
-const AISLE_Z: [f32; 2] = [-crate::pit_3d::DISTRICT_ROW_Z * 0.5, crate::pit_3d::DISTRICT_ROW_Z * 0.5];
+const AISLE_Z: [f32; 2] = [
+    -crate::pit_3d::DISTRICT_ROW_Z * 0.5,
+    crate::pit_3d::DISTRICT_ROW_Z * 0.5,
+];
 
 /// Where the avatars first appear: spaced along the two aisles, alternating, so the crowd
 /// opens on the concourse rather than in anyone's pit.
@@ -590,7 +687,13 @@ fn fmt_hm(ms: i64) -> String {
 }
 
 fn fmt_session(s: &Session) -> String {
-    format!("{:02}:{:02}-{:02}:{:02}", s.from / 60, s.from % 60, s.until / 60, s.until % 60)
+    format!(
+        "{:02}:{:02}-{:02}:{:02}",
+        s.from / 60,
+        s.from % 60,
+        s.until / 60,
+        s.until % 60
+    )
 }
 
 fn fmt_px(inst: Option<Instrument>, px: f32) -> String {
@@ -633,19 +736,37 @@ impl LineTone {
 
 /// The detail panel's lines with their colours: each past trade, the open position and the
 /// day's total by the sign of their R; the section headings in gold.
-pub fn detail_lines_toned(s: &TraderSnapshot, mark: Option<f32>, heartbeat: Option<String>, outlook: &[String]) -> Vec<(String, LineTone)> {
+pub fn detail_lines_toned(
+    s: &TraderSnapshot,
+    mark: Option<f32>,
+    heartbeat: Option<String>,
+    outlook: &[String],
+) -> Vec<(String, LineTone)> {
     let lines = detail_lines(s, mark, heartbeat, outlook);
-    let trades_at = lines.iter().position(|l| l.starts_with("Last ") && l.contains("trades (newest first"));
+    let trades_at = lines
+        .iter()
+        .position(|l| l.starts_with("Last ") && l.contains("trades (newest first"));
     lines
         .into_iter()
         .enumerate()
         .map(|(i, l)| {
             let tone = match trades_at {
                 Some(h) if i == h => LineTone::Head,
-                Some(h) if i > h && i - h - 1 < s.last_trades.len() => LineTone::Pnl(s.last_trades[i - h - 1].pnl_r),
-                _ if l.starts_with("OPEN:") => LineTone::Pnl(s.open.as_ref().map(|o| o.open_r).unwrap_or(0.0)),
-                _ if l.starts_with("Today (since") && s.day.trades > 0 => LineTone::Pnl(s.day.net_r),
-                _ if l.starts_with("Passing now (") || l.starts_with("Strategy:") || l.starts_with("Rules:") => LineTone::Head,
+                Some(h) if i > h && i - h - 1 < s.last_trades.len() => {
+                    LineTone::Pnl(s.last_trades[i - h - 1].pnl_r)
+                }
+                _ if l.starts_with("OPEN:") => {
+                    LineTone::Pnl(s.open.as_ref().map(|o| o.open_r).unwrap_or(0.0))
+                }
+                _ if l.starts_with("Today (since") && s.day.trades > 0 => {
+                    LineTone::Pnl(s.day.net_r)
+                }
+                _ if l.starts_with("Passing now (")
+                    || l.starts_with("Strategy:")
+                    || l.starts_with("Rules:") =>
+                {
+                    LineTone::Head
+                }
                 _ => LineTone::Plain,
             };
             (l, tone)
@@ -654,7 +775,12 @@ pub fn detail_lines_toned(s: &TraderSnapshot, mark: Option<f32>, heartbeat: Opti
 }
 
 /// The detail panel's body, one line per entry.
-pub fn detail_lines(s: &TraderSnapshot, mark: Option<f32>, heartbeat: Option<String>, outlook: &[String]) -> Vec<String> {
+pub fn detail_lines(
+    s: &TraderSnapshot,
+    mark: Option<f32>,
+    heartbeat: Option<String>,
+    outlook: &[String],
+) -> Vec<String> {
     let arch = s.arch;
     let rules = arch.rules();
     let mut lines = Vec::new();
@@ -684,8 +810,13 @@ pub fn detail_lines(s: &TraderSnapshot, mark: Option<f32>, heartbeat: Option<Str
     }
     match &s.open {
         Some(o) => {
-            let target = o.target.map(|t| fmt_px(o.inst, t)).unwrap_or_else(|| "none".into());
-            let mark = mark.map(|m| format!("  mark {}", fmt_px(o.inst, m))).unwrap_or_default();
+            let target = o
+                .target
+                .map(|t| fmt_px(o.inst, t))
+                .unwrap_or_else(|| "none".into());
+            let mark = mark
+                .map(|m| format!("  mark {}", fmt_px(o.inst, m)))
+                .unwrap_or_default();
             lines.push(format!(
                 "OPEN: {} {} from {}  stop {}  target {}{}  {:+.2}R  since {} UTC",
                 o.side.to_uppercase(),
@@ -716,7 +847,10 @@ pub fn detail_lines(s: &TraderSnapshot, mark: Option<f32>, heartbeat: Option<Str
     if s.last_trades.is_empty() {
         lines.push("Last trades: none on record".into());
     } else {
-        lines.push(format!("Last {} trades (newest first, UTC):", s.last_trades.len()));
+        lines.push(format!(
+            "Last {} trades (newest first, UTC):",
+            s.last_trades.len()
+        ));
         for t in &s.last_trades {
             let inst = instrument_for_symbol(&t.symbol);
             // One line each beside the portrait (about 78 monospace characters).
@@ -758,7 +892,10 @@ pub struct PaperAvatars {
 impl Default for PaperAvatars {
     fn default() -> Self {
         Self {
-            snapshots: Archetype::ALL.iter().map(|a| TraderSnapshot::empty(*a, Source::InTab)).collect(),
+            snapshots: Archetype::ALL
+                .iter()
+                .map(|a| TraderSnapshot::empty(*a, Source::InTab))
+                .collect(),
             source: Source::InTab,
             revision: 0,
             next_refresh: 0.0,
@@ -775,10 +912,17 @@ impl PaperAvatars {
     /// several at one rail spread out).
     pub fn goal_and_rank(&self, arch: Archetype) -> (Goal, usize) {
         let goal_of = |s: &TraderSnapshot| pick_goal(s.open_pit(), s.last_pit);
-        let Some(me) = self.snapshot(arch) else { return (Goal::Wander, 0) };
+        let Some(me) = self.snapshot(arch) else {
+            return (Goal::Wander, 0);
+        };
         let goal = goal_of(me);
         let rank = match goal.pit() {
-            Some(pit) => self.snapshots.iter().take_while(|s| s.arch != arch).filter(|s| goal_of(s).pit() == Some(pit)).count(),
+            Some(pit) => self
+                .snapshots
+                .iter()
+                .take_while(|s| s.arch != arch)
+                .filter(|s| goal_of(s).pit() == Some(pit))
+                .count(),
             None => 0,
         };
         (goal, rank)
@@ -803,7 +947,12 @@ impl AvatarPicking {
         self.hits
             .iter()
             .filter(|(_, r)| r.contains(p))
-            .min_by(|a, b| a.1.center().distance(p).partial_cmp(&b.1.center().distance(p)).unwrap_or(std::cmp::Ordering::Equal))
+            .min_by(|a, b| {
+                a.1.center()
+                    .distance(p)
+                    .partial_cmp(&b.1.center().distance(p))
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
             .map(|(a, _)| *a)
     }
 
@@ -936,7 +1085,9 @@ fn hand_target(left: bool, open: bool, t: f32, swing: f32) -> Vec3 {
 fn sleeve_between(shoulder: Vec3, hand: Vec3) -> Transform {
     let d = hand - shoulder;
     let len = d.length().max(0.5);
-    Transform::from_translation(shoulder + d * 0.5).with_rotation(Quat::from_rotation_arc(Vec3::NEG_Y, d / len)).with_scale(Vec3::new(1.0, len, 1.0))
+    Transform::from_translation(shoulder + d * 0.5)
+        .with_rotation(Quat::from_rotation_arc(Vec3::NEG_Y, d / len))
+        .with_scale(Vec3::new(1.0, len, 1.0))
 }
 
 #[derive(Resource, Clone)]
@@ -968,7 +1119,6 @@ pub struct TraderPortraitJacket;
 #[derive(Component)]
 pub struct TraderPortraitHalo;
 
-
 const LABEL_W: f32 = 170.0;
 const LABEL_H: f32 = 32.0;
 const PANEL_LEFT: f32 = 8.0;
@@ -991,7 +1141,11 @@ fn jacket_color(arch: Archetype) -> Color {
 // ---------------------------------------------------------------------------
 
 /// Startup: one figure per archetype on the spawn ring, their labels, and the (hidden) detail panel.
-pub fn setup_paper_avatars(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
+pub fn setup_paper_avatars(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
     let legs_mesh = meshes.add(Cuboid::new(1.4, 9.5, 1.9));
     let body_mesh = meshes.add(Cuboid::new(3.9, 7.5, 2.4));
     let head_mesh = meshes.add(Cuboid::new(1.9, 2.1, 1.9));
@@ -1013,11 +1167,33 @@ pub fn setup_paper_avatars(mut commands: Commands, mut meshes: ResMut<Assets<Mes
     let mic_mesh = meshes.add(Cuboid::new(0.12, 0.12, 1.3));
     let marker_mesh = meshes.add(Cuboid::new(0.95, 0.95, 0.95));
 
-    let trousers = materials.add(StandardMaterial { base_color: Color::srgb_u8(0x1c, 0x1e, 0x26), perceptual_roughness: 0.8, ..default() });
-    let shoes = materials.add(StandardMaterial { base_color: Color::srgb_u8(0x0c, 0x0c, 0x0e), perceptual_roughness: 0.3, metallic: 0.2, ..default() });
-    let shirt = materials.add(StandardMaterial { base_color: Color::srgb(0.95, 0.95, 0.97), perceptual_roughness: 0.6, ..default() });
-    let tie = materials.add(StandardMaterial { base_color: Color::srgb_u8(0x14, 0x15, 0x1a), perceptual_roughness: 0.4, ..default() });
-    let headset = materials.add(StandardMaterial { base_color: Color::srgb_u8(0x22, 0x24, 0x2a), perceptual_roughness: 0.35, metallic: 0.5, ..default() });
+    let trousers = materials.add(StandardMaterial {
+        base_color: Color::srgb_u8(0x1c, 0x1e, 0x26),
+        perceptual_roughness: 0.8,
+        ..default()
+    });
+    let shoes = materials.add(StandardMaterial {
+        base_color: Color::srgb_u8(0x0c, 0x0c, 0x0e),
+        perceptual_roughness: 0.3,
+        metallic: 0.2,
+        ..default()
+    });
+    let shirt = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.95, 0.95, 0.97),
+        perceptual_roughness: 0.6,
+        ..default()
+    });
+    let tie = materials.add(StandardMaterial {
+        base_color: Color::srgb_u8(0x14, 0x15, 0x1a),
+        perceptual_roughness: 0.4,
+        ..default()
+    });
+    let headset = materials.add(StandardMaterial {
+        base_color: Color::srgb_u8(0x22, 0x24, 0x2a),
+        perceptual_roughness: 0.35,
+        metallic: 0.5,
+        ..default()
+    });
     let badge = materials.add(StandardMaterial {
         base_color: Color::WHITE,
         emissive: LinearRgba::from(Color::srgb(0.9, 0.9, 0.9)) * 0.8,
@@ -1032,7 +1208,10 @@ pub fn setup_paper_avatars(mut commands: Commands, mut meshes: ResMut<Assets<Mes
         ..default()
     });
     let mats = AvatarMaterials {
-        hand_idle: materials.add(StandardMaterial { base_color: Color::srgb(0.95, 0.78, 0.62), ..default() }),
+        hand_idle: materials.add(StandardMaterial {
+            base_color: Color::srgb(0.95, 0.78, 0.62),
+            ..default()
+        }),
         hand_long: materials.add(StandardMaterial {
             base_color: Color::srgb(0.18, 1.0, 0.45),
             emissive: LinearRgba::from(Color::srgb(0.10, 0.9, 0.35)) * 3.0,
@@ -1045,8 +1224,11 @@ pub fn setup_paper_avatars(mut commands: Commands, mut meshes: ResMut<Assets<Mes
         }),
     };
 
-    let roster: Vec<(Archetype, Option<usize>)> =
-        Archetype::ALL.iter().map(|a| (*a, None)).chain((0..GENOME_SLOTS).map(|k| (slot_placeholder(k), Some(k)))).collect();
+    let roster: Vec<(Archetype, Option<usize>)> = Archetype::ALL
+        .iter()
+        .map(|a| (*a, None))
+        .chain((0..GENOME_SLOTS).map(|k| (slot_placeholder(k), Some(k))))
+        .collect();
     for (index, &(arch, slot)) in roster.iter().enumerate() {
         let colour = jacket_color(arch);
         let jacket = materials.add(StandardMaterial {
@@ -1061,95 +1243,196 @@ pub fn setup_paper_avatars(mut commands: Commands, mut meshes: ResMut<Assets<Mes
             unlit: true,
             ..default()
         });
-        let (_, skin_colour, hair_colour) = crate::unimate::sample_demographics(700 + index as u64 * 37);
-        let skin = materials.add(StandardMaterial { base_color: skin_colour, perceptual_roughness: 0.65, ..default() });
-        let hair = materials.add(StandardMaterial { base_color: hair_colour, perceptual_roughness: 0.85, ..default() });
+        let (_, skin_colour, hair_colour) =
+            crate::unimate::sample_demographics(700 + index as u64 * 37);
+        let skin = materials.add(StandardMaterial {
+            base_color: skin_colour,
+            perceptual_roughness: 0.65,
+            ..default()
+        });
+        let hair = materials.add(StandardMaterial {
+            base_color: hair_colour,
+            perceptual_roughness: 0.85,
+            ..default()
+        });
         let spot = spawn_spot(index);
         let face = pit_xz(Instrument::Sp500) - spot;
-        let paint = AvatarPaint { jacket: jacket.clone(), halo: halo.clone() };
+        let paint = AvatarPaint {
+            jacket: jacket.clone(),
+            halo: halo.clone(),
+        };
         let mut root = commands.spawn(paint);
         if let Some(k) = slot {
             // Hidden until a genome takes the slot (`assign_genome_avatars`).
             root.insert(AvatarSlot(k));
         }
-        root
-            .insert((
-                PaperAvatar { arch, index },
-                AvatarMotion {
-                    goal: Goal::Wander,
-                    waypoints: Vec::new(),
-                    pos: spot,
-                    yaw: yaw_toward(face),
-                    face: None,
-                    arrived_at: Some(0.0),
-                    next_wander_at: 4.0 + index as f32 * 1.7,
-                    walk_phase: 0.0,
-                    rng: XorShift::new(0xa7a7_0000 + index as u64 * 7919),
-                },
-                Transform::from_translation(world_of(spot)).with_rotation(Quat::from_rotation_y(yaw_toward(face))),
-                if slot.is_some() { Visibility::Hidden } else { Visibility::Inherited },
-            ))
-            .with_children(|p| {
-                // A paper trader dresses as a desk trader, not a local: a suit in their own colour
-                // with glowing piping, white shirt and dark tie, a headset, and a diamond overhead.
-                // The locals wear exchange trading jackets and shades.
-                for (part, x) in [(AvatarPart::LegLeft, -0.9), (AvatarPart::LegRight, 0.9)] {
-                    p.spawn((part, Mesh3d(legs_mesh.clone()), MeshMaterial3d(trousers.clone()), Transform::from_xyz(x, 4.75, 0.0)))
-                        .with_children(|l| {
-                            l.spawn((Mesh3d(shoe_mesh.clone()), MeshMaterial3d(shoes.clone()), Transform::from_xyz(0.0, -4.55, 0.35)));
-                        });
-                }
-                p.spawn((AvatarPart::Body, Mesh3d(body_mesh.clone()), MeshMaterial3d(jacket.clone()), Transform::from_xyz(0.0, 13.25, 0.0)))
-                    .with_children(|b| {
-                        for x in [-2.35, 2.35] {
-                            b.spawn((Mesh3d(shoulder_mesh.clone()), MeshMaterial3d(jacket.clone()), Transform::from_xyz(x, 2.95, 0.0)));
-                        }
-                        b.spawn((Mesh3d(shirt_mesh.clone()), MeshMaterial3d(shirt.clone()), Transform::from_xyz(0.0, 2.1, 1.22)));
-                        b.spawn((Mesh3d(tie_mesh.clone()), MeshMaterial3d(tie.clone()), Transform::from_xyz(0.0, 1.85, 1.3)));
-                        for (x, a) in [(-0.82, -0.22f32), (0.82, 0.22)] {
-                            b.spawn((Mesh3d(piping_mesh.clone()), MeshMaterial3d(halo.clone()), Transform::from_xyz(x, 1.95, 1.27).with_rotation(Quat::from_rotation_z(a))));
-                        }
-                        // White badge low on the left front, under the piping.
-                        b.spawn((Mesh3d(badge_mesh.clone()), MeshMaterial3d(badge.clone()), Transform::from_xyz(-1.3, -0.4, 1.27)));
-                    });
-                p.spawn((AvatarPart::Head, Mesh3d(head_mesh.clone()), MeshMaterial3d(skin.clone()), Transform::from_xyz(0.0, HEAD_TOP - 1.05, 0.0)))
-                    .with_children(|h| {
-                        h.spawn((Mesh3d(hair_top_mesh.clone()), MeshMaterial3d(hair.clone()), Transform::from_xyz(0.0, 1.22, -0.05)));
-                        h.spawn((Mesh3d(hair_back_mesh.clone()), MeshMaterial3d(hair.clone()), Transform::from_xyz(0.0, 0.35, -0.95)));
-                        for x in [-1.02, 1.02] {
-                            h.spawn((Mesh3d(ear_mesh.clone()), MeshMaterial3d(skin.clone()), Transform::from_xyz(x, 0.0, 0.0)));
-                        }
-                        h.spawn((Mesh3d(band_mesh.clone()), MeshMaterial3d(headset.clone()), Transform::from_xyz(0.0, 1.5, 0.05)));
-                        for x in [-1.2, 1.2] {
-                            h.spawn((Mesh3d(earcup_mesh.clone()), MeshMaterial3d(halo.clone()), Transform::from_xyz(x, 0.05, 0.05)));
-                        }
-                        h.spawn((Mesh3d(mic_mesh.clone()), MeshMaterial3d(headset.clone()), Transform::from_xyz(-1.05, -0.55, 0.7).with_rotation(Quat::from_rotation_y(0.35))));
-                    });
-                for (part, x) in [(AvatarPart::HandLeft, -2.75), (AvatarPart::HandRight, 2.75)] {
-                    let mut hand = p.spawn((part, Mesh3d(hand_mesh.clone()), MeshMaterial3d(mats.hand_idle.clone()), Transform::from_xyz(x, 8.6, 0.4)));
-                    if arch == Archetype::Control && part == AvatarPart::HandRight {
-                        hand.with_children(|h| {
-                            h.spawn((
-                                Mesh3d(coin_mesh.clone()),
-                                MeshMaterial3d(coin.clone()),
-                                Transform::from_xyz(0.0, 1.1, 0.4).with_rotation(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2)),
-                            ));
-                        });
-                    }
-                }
-                for (part, left) in [(AvatarPart::ArmLeft, true), (AvatarPart::ArmRight, false)] {
-                    let x = if left { -SHOULDER_X } else { SHOULDER_X };
-                    let tf = sleeve_between(Vec3::new(x, SHOULDER_Y, 0.0), hand_target(left, false, 0.0, 0.0) + Vec3::Y * 0.6);
-                    p.spawn((part, Mesh3d(sleeve_mesh.clone()), MeshMaterial3d(jacket.clone()), tf));
-                }
+        root.insert((
+            PaperAvatar { arch, index },
+            AvatarMotion {
+                goal: Goal::Wander,
+                waypoints: Vec::new(),
+                pos: spot,
+                yaw: yaw_toward(face),
+                face: None,
+                arrived_at: Some(0.0),
+                next_wander_at: 4.0 + index as f32 * 1.7,
+                walk_phase: 0.0,
+                rng: XorShift::new(0xa7a7_0000 + index as u64 * 7919),
+            },
+            Transform::from_translation(world_of(spot))
+                .with_rotation(Quat::from_rotation_y(yaw_toward(face))),
+            if slot.is_some() {
+                Visibility::Hidden
+            } else {
+                Visibility::Inherited
+            },
+        ))
+        .with_children(|p| {
+            // A paper trader dresses as a desk trader, not a local: a suit in their own colour
+            // with glowing piping, white shirt and dark tie, a headset, and a diamond overhead.
+            // The locals wear exchange trading jackets and shades.
+            for (part, x) in [(AvatarPart::LegLeft, -0.9), (AvatarPart::LegRight, 0.9)] {
                 p.spawn((
-                    AvatarPart::Marker,
-                    Mesh3d(marker_mesh.clone()),
-                    MeshMaterial3d(halo.clone()),
-                    Transform::from_xyz(0.0, HEAD_TOP + 1.9, 0.0).with_rotation(Quat::from_rotation_x(std::f32::consts::FRAC_PI_4) * Quat::from_rotation_z(std::f32::consts::FRAC_PI_4)),
+                    part,
+                    Mesh3d(legs_mesh.clone()),
+                    MeshMaterial3d(trousers.clone()),
+                    Transform::from_xyz(x, 4.75, 0.0),
+                ))
+                .with_children(|l| {
+                    l.spawn((
+                        Mesh3d(shoe_mesh.clone()),
+                        MeshMaterial3d(shoes.clone()),
+                        Transform::from_xyz(0.0, -4.55, 0.35),
+                    ));
+                });
+            }
+            p.spawn((
+                AvatarPart::Body,
+                Mesh3d(body_mesh.clone()),
+                MeshMaterial3d(jacket.clone()),
+                Transform::from_xyz(0.0, 13.25, 0.0),
+            ))
+            .with_children(|b| {
+                for x in [-2.35, 2.35] {
+                    b.spawn((
+                        Mesh3d(shoulder_mesh.clone()),
+                        MeshMaterial3d(jacket.clone()),
+                        Transform::from_xyz(x, 2.95, 0.0),
+                    ));
+                }
+                b.spawn((
+                    Mesh3d(shirt_mesh.clone()),
+                    MeshMaterial3d(shirt.clone()),
+                    Transform::from_xyz(0.0, 2.1, 1.22),
                 ));
-                p.spawn((Mesh3d(halo_mesh.clone()), MeshMaterial3d(halo), Transform::from_xyz(0.0, 0.3, 0.0)));
+                b.spawn((
+                    Mesh3d(tie_mesh.clone()),
+                    MeshMaterial3d(tie.clone()),
+                    Transform::from_xyz(0.0, 1.85, 1.3),
+                ));
+                for (x, a) in [(-0.82, -0.22f32), (0.82, 0.22)] {
+                    b.spawn((
+                        Mesh3d(piping_mesh.clone()),
+                        MeshMaterial3d(halo.clone()),
+                        Transform::from_xyz(x, 1.95, 1.27).with_rotation(Quat::from_rotation_z(a)),
+                    ));
+                }
+                // White badge low on the left front, under the piping.
+                b.spawn((
+                    Mesh3d(badge_mesh.clone()),
+                    MeshMaterial3d(badge.clone()),
+                    Transform::from_xyz(-1.3, -0.4, 1.27),
+                ));
             });
+            p.spawn((
+                AvatarPart::Head,
+                Mesh3d(head_mesh.clone()),
+                MeshMaterial3d(skin.clone()),
+                Transform::from_xyz(0.0, HEAD_TOP - 1.05, 0.0),
+            ))
+            .with_children(|h| {
+                h.spawn((
+                    Mesh3d(hair_top_mesh.clone()),
+                    MeshMaterial3d(hair.clone()),
+                    Transform::from_xyz(0.0, 1.22, -0.05),
+                ));
+                h.spawn((
+                    Mesh3d(hair_back_mesh.clone()),
+                    MeshMaterial3d(hair.clone()),
+                    Transform::from_xyz(0.0, 0.35, -0.95),
+                ));
+                for x in [-1.02, 1.02] {
+                    h.spawn((
+                        Mesh3d(ear_mesh.clone()),
+                        MeshMaterial3d(skin.clone()),
+                        Transform::from_xyz(x, 0.0, 0.0),
+                    ));
+                }
+                h.spawn((
+                    Mesh3d(band_mesh.clone()),
+                    MeshMaterial3d(headset.clone()),
+                    Transform::from_xyz(0.0, 1.5, 0.05),
+                ));
+                for x in [-1.2, 1.2] {
+                    h.spawn((
+                        Mesh3d(earcup_mesh.clone()),
+                        MeshMaterial3d(halo.clone()),
+                        Transform::from_xyz(x, 0.05, 0.05),
+                    ));
+                }
+                h.spawn((
+                    Mesh3d(mic_mesh.clone()),
+                    MeshMaterial3d(headset.clone()),
+                    Transform::from_xyz(-1.05, -0.55, 0.7)
+                        .with_rotation(Quat::from_rotation_y(0.35)),
+                ));
+            });
+            for (part, x) in [(AvatarPart::HandLeft, -2.75), (AvatarPart::HandRight, 2.75)] {
+                let mut hand = p.spawn((
+                    part,
+                    Mesh3d(hand_mesh.clone()),
+                    MeshMaterial3d(mats.hand_idle.clone()),
+                    Transform::from_xyz(x, 8.6, 0.4),
+                ));
+                if arch == Archetype::Control && part == AvatarPart::HandRight {
+                    hand.with_children(|h| {
+                        h.spawn((
+                            Mesh3d(coin_mesh.clone()),
+                            MeshMaterial3d(coin.clone()),
+                            Transform::from_xyz(0.0, 1.1, 0.4)
+                                .with_rotation(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2)),
+                        ));
+                    });
+                }
+            }
+            for (part, left) in [(AvatarPart::ArmLeft, true), (AvatarPart::ArmRight, false)] {
+                let x = if left { -SHOULDER_X } else { SHOULDER_X };
+                let tf = sleeve_between(
+                    Vec3::new(x, SHOULDER_Y, 0.0),
+                    hand_target(left, false, 0.0, 0.0) + Vec3::Y * 0.6,
+                );
+                p.spawn((
+                    part,
+                    Mesh3d(sleeve_mesh.clone()),
+                    MeshMaterial3d(jacket.clone()),
+                    tf,
+                ));
+            }
+            p.spawn((
+                AvatarPart::Marker,
+                Mesh3d(marker_mesh.clone()),
+                MeshMaterial3d(halo.clone()),
+                Transform::from_xyz(0.0, HEAD_TOP + 1.9, 0.0).with_rotation(
+                    Quat::from_rotation_x(std::f32::consts::FRAC_PI_4)
+                        * Quat::from_rotation_z(std::f32::consts::FRAC_PI_4),
+                ),
+            ));
+            p.spawn((
+                Mesh3d(halo_mesh.clone()),
+                MeshMaterial3d(halo),
+                Transform::from_xyz(0.0, 0.3, 0.0),
+            ));
+        });
 
         // Overhead label: name and the day's R, then the open position.
         let mut label = commands.spawn_empty();
@@ -1175,15 +1458,25 @@ pub fn setup_paper_avatars(mut commands: Commands, mut meshes: ResMut<Assets<Mes
                 l.spawn((
                     AvatarLabelLine(0),
                     Text::new(label_text(arch.name(), 0.0, 0)),
-                    TextFont { font_size: 13.0, ..default() },
+                    TextFont {
+                        font_size: 13.0,
+                        ..default()
+                    },
                     TextColor(Tone::Flat.color()),
-                    Node { padding: UiRect::axes(Val::Px(5.0), Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(3.0)), ..default() },
+                    Node {
+                        padding: UiRect::axes(Val::Px(5.0), Val::Px(1.0)),
+                        border_radius: BorderRadius::all(Val::Px(3.0)),
+                        ..default()
+                    },
                     BackgroundColor(Color::srgba(0.02, 0.03, 0.06, 0.72)),
                 ));
                 l.spawn((
                     AvatarLabelLine(1),
                     Text::new(""),
-                    TextFont { font_size: 10.5, ..default() },
+                    TextFont {
+                        font_size: 10.5,
+                        ..default()
+                    },
                     TextColor(Tone::Flat.color()),
                     Node {
                         display: Display::None,
@@ -1230,82 +1523,195 @@ pub fn setup_paper_avatars(mut commands: Commands, mut meshes: ResMut<Assets<Mes
                     ..default()
                 })
                 .with_children(|row| {
-                    row.spawn((TraderDetailTitle, Text::new(""), TextFont { font_size: 12.5, ..default() }, TextColor(Color::WHITE)));
+                    row.spawn((
+                        TraderDetailTitle,
+                        Text::new(""),
+                        TextFont {
+                            font_size: 12.5,
+                            ..default()
+                        },
+                        TextColor(Color::WHITE),
+                    ));
                     // The same X every other panel has (`panels::PanelClose`); its target is
                     // this panel's root, which `handle_avatar_clicks` watches for.
                     spawn_close_button(row, root);
                 });
             // The body scrolls (wheel over the panel, or drag the bar), with the bar beside it.
             panel
-                .spawn(Node { flex_direction: FlexDirection::Row, flex_grow: 1.0, flex_shrink: 1.0, min_height: Val::Px(0.0), column_gap: Val::Px(4.0), ..default() })
+                .spawn(Node {
+                    flex_direction: FlexDirection::Row,
+                    flex_grow: 1.0,
+                    flex_shrink: 1.0,
+                    min_height: Val::Px(0.0),
+                    column_gap: Val::Px(4.0),
+                    ..default()
+                })
                 .with_children(|frame| {
-            frame
-                .spawn((
-                    TraderDetailScroll,
-                    ScrollPosition::default(),
-                    Node { flex_direction: FlexDirection::Column, flex_grow: 1.0, flex_shrink: 1.0, min_height: Val::Px(0.0), overflow: Overflow::scroll_y(), ..default() },
-                ))
-                .with_children(|scroll| {
-            // Portrait (a flat version of the voxel figure) beside the text.
-            scroll
-                .spawn(Node { flex_direction: FlexDirection::Row, column_gap: Val::Px(10.0), align_items: AlignItems::FlexStart, flex_shrink: 0.0, ..default() })
-                .with_children(|row| {
-                    row.spawn(Node {
-                        width: Val::Px(PORTRAIT_W),
-                        flex_shrink: 0.0,
-                        flex_direction: FlexDirection::Column,
-                        align_items: AlignItems::Center,
-                        row_gap: Val::Px(2.0),
-                        padding: UiRect::top(Val::Px(4.0)),
-                        ..default()
-                    })
-                    .with_children(|fig| {
-                        fig.spawn((Node { width: Val::Px(18.0), height: Val::Px(20.0), border_radius: BorderRadius::all(Val::Px(3.0)), ..default() }, BackgroundColor(Color::srgb(0.88, 0.72, 0.60))));
-                        fig.spawn((
-                            TraderPortraitJacket,
-                            Node { width: Val::Px(36.0), height: Val::Px(40.0), border_radius: BorderRadius::all(Val::Px(4.0)), justify_content: JustifyContent::Center, padding: UiRect::top(Val::Px(6.0)), ..default() },
-                            BackgroundColor(Color::WHITE),
+                    frame
+                        .spawn((
+                            TraderDetailScroll,
+                            ScrollPosition::default(),
+                            Node {
+                                flex_direction: FlexDirection::Column,
+                                flex_grow: 1.0,
+                                flex_shrink: 1.0,
+                                min_height: Val::Px(0.0),
+                                overflow: Overflow::scroll_y(),
+                                ..default()
+                            },
                         ))
-                        .with_children(|body| {
-                            body.spawn((Node { width: Val::Px(12.0), height: Val::Px(7.0), border_radius: BorderRadius::all(Val::Px(1.5)), ..default() }, BackgroundColor(Color::srgb(0.95, 0.95, 0.95))));
+                        .with_children(|scroll| {
+                            // Portrait (a flat version of the voxel figure) beside the text.
+                            scroll
+                                .spawn(Node {
+                                    flex_direction: FlexDirection::Row,
+                                    column_gap: Val::Px(10.0),
+                                    align_items: AlignItems::FlexStart,
+                                    flex_shrink: 0.0,
+                                    ..default()
+                                })
+                                .with_children(|row| {
+                                    row.spawn(Node {
+                                        width: Val::Px(PORTRAIT_W),
+                                        flex_shrink: 0.0,
+                                        flex_direction: FlexDirection::Column,
+                                        align_items: AlignItems::Center,
+                                        row_gap: Val::Px(2.0),
+                                        padding: UiRect::top(Val::Px(4.0)),
+                                        ..default()
+                                    })
+                                    .with_children(|fig| {
+                                        fig.spawn((
+                                            Node {
+                                                width: Val::Px(18.0),
+                                                height: Val::Px(20.0),
+                                                border_radius: BorderRadius::all(Val::Px(3.0)),
+                                                ..default()
+                                            },
+                                            BackgroundColor(Color::srgb(0.88, 0.72, 0.60)),
+                                        ));
+                                        fig.spawn((
+                                            TraderPortraitJacket,
+                                            Node {
+                                                width: Val::Px(36.0),
+                                                height: Val::Px(40.0),
+                                                border_radius: BorderRadius::all(Val::Px(4.0)),
+                                                justify_content: JustifyContent::Center,
+                                                padding: UiRect::top(Val::Px(6.0)),
+                                                ..default()
+                                            },
+                                            BackgroundColor(Color::WHITE),
+                                        ))
+                                        .with_children(
+                                            |body| {
+                                                body.spawn((
+                                                    Node {
+                                                        width: Val::Px(12.0),
+                                                        height: Val::Px(7.0),
+                                                        border_radius: BorderRadius::all(Val::Px(
+                                                            1.5,
+                                                        )),
+                                                        ..default()
+                                                    },
+                                                    BackgroundColor(Color::srgb(0.95, 0.95, 0.95)),
+                                                ));
+                                            },
+                                        );
+                                        fig.spawn(Node {
+                                            flex_direction: FlexDirection::Row,
+                                            column_gap: Val::Px(4.0),
+                                            ..default()
+                                        })
+                                        .with_children(
+                                            |legs| {
+                                                for _ in 0..2 {
+                                                    legs.spawn((
+                                                        Node {
+                                                            width: Val::Px(11.0),
+                                                            height: Val::Px(44.0),
+                                                            border_radius: BorderRadius::all(
+                                                                Val::Px(2.0),
+                                                            ),
+                                                            ..default()
+                                                        },
+                                                        BackgroundColor(Color::srgb_u8(
+                                                            0x1c, 0x1e, 0x26,
+                                                        )),
+                                                    ));
+                                                }
+                                            },
+                                        );
+                                        fig.spawn((
+                                            TraderPortraitHalo,
+                                            Node {
+                                                width: Val::Px(46.0),
+                                                height: Val::Px(4.0),
+                                                border_radius: BorderRadius::all(Val::Px(2.0)),
+                                                ..default()
+                                            },
+                                            BackgroundColor(Color::WHITE),
+                                        ));
+                                    });
+                                    row.spawn((
+                                        TraderDetailBody,
+                                        Text::new(""),
+                                        TextFont {
+                                            font_size: 10.0,
+                                            ..default()
+                                        },
+                                        TextColor(Color::srgb(0.80, 0.84, 0.90)),
+                                        Node {
+                                            flex_grow: 1.0,
+                                            flex_shrink: 1.0,
+                                            min_width: Val::Px(0.0),
+                                            max_width: Val::Px(PANEL_W - PORTRAIT_W - 40.0),
+                                            ..default()
+                                        },
+                                    ))
+                                    .with_children(|text| {
+                                        for i in 0..DETAIL_LINES {
+                                            text.spawn((
+                                                TraderDetailLine(i),
+                                                TextSpan::new(""),
+                                                TextFont {
+                                                    font_size: 10.0,
+                                                    ..default()
+                                                },
+                                                TextColor(LineTone::Plain.color()),
+                                            ));
+                                        }
+                                    });
+                                });
                         });
-                        fig.spawn(Node { flex_direction: FlexDirection::Row, column_gap: Val::Px(4.0), ..default() }).with_children(|legs| {
-                            for _ in 0..2 {
-                                legs.spawn((Node { width: Val::Px(11.0), height: Val::Px(44.0), border_radius: BorderRadius::all(Val::Px(2.0)), ..default() }, BackgroundColor(Color::srgb_u8(0x1c, 0x1e, 0x26))));
-                            }
+                    // The scrollbar: a track the height of the scrolling area, its thumb placed by
+                    // `update_trader_detail_scrollbar`. Pressing or dragging on it scrolls there.
+                    frame
+                        .spawn((
+                            TraderDetailTrack,
+                            Button,
+                            Node {
+                                width: Val::Px(8.0),
+                                flex_shrink: 0.0,
+                                border_radius: BorderRadius::all(Val::Px(4.0)),
+                                ..default()
+                            },
+                            BackgroundColor(Color::srgba(0.30, 0.36, 0.45, 0.35)),
+                        ))
+                        .with_children(|track| {
+                            track.spawn((
+                                TraderDetailThumb,
+                                Node {
+                                    position_type: PositionType::Absolute,
+                                    left: Val::Px(0.0),
+                                    width: Val::Px(8.0),
+                                    top: Val::Percent(0.0),
+                                    height: Val::Percent(100.0),
+                                    border_radius: BorderRadius::all(Val::Px(4.0)),
+                                    ..default()
+                                },
+                                BackgroundColor(Color::srgba(0.75, 0.82, 0.92, 0.80)),
+                            ));
                         });
-                        fig.spawn((TraderPortraitHalo, Node { width: Val::Px(46.0), height: Val::Px(4.0), border_radius: BorderRadius::all(Val::Px(2.0)), ..default() }, BackgroundColor(Color::WHITE)));
-                    });
-                    row.spawn((
-                        TraderDetailBody,
-                        Text::new(""),
-                        TextFont { font_size: 10.0, ..default() },
-                        TextColor(Color::srgb(0.80, 0.84, 0.90)),
-                        Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: Val::Px(0.0), max_width: Val::Px(PANEL_W - PORTRAIT_W - 40.0), ..default() },
-                    ))
-                    .with_children(|text| {
-                        for i in 0..DETAIL_LINES {
-                            text.spawn((TraderDetailLine(i), TextSpan::new(""), TextFont { font_size: 10.0, ..default() }, TextColor(LineTone::Plain.color())));
-                        }
-                    });
-                });
-                });
-            // The scrollbar: a track the height of the scrolling area, its thumb placed by
-            // `update_trader_detail_scrollbar`. Pressing or dragging on it scrolls there.
-            frame
-                .spawn((
-                    TraderDetailTrack,
-                    Button,
-                    Node { width: Val::Px(8.0), flex_shrink: 0.0, border_radius: BorderRadius::all(Val::Px(4.0)), ..default() },
-                    BackgroundColor(Color::srgba(0.30, 0.36, 0.45, 0.35)),
-                ))
-                .with_children(|track| {
-                    track.spawn((
-                        TraderDetailThumb,
-                        Node { position_type: PositionType::Absolute, left: Val::Px(0.0), width: Val::Px(8.0), top: Val::Percent(0.0), height: Val::Percent(100.0), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() },
-                        BackgroundColor(Color::srgba(0.75, 0.82, 0.92, 0.80)),
-                    ));
-                });
                 });
         });
 }
@@ -1324,7 +1730,10 @@ pub fn scroll_trader_detail(
     windows: Query<&Window>,
     picking: Res<AvatarPicking>,
     mut scroll: Query<(&mut ScrollPosition, &ComputedNode), With<TraderDetailScroll>>,
-    track: Query<(&Interaction, &ComputedNode, &bevy::ui::UiGlobalTransform), (With<TraderDetailTrack>, Without<TraderDetailScroll>)>,
+    track: Query<
+        (&Interaction, &ComputedNode, &bevy::ui::UiGlobalTransform),
+        (With<TraderDetailTrack>, Without<TraderDetailScroll>),
+    >,
     detail: Res<TraderDetail>,
     mut shown: Local<Option<Archetype>>,
 ) {
@@ -1354,7 +1763,10 @@ pub fn scroll_trader_detail(
     }
     if let (Ok((Interaction::Pressed, tn, tt)), Some(c)) = (track.single(), cursor) {
         let tk = tn.inverse_scale_factor();
-        let (h, top) = (tn.size().y * tk, tt.translation.y * tk - tn.size().y * tk * 0.5);
+        let (h, top) = (
+            tn.size().y * tk,
+            tt.translation.y * tk - tn.size().y * tk * 0.5,
+        );
         if h > 0.0 {
             pos.y = track_scroll(((c.y - top) / h).clamp(0.0, 1.0), content, view);
         }
@@ -1368,7 +1780,9 @@ pub fn update_trader_detail_scrollbar(
     mut track: Query<&mut Node, (With<TraderDetailTrack>, Without<TraderDetailThumb>)>,
     mut thumb: Query<&mut Node, (With<TraderDetailThumb>, Without<TraderDetailTrack>)>,
 ) {
-    let Ok((pos, node)) = scroll.single() else { return };
+    let Ok((pos, node)) = scroll.single() else {
+        return;
+    };
     let k = node.inverse_scale_factor();
     let (view, content) = (node.size().y * k, node.content_size().y * k);
     let fits = content <= view + 1.0;
@@ -1393,7 +1807,13 @@ pub fn update_trader_detail_scrollbar(
 
 /// System: refresh the snapshots from the desk board while it is alive, else from the in-tab
 /// book, twice a second.
-pub fn update_paper_avatars(time: Res<Time>, feed: Res<LiveFeed>, book: Res<PaperBook>, desk: Res<DeskFeed>, mut avatars: ResMut<PaperAvatars>) {
+pub fn update_paper_avatars(
+    time: Res<Time>,
+    feed: Res<LiveFeed>,
+    book: Res<PaperBook>,
+    desk: Res<DeskFeed>,
+    mut avatars: ResMut<PaperAvatars>,
+) {
     let now = time.elapsed_secs_f64();
     if now < avatars.next_refresh {
         return;
@@ -1401,7 +1821,10 @@ pub fn update_paper_avatars(time: Res<Time>, feed: Res<LiveFeed>, book: Res<Pape
     avatars.next_refresh = now + REFRESH_SECS;
     let (snaps, source) = match desk.live_board(now) {
         Some(board) => (snapshots_from_board(board), Source::Desk),
-        None => (snapshots_from_book(&book, &feed, wall_clock_ms()), Source::InTab),
+        None => (
+            snapshots_from_book(&book, &feed, wall_clock_ms()),
+            Source::InTab,
+        ),
     };
     if snaps != avatars.snapshots || source != avatars.source {
         if source != avatars.source {
@@ -1426,7 +1849,12 @@ pub fn assign_genome_avatars(
     if !avatars.is_changed() {
         return;
     }
-    let genomes: Vec<Archetype> = avatars.snapshots.iter().map(|s| s.arch).filter(|a| matches!(a, Archetype::Genome(_))).collect();
+    let genomes: Vec<Archetype> = avatars
+        .snapshots
+        .iter()
+        .map(|s| s.arch)
+        .filter(|a| matches!(a, Archetype::Genome(_)))
+        .collect();
     let mut seated: Vec<Archetype> = Vec::new();
     let mut moves: Vec<(usize, Archetype)> = Vec::new();
     // Keep the ones still on the board; free the rest.
@@ -1440,7 +1868,11 @@ pub fn assign_genome_avatars(
     }
     // New genomes take free slots, lowest first, so a reload seats them in the same bodies.
     let mut waiting = genomes.into_iter().filter(|g| !seated.contains(g));
-    let mut free: Vec<(usize, Mut<PaperAvatar>, &AvatarPaint)> = roots.iter_mut().filter(|(s, a, _)| a.arch == slot_placeholder(s.0)).map(|(s, a, p)| (s.0, a, p)).collect();
+    let mut free: Vec<(usize, Mut<PaperAvatar>, &AvatarPaint)> = roots
+        .iter_mut()
+        .filter(|(s, a, _)| a.arch == slot_placeholder(s.0))
+        .map(|(s, a, p)| (s.0, a, p))
+        .collect();
     free.sort_by_key(|(k, _, _)| *k);
     for (k, mut a, p) in free {
         let Some(g) = waiting.next() else { break };
@@ -1467,16 +1899,27 @@ pub fn separation_push(a: Vec2, b: Vec2, tie: usize) -> Option<Vec2> {
     if d >= MIN_SEPARATION {
         return None;
     }
-    let dir = if d > 1e-3 { (a - b) / d } else { Vec2::from_angle(tie as f32 * 2.399) };
+    let dir = if d > 1e-3 {
+        (a - b) / d
+    } else {
+        Vec2::from_angle(tie as f32 * 2.399)
+    };
     Some(dir * (MIN_SEPARATION - d) * 0.5)
 }
 
 /// System: standing paper traders that have ended up on the same spot (two given the same
 /// place at a pit, or the same wander spot) step apart, a little each frame. A step that would
 /// take one off the concourse into a pit, or out of the pit it stands in, is not taken.
-pub fn separate_paper_avatars(time: Res<Time>, mut roots: Query<(&PaperAvatar, &mut AvatarMotion, &Visibility)>) {
+pub fn separate_paper_avatars(
+    time: Res<Time>,
+    mut roots: Query<(&PaperAvatar, &mut AvatarMotion, &Visibility)>,
+) {
     let k = (time.delta_secs() * 4.0).min(1.0);
-    let standing: Vec<(usize, Vec2)> = roots.iter().filter(|(_, m, v)| **v != Visibility::Hidden && !m.is_walking()).map(|(a, m, _)| (a.index, m.pos)).collect();
+    let standing: Vec<(usize, Vec2)> = roots
+        .iter()
+        .filter(|(_, m, v)| **v != Visibility::Hidden && !m.is_walking())
+        .map(|(a, m, _)| (a.index, m.pos))
+        .collect();
     let mut push: std::collections::HashMap<usize, Vec2> = std::collections::HashMap::new();
     for (x, &(ia, pa)) in standing.iter().enumerate() {
         for &(ib, pb) in &standing[x + 1..] {
@@ -1487,7 +1930,9 @@ pub fn separate_paper_avatars(time: Res<Time>, mut roots: Query<(&PaperAvatar, &
         }
     }
     for (a, mut m, _) in roots.iter_mut() {
-        let Some(p) = push.get(&a.index) else { continue };
+        let Some(p) = push.get(&a.index) else {
+            continue;
+        };
         let to = m.pos + *p * k;
         if is_free(to) == is_free(m.pos) {
             m.pos = to;
@@ -1495,9 +1940,11 @@ pub fn separate_paper_avatars(time: Res<Time>, mut roots: Query<(&PaperAvatar, &
     }
 }
 
-
 /// System: show only the avatars of traders the live source is running.
-pub fn show_seated_avatars(avatars: Res<PaperAvatars>, mut roots: Query<(&PaperAvatar, &mut Visibility)>) {
+pub fn show_seated_avatars(
+    avatars: Res<PaperAvatars>,
+    mut roots: Query<(&PaperAvatar, &mut Visibility)>,
+) {
     if !avatars.is_changed() {
         return;
     }
@@ -1506,7 +1953,11 @@ pub fn show_seated_avatars(avatars: Res<PaperAvatars>, mut roots: Query<(&PaperA
             Some(s) => s.on_desk,
             None => !matches!(a.arch, Archetype::Genome(_)),
         };
-        let want = if seated { Visibility::Inherited } else { Visibility::Hidden };
+        let want = if seated {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
         if *vis != want {
             *vis = want;
         }
@@ -1520,8 +1971,18 @@ pub fn move_paper_avatars(
     view_mode: Res<FloorViewMode>,
     avatars: Res<PaperAvatars>,
     mats: Res<AvatarMaterials>,
-    mut roots: Query<(&PaperAvatar, &mut AvatarMotion, &mut Transform, &Children), Without<AvatarPart>>,
-    mut parts: Query<(&AvatarPart, &mut Transform, &mut MeshMaterial3d<StandardMaterial>), Without<PaperAvatar>>,
+    mut roots: Query<
+        (&PaperAvatar, &mut AvatarMotion, &mut Transform, &Children),
+        Without<AvatarPart>,
+    >,
+    mut parts: Query<
+        (
+            &AvatarPart,
+            &mut Transform,
+            &mut MeshMaterial3d<StandardMaterial>,
+        ),
+        Without<PaperAvatar>,
+    >,
 ) {
     if !view_mode.is_3d() {
         return;
@@ -1555,7 +2016,11 @@ pub fn move_paper_avatars(
             if let Some(wps) = path {
                 m.waypoints = wps;
                 m.arrived_at = None;
-                info!("paper avatars: {} heads for {:?} (rank {rank})", avatar.arch.name(), goal);
+                info!(
+                    "paper avatars: {} heads for {:?} (rank {rank})",
+                    avatar.arch.name(),
+                    goal
+                );
             } else {
                 m.next_wander_at = t + 2.0;
             }
@@ -1594,38 +2059,56 @@ pub fn move_paper_avatars(
                 moving = true;
             }
         }
-        if !moving {
-            if let Some(face) = m.face {
-                let want = yaw_toward(face - m.pos);
-                m.yaw += wrap_angle(want - m.yaw) * (dt * 3.0).min(1.0);
-            }
+        if !moving && let Some(face) = m.face {
+            let want = yaw_toward(face - m.pos);
+            m.yaw += wrap_angle(want - m.yaw) * (dt * 3.0).min(1.0);
         }
         m.walk_phase = if moving { m.walk_phase + dt * 9.0 } else { 0.0 };
 
         // Arrival shuffle: a step to each side, then stand with a slow sway.
         let shuffle = match m.arrived_at {
-            Some(at) if t - at < SHUFFLE_SECS => ((t - at) * 4.0).sin() * 1.2 * (1.0 - (t - at) / SHUFFLE_SECS),
+            Some(at) if t - at < SHUFFLE_SECS => {
+                ((t - at) * 4.0).sin() * 1.2 * (1.0 - (t - at) / SHUFFLE_SECS)
+            }
             Some(_) => (t * 0.8 + avatar.index as f32).sin() * 0.25,
             None => 0.0,
         };
         let side = Vec2::new(m.yaw.cos(), -m.yaw.sin());
         let p = m.pos + side * shuffle;
-        let bob = if moving { m.walk_phase.sin().abs() * 0.35 } else { 0.0 };
+        let bob = if moving {
+            m.walk_phase.sin().abs() * 0.35
+        } else {
+            0.0
+        };
         tf.translation = world_of(p) + Vec3::new(0.0, bob, 0.0);
         tf.rotation = Quat::from_rotation_y(m.yaw);
 
         // Limbs: swing while walking; hands up on the side of the trade at the rail.
-        let open_side = match (m.goal, avatars.snapshot(avatar.arch).and_then(|s| s.open.as_ref())) {
+        let open_side = match (
+            m.goal,
+            avatars.snapshot(avatar.arch).and_then(|s| s.open.as_ref()),
+        ) {
             (Goal::AtRail(_), Some(o)) => Some(o.is_long()),
             _ => None,
         };
-        let swing = if moving { m.walk_phase.sin() * 0.45 } else { 0.0 };
+        let swing = if moving {
+            m.walk_phase.sin() * 0.45
+        } else {
+            0.0
+        };
         for child in children.iter() {
-            let Ok((part, mut pt, mut pm)) = parts.get_mut(child) else { continue };
+            let Ok((part, mut pt, mut pm)) = parts.get_mut(child) else {
+                continue;
+            };
             match part {
                 AvatarPart::LegLeft => pt.rotation = Quat::from_rotation_x(swing),
                 AvatarPart::LegRight => pt.rotation = Quat::from_rotation_x(-swing),
-                AvatarPart::Body => pt.rotation = pt.rotation.slerp(Quat::from_rotation_x(if open_side.is_some() { 0.10 } else { 0.0 }), (dt * 5.0).min(1.0)),
+                AvatarPart::Body => {
+                    pt.rotation = pt.rotation.slerp(
+                        Quat::from_rotation_x(if open_side.is_some() { 0.10 } else { 0.0 }),
+                        (dt * 5.0).min(1.0),
+                    )
+                }
                 AvatarPart::Head => {}
                 AvatarPart::ArmLeft | AvatarPart::ArmRight => {
                     // The sleeve's far end is where the hand is: the hand eases toward its target
@@ -1641,7 +2124,9 @@ pub fn move_paper_avatars(
                 AvatarPart::Marker => {
                     let bob = (t * 1.6 + avatar.index as f32).sin() * 0.3;
                     pt.translation.y = HEAD_TOP + 1.9 + bob;
-                    pt.rotation = Quat::from_rotation_y(t * 1.2) * Quat::from_rotation_x(std::f32::consts::FRAC_PI_4) * Quat::from_rotation_z(std::f32::consts::FRAC_PI_4);
+                    pt.rotation = Quat::from_rotation_y(t * 1.2)
+                        * Quat::from_rotation_x(std::f32::consts::FRAC_PI_4)
+                        * Quat::from_rotation_z(std::f32::consts::FRAC_PI_4);
                 }
                 AvatarPart::HandLeft | AvatarPart::HandRight => {
                     let left = *part == AvatarPart::HandLeft;
@@ -1685,8 +2170,16 @@ fn publish_hook(entries: &[HookEntry]) {
         let _ = js_sys::Reflect::set(&o, &JsValue::from_str("open"), &JsValue::from_bool(e.open));
         if let Some((pit, at)) = e.pit {
             let _ = js_sys::Reflect::set(&o, &JsValue::from_str("pit"), &JsValue::from_str(pit));
-            let _ = js_sys::Reflect::set(&o, &JsValue::from_str("pit_x"), &JsValue::from_f64(at.x as f64));
-            let _ = js_sys::Reflect::set(&o, &JsValue::from_str("pit_y"), &JsValue::from_f64(at.y as f64));
+            let _ = js_sys::Reflect::set(
+                &o,
+                &JsValue::from_str("pit_x"),
+                &JsValue::from_f64(at.x as f64),
+            );
+            let _ = js_sys::Reflect::set(
+                &o,
+                &JsValue::from_str("pit_y"),
+                &JsValue::from_f64(at.y as f64),
+            );
         }
         arr.push(&o);
     }
@@ -1705,8 +2198,14 @@ fn publish_panel(rect: Option<Rect>) {
     let v = match rect {
         Some(r) => {
             let o = js_sys::Object::new();
-            for (k, x) in [("left", r.min.x), ("top", r.min.y), ("right", r.max.x), ("bottom", r.max.y)] {
-                let _ = js_sys::Reflect::set(&o, &JsValue::from_str(k), &JsValue::from_f64(x as f64));
+            for (k, x) in [
+                ("left", r.min.x),
+                ("top", r.min.y),
+                ("right", r.max.x),
+                ("bottom", r.max.y),
+            ] {
+                let _ =
+                    js_sys::Reflect::set(&o, &JsValue::from_str(k), &JsValue::from_f64(x as f64));
             }
             JsValue::from(o)
         }
@@ -1726,9 +2225,18 @@ pub fn project_avatar_labels(
     view_mode: Res<FloorViewMode>,
     avatars: Res<PaperAvatars>,
     camera: Query<(&Camera, &Transform, &OrbitCamera), (With<PitCamera3d>, Without<PaperAvatar>)>,
-    roots: Query<(&PaperAvatar, &Transform, &AvatarMotion), (Without<PitCamera3d>, Without<AvatarLabel>)>,
-    mut labels: Query<(&AvatarLabel, &mut Node, &mut Visibility, &Children), Without<AvatarLabelLine>>,
-    mut lines: Query<(&AvatarLabelLine, &mut Text, &mut TextColor, &mut Node), Without<AvatarLabel>>,
+    roots: Query<
+        (&PaperAvatar, &Transform, &AvatarMotion),
+        (Without<PitCamera3d>, Without<AvatarLabel>),
+    >,
+    mut labels: Query<
+        (&AvatarLabel, &mut Node, &mut Visibility, &Children),
+        Without<AvatarLabelLine>,
+    >,
+    mut lines: Query<
+        (&AvatarLabelLine, &mut Text, &mut TextColor, &mut Node),
+        Without<AvatarLabel>,
+    >,
     mut picking: ResMut<AvatarPicking>,
     mut hook_at: Local<f32>,
 ) {
@@ -1743,12 +2251,16 @@ pub fn project_avatar_labels(
     // The camera is a root entity: this frame's `Transform` is what renders (we run after
     // the orbit); its `GlobalTransform` is last frame's.
     let cam_tf = GlobalTransform::from(*cam_local);
-    let viewport = cam.logical_viewport_size().unwrap_or(Vec2::new(1280.0, 800.0));
+    let viewport = cam
+        .logical_viewport_size()
+        .unwrap_or(Vec2::new(1280.0, 800.0));
     let scale = if orbit.market_view { 1.0 } else { 1.15 };
     let mut hits = Vec::with_capacity(Archetype::ALL.len());
     let mut hook: Vec<HookEntry> = Vec::new();
     for (label, mut node, mut vis, children) in labels.iter_mut() {
-        let Some((_, tf, motion)) = roots.iter().find(|(a, _, _)| a.arch == label.0) else { continue };
+        let Some((_, tf, motion)) = roots.iter().find(|(a, _, _)| a.arch == label.0) else {
+            continue;
+        };
         let seated = match avatars.snapshot(label.0) {
             Some(s) => s.on_desk,
             None => !matches!(label.0, Archetype::Genome(_)),
@@ -1759,11 +2271,17 @@ pub fn project_avatar_labels(
         }
         let feet = tf.translation;
         let head = feet + Vec3::new(0.0, HEAD_TOP + 3.4, 0.0); // above the marker
-        let (Ok(vp_head), Ok(vp_feet)) = (cam.world_to_viewport(&cam_tf, head), cam.world_to_viewport(&cam_tf, feet)) else {
+        let (Ok(vp_head), Ok(vp_feet)) = (
+            cam.world_to_viewport(&cam_tf, head),
+            cam.world_to_viewport(&cam_tf, feet),
+        ) else {
             *vis = Visibility::Hidden;
             continue;
         };
-        let on_screen = vp_head.x > -LABEL_W && vp_head.x < viewport.x + LABEL_W && vp_head.y > -LABEL_H && vp_feet.y < viewport.y + 40.0;
+        let on_screen = vp_head.x > -LABEL_W
+            && vp_head.x < viewport.x + LABEL_W
+            && vp_head.y > -LABEL_H
+            && vp_feet.y < viewport.y + 40.0;
         if !on_screen {
             *vis = Visibility::Hidden;
             continue;
@@ -1781,7 +2299,9 @@ pub fn project_avatar_labels(
         }
         *vis = Visibility::Inherited;
         for child in children.iter() {
-            let Ok((line, mut text, mut color, mut lnode)) = lines.get_mut(child) else { continue };
+            let Ok((line, mut text, mut color, mut lnode)) = lines.get_mut(child) else {
+                continue;
+            };
             match line.0 {
                 0 => {
                     set_ui_text(&mut text, label_text(label.0.name(), day_r, day_trades));
@@ -1793,7 +2313,11 @@ pub fn project_avatar_labels(
                 _ => match open {
                     Some(o) => {
                         set_ui_text(&mut text, open_line(o));
-                        let want = if o.is_long() { Tone::Up.color() } else { Tone::Down.color() };
+                        let want = if o.is_long() {
+                            Tone::Up.color()
+                        } else {
+                            Tone::Down.color()
+                        };
                         if color.0 != want {
                             color.0 = want;
                         }
@@ -1814,12 +2338,23 @@ pub fn project_avatar_labels(
         let height = (vp_feet.y - top).max(24.0);
         let half_w = (height * 0.28 * scale).clamp(14.0, LABEL_W * 0.5);
         let centre_x = (vp_head.x + vp_feet.x) * 0.5;
-        hits.push((label.0, Rect::new(centre_x - half_w, top, centre_x + half_w, vp_feet.y)));
+        hits.push((
+            label.0,
+            Rect::new(centre_x - half_w, top, centre_x + half_w, vp_feet.y),
+        ));
         let pit = motion.goal.pit().and_then(|inst| {
-            let at = cam.world_to_viewport(&cam_tf, pit_3d_origin(inst) + Vec3::new(0.0, 2.0, 0.0)).ok()?;
+            let at = cam
+                .world_to_viewport(&cam_tf, pit_3d_origin(inst) + Vec3::new(0.0, 2.0, 0.0))
+                .ok()?;
             Some((inst.symbol(), at))
         });
-        hook.push(HookEntry { name: label.0.name(), x: centre_x, y: (vp_head.y + vp_feet.y) * 0.5, open: open.is_some(), pit });
+        hook.push(HookEntry {
+            name: label.0.name(),
+            x: centre_x,
+            y: (vp_head.y + vp_feet.y) * 0.5,
+            open: open.is_some(),
+            pit,
+        });
     }
     picking.hits = hits;
     let now = time.elapsed_secs();
@@ -1849,7 +2384,9 @@ pub fn handle_avatar_clicks(
         detail.open = Some(arch);
     }
     let root = root.single().ok();
-    let close_pressed = close.iter().any(|(i, c)| *i == Interaction::Pressed && Some(c.target) == root);
+    let close_pressed = close
+        .iter()
+        .any(|(i, c)| *i == Interaction::Pressed && Some(c.target) == root);
     if detail.open.is_some() && (close_pressed || keyboard.just_pressed(KeyCode::Escape)) {
         detail.open = None;
     }
@@ -1865,13 +2402,27 @@ pub fn follow_clicked_trader(
     avatars: Query<(&PaperAvatar, &GlobalTransform, &Visibility)>,
     mut camera: Query<&mut crate::camera::OrbitCamera, With<PitCamera3d>>,
 ) {
-    let Ok(mut orbit) = camera.single_mut() else { return };
-    let body = |arch: Archetype| avatars.iter().find(|(a, _, v)| a.arch == arch && **v != Visibility::Hidden).map(|(_, t, _)| t);
+    let Ok(mut orbit) = camera.single_mut() else {
+        return;
+    };
+    let body = |arch: Archetype| {
+        avatars
+            .iter()
+            .find(|(a, _, v)| a.arch == arch && **v != Visibility::Hidden)
+            .map(|(_, t, _)| t)
+    };
     let at = |arch: Archetype| body(arch).map(|t| t.translation());
     if let Some(arch) = book.fly_to.take() {
         match body(arch) {
-            Some(t) => orbit.follow_trader(arch, t.translation(), t.rotation().to_euler(EulerRot::YXZ).0),
-            None => info!("paper avatars: {} has no body on the floor to fly to", arch.name()),
+            Some(t) => orbit.follow_trader(
+                arch,
+                t.translation(),
+                t.rotation().to_euler(EulerRot::YXZ).0,
+            ),
+            None => info!(
+                "paper avatars: {} has no body on the floor to fly to",
+                arch.name()
+            ),
         }
         return;
     }
@@ -1892,7 +2443,10 @@ const DETAIL_MIN_H: f32 = 240.0;
 /// it less than `DETAIL_MIN_H`.
 pub fn detail_panel_place(below_list: Option<f32>, viewport_h: f32) -> (f32, f32) {
     let floor = viewport_h - PANEL_BOTTOM;
-    let top = below_list.unwrap_or(crate::panels::COLUMN_TOP).min(floor - DETAIL_MIN_H).max(crate::panels::COLUMN_TOP);
+    let top = below_list
+        .unwrap_or(crate::panels::COLUMN_TOP)
+        .min(floor - DETAIL_MIN_H)
+        .max(crate::panels::COLUMN_TOP);
     (top, (floor - top).max(60.0))
 }
 
@@ -1909,13 +2463,27 @@ pub fn update_trader_detail_panel(
     mut picking: ResMut<AvatarPicking>,
     mut next: Local<f32>,
     mut panel: Query<(&mut Node, &mut BorderColor, &ComputedNode), With<TraderDetailPanel>>,
-    traders: Query<(&Node, &ComputedNode, &bevy::ui::UiGlobalTransform), (With<crate::paper::PaperPanel>, Without<TraderDetailPanel>)>,
-    mut title: Query<(&mut Text, &mut TextColor), (With<TraderDetailTitle>, Without<TraderDetailBody>)>,
+    traders: Query<
+        (&Node, &ComputedNode, &bevy::ui::UiGlobalTransform),
+        (With<crate::paper::PaperPanel>, Without<TraderDetailPanel>),
+    >,
+    mut title: Query<
+        (&mut Text, &mut TextColor),
+        (With<TraderDetailTitle>, Without<TraderDetailBody>),
+    >,
     body: Query<&mut Text, (With<TraderDetailBody>, Without<TraderDetailTitle>)>,
-    mut spans: Query<(&TraderDetailLine, &mut TextSpan, &mut TextColor), (Without<TraderDetailTitle>, Without<TraderDetailBody>)>,
-    mut portrait: Query<(&mut BackgroundColor, Has<TraderPortraitHalo>), Or<(With<TraderPortraitJacket>, With<TraderPortraitHalo>)>>,
+    mut spans: Query<
+        (&TraderDetailLine, &mut TextSpan, &mut TextColor),
+        (Without<TraderDetailTitle>, Without<TraderDetailBody>),
+    >,
+    mut portrait: Query<
+        (&mut BackgroundColor, Has<TraderPortraitHalo>),
+        Or<(With<TraderPortraitJacket>, With<TraderPortraitHalo>)>,
+    >,
 ) {
-    let Ok((mut node, mut border, computed)) = panel.single_mut() else { return };
+    let Ok((mut node, mut border, computed)) = panel.single_mut() else {
+        return;
+    };
     let Some(arch) = detail.open else {
         if node.display != Display::None {
             node.display = Display::None;
@@ -1930,17 +2498,32 @@ pub fn update_trader_detail_panel(
     // Directly under the Traders list (over the panels below it), as tall as its content;
     // pushed up if it would run into the bottom buttons; at the top of the column when the
     // list is hidden.
-    let viewport_h = camera.single().ok().and_then(|c| c.logical_viewport_size()).map(|s| s.y).unwrap_or(800.0);
-    let below_list = traders.single().ok().filter(|(n, c, _)| n.display != Display::None && c.size().y > 0.0).map(|(_, c, t)| {
-        (t.translation.y + c.size().y * 0.5) * c.inverse_scale_factor() + crate::panels::COLUMN_GAP
-    });
+    let viewport_h = camera
+        .single()
+        .ok()
+        .and_then(|c| c.logical_viewport_size())
+        .map(|s| s.y)
+        .unwrap_or(800.0);
+    let below_list = traders
+        .single()
+        .ok()
+        .filter(|(n, c, _)| n.display != Display::None && c.size().y > 0.0)
+        .map(|(_, c, t)| {
+            (t.translation.y + c.size().y * 0.5) * c.inverse_scale_factor()
+                + crate::panels::COLUMN_GAP
+        });
     let (top, max_h) = detail_panel_place(below_list, viewport_h);
     if node.top != Val::Px(top) || node.max_height != Val::Px(max_h) {
         node.top = Val::Px(top);
         node.max_height = Val::Px(max_h);
     }
     let height = (computed.size().y * computed.inverse_scale_factor()).clamp(60.0, max_h);
-    picking.panel = Some(Rect::new(PANEL_LEFT, top, PANEL_LEFT + PANEL_W, top + height));
+    picking.panel = Some(Rect::new(
+        PANEL_LEFT,
+        top,
+        PANEL_LEFT + PANEL_W,
+        top + height,
+    ));
 
     let now = time.elapsed_secs();
     if now < *next && !detail.is_changed() && !avatars.is_changed() {
@@ -1948,18 +2531,35 @@ pub fn update_trader_detail_panel(
     }
     *next = now + 0.25;
     publish_panel(picking.panel);
-    let Some(snap) = avatars.snapshot(arch) else { return };
+    let Some(snap) = avatars.snapshot(arch) else {
+        return;
+    };
     let colour = jacket_color(arch);
     *border = BorderColor::all(colour.with_alpha(0.75));
     if let Ok((mut t, mut c)) = title.single_mut() {
-        set_ui_text(&mut t, format!("{}  ({})  |  {}", arch.name().to_uppercase(), arch.label(), label_text(arch.name(), snap.headline().0, snap.headline().1).split("  ").last().unwrap_or("")));
+        set_ui_text(
+            &mut t,
+            format!(
+                "{}  ({})  |  {}",
+                arch.name().to_uppercase(),
+                arch.label(),
+                label_text(arch.name(), snap.headline().0, snap.headline().1)
+                    .split("  ")
+                    .last()
+                    .unwrap_or("")
+            ),
+        );
         if c.0 != colour {
             c.0 = colour;
         }
     }
     let mark = snap.open.as_ref().and_then(|o| {
         let q = feed.quote(o.inst?)?;
-        Some(if o.is_long() { q.price as f32 } else { q.ask as f32 })
+        Some(if o.is_long() {
+            q.price as f32
+        } else {
+            q.ask as f32
+        })
     });
     for (mut bg, is_halo) in portrait.iter_mut() {
         let want = if is_halo { arch.color() } else { colour };
@@ -1969,22 +2569,37 @@ pub fn update_trader_detail_panel(
     }
     let now_s = time.elapsed_secs_f64();
     let board = desk.live_board(now_s);
-    let heartbeat = board.and_then(|b| b.heartbeat_age_ms).map(|ms| format!("heartbeat {}s ago", ms / 1000));
+    let heartbeat = board
+        .and_then(|b| b.heartbeat_age_ms)
+        .map(|ms| format!("heartbeat {}s ago", ms / 1000));
     // Outlook: Jev's latest read of the pit this trader is in (or last looked at), and what
     // the trader made of it.
     let mut outlook = Vec::new();
     if let Some(pit) = snap.open_pit().or(snap.last_pit) {
         let read = match (snap.source, board) {
-            (Source::Desk, Some(b)) => b.jev_read(pit.symbol()).map(|r| format!("{}  |  {:.0} s ago", r.headline, r.age_secs)),
-            _ => jev.read(pit).map(|r| format!("{}  |  {:.0} s ago", r.headline(), (now_s - r.at).max(0.0))),
+            (Source::Desk, Some(b)) => b
+                .jev_read(pit.symbol())
+                .map(|r| format!("{}  |  {:.0} s ago", r.headline, r.age_secs)),
+            _ => jev
+                .read(pit)
+                .map(|r| format!("{}  |  {:.0} s ago", r.headline(), (now_s - r.at).max(0.0))),
         };
-        outlook.push(format!("Outlook on {}: {}", pit.symbol(), read.unwrap_or_else(|| "no Jev read of this pit yet".into())));
+        outlook.push(format!(
+            "Outlook on {}: {}",
+            pit.symbol(),
+            read.unwrap_or_else(|| "no Jev read of this pit yet".into())
+        ));
         let take = snap
             .open
             .as_ref()
             .filter(|o| o.inst == Some(pit))
             .map(|o| format!("in because: {}", o.why))
-            .or_else(|| snap.waiting.iter().find(|w| w.symbol == pit.symbol()).map(|w| format!("out because: {}", w.why)));
+            .or_else(|| {
+                snap.waiting
+                    .iter()
+                    .find(|w| w.symbol == pit.symbol())
+                    .map(|w| format!("out because: {}", w.why))
+            });
         if let Some(t) = take {
             outlook.push(format!("  {}'s take: {}", arch.name(), t));
         }
@@ -1993,7 +2608,14 @@ pub fn update_trader_detail_panel(
     let n = toned.len().min(DETAIL_LINES);
     for (line, mut span, mut color) in spans.iter_mut() {
         let (text, tone) = match toned.get(line.0).filter(|_| line.0 < n) {
-            Some((t, tone)) => (if line.0 + 1 < n { format!("{t}\n") } else { t.clone() }, *tone),
+            Some((t, tone)) => (
+                if line.0 + 1 < n {
+                    format!("{t}\n")
+                } else {
+                    t.clone()
+                },
+                *tone,
+            ),
             None => (String::new(), LineTone::Plain),
         };
         if span.0 != text {
@@ -2020,21 +2642,45 @@ mod tests {
         book.fly_to = Some(arch);
         world.insert_resource(book);
         world.insert_resource(TraderDetail { open: Some(arch) });
-        let body = world.spawn((PaperAvatar { arch, index: 0 }, GlobalTransform::from_translation(Vec3::new(50.0, 0.0, 20.0)), Visibility::Inherited)).id();
-        let cam = world.spawn((crate::camera::OrbitCamera::default(), PitCamera3d)).id();
+        let body = world
+            .spawn((
+                PaperAvatar { arch, index: 0 },
+                GlobalTransform::from_translation(Vec3::new(50.0, 0.0, 20.0)),
+                Visibility::Inherited,
+            ))
+            .id();
+        let cam = world
+            .spawn((crate::camera::OrbitCamera::default(), PitCamera3d))
+            .id();
         world.run_system_once(follow_clicked_trader).unwrap();
-        let o = world.get::<crate::camera::OrbitCamera>(cam).unwrap().clone();
+        let o = world
+            .get::<crate::camera::OrbitCamera>(cam)
+            .unwrap()
+            .clone();
         assert_eq!(o.follow, Some(arch));
-        assert_eq!((o.goal_target, o.goal_radius), (Vec3::new(50.0, 10.0, 20.0), crate::camera::FOLLOW_RADIUS));
+        assert_eq!(
+            (o.goal_target, o.goal_radius),
+            (Vec3::new(50.0, 10.0, 20.0), crate::camera::FOLLOW_RADIUS)
+        );
         // It walks: the camera keeps it framed.
-        *world.get_mut::<GlobalTransform>(body).unwrap() = GlobalTransform::from_translation(Vec3::new(60.0, 0.0, 25.0));
+        *world.get_mut::<GlobalTransform>(body).unwrap() =
+            GlobalTransform::from_translation(Vec3::new(60.0, 0.0, 25.0));
         world.run_system_once(follow_clicked_trader).unwrap();
-        assert_eq!(world.get::<crate::camera::OrbitCamera>(cam).unwrap().goal_target, Vec3::new(60.0, 10.0, 25.0));
+        assert_eq!(
+            world
+                .get::<crate::camera::OrbitCamera>(cam)
+                .unwrap()
+                .goal_target,
+            Vec3::new(60.0, 10.0, 25.0)
+        );
         // The panel closes: the camera stays put and stops following.
         world.resource_mut::<TraderDetail>().open = None;
         world.run_system_once(follow_clicked_trader).unwrap();
         let o = world.get::<crate::camera::OrbitCamera>(cam).unwrap();
-        assert_eq!((o.follow, o.goal_target), (None, Vec3::new(60.0, 10.0, 25.0)));
+        assert_eq!(
+            (o.follow, o.goal_target),
+            (None, Vec3::new(60.0, 10.0, 25.0))
+        );
         // Sending the camera to a pit ends a follow too.
         let mut o = o.clone();
         o.follow = Some(arch);
@@ -2048,76 +2694,219 @@ mod tests {
         use crate::desk_feed::{DeskPit, DeskSeat};
         let board = DeskBoard {
             traders: vec![
-                DeskTrader { trader: "Gus".into(), archetype: "contrarian".into(), trades: 2, day_trades: 2, ..Default::default() },
-                DeskTrader { trader: "Lena".into(), archetype: "absorber".into(), ..Default::default() },
-                DeskTrader { trader: "Testgenome".into(), archetype: "genome".into(), day_trades: 3, day_r: 1.0, trades: 5, net_r: 2.5, ..Default::default() },
-                DeskTrader { trader: "Vegatest".into(), archetype: "holder".into(), ..Default::default() },
+                DeskTrader {
+                    trader: "Gus".into(),
+                    archetype: "contrarian".into(),
+                    trades: 2,
+                    day_trades: 2,
+                    ..Default::default()
+                },
+                DeskTrader {
+                    trader: "Lena".into(),
+                    archetype: "absorber".into(),
+                    ..Default::default()
+                },
+                DeskTrader {
+                    trader: "Testgenome".into(),
+                    archetype: "genome".into(),
+                    day_trades: 3,
+                    day_r: 1.0,
+                    trades: 5,
+                    net_r: 2.5,
+                    ..Default::default()
+                },
+                DeskTrader {
+                    trader: "Vegatest".into(),
+                    archetype: "holder".into(),
+                    ..Default::default()
+                },
             ],
-            pit: Some(DeskPit { seats: vec![DeskSeat { id: "gtest1".into(), name: "Testgenome".into(), creed: "15m follow a test".into(), ..Default::default() }], ..Default::default() }),
+            pit: Some(DeskPit {
+                seats: vec![DeskSeat {
+                    id: "gtest1".into(),
+                    name: "Testgenome".into(),
+                    creed: "15m follow a test".into(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
             ..Default::default()
         };
         let snaps = snapshots_from_board(&board);
-        assert_eq!(snaps.len(), Archetype::ALL.len() + 1, "the idle holder has no body until it trades");
-        assert_eq!(board.ranking().iter().map(|&t| board.traders[t].trader.as_str()).collect::<Vec<_>>(), vec!["Testgenome", "Gus"], "idle traders are not listed");
-        assert!(board.header_line().contains("2 more waiting for a signal"), "{}", board.header_line());
-        assert!(!snaps.iter().find(|s| s.arch.name() == "Lena").unwrap().on_desk, "an idle built-in does not walk the floor");
-        assert!(board.traders.iter().all(|t| t.archetype().is_some() || t.is_genome()), "the page would call itself out of date");
-        let g = snaps.iter().find(|s| s.arch.name() == "Testgenome").unwrap();
+        assert_eq!(
+            snaps.len(),
+            Archetype::ALL.len() + 1,
+            "the idle holder has no body until it trades"
+        );
+        assert_eq!(
+            board
+                .ranking()
+                .iter()
+                .map(|&t| board.traders[t].trader.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Testgenome", "Gus"],
+            "idle traders are not listed"
+        );
+        assert!(
+            board.header_line().contains("2 more waiting for a signal"),
+            "{}",
+            board.header_line()
+        );
+        assert!(
+            !snaps
+                .iter()
+                .find(|s| s.arch.name() == "Lena")
+                .unwrap()
+                .on_desk,
+            "an idle built-in does not walk the floor"
+        );
+        assert!(
+            board
+                .traders
+                .iter()
+                .all(|t| t.archetype().is_some() || t.is_genome()),
+            "the page would call itself out of date"
+        );
+        let g = snaps
+            .iter()
+            .find(|s| s.arch.name() == "Testgenome")
+            .unwrap();
         assert!(matches!(g.arch, Archetype::Genome(_)));
         assert_eq!(g.arch.name(), "Testgenome");
         assert_eq!(g.arch.describe(), "15m follow a test");
         assert_eq!(g.day.trades, 3);
-        assert_eq!(g.headline(), (1.0, 3), "over the figure: the table's numbers, today's");
-        assert_eq!(genome_arch(&board, "Testgenome"), g.arch, "the same genome is the same archetype every refresh");
+        assert_eq!(
+            g.headline(),
+            (1.0, 3),
+            "over the figure: the table's numbers, today's"
+        );
+        assert_eq!(
+            genome_arch(&board, "Testgenome"),
+            g.arch,
+            "the same genome is the same archetype every refresh"
+        );
         let colin = snaps.iter().find(|s| s.arch == Archetype::Control).unwrap();
         assert!(!colin.on_desk, "Colin is not on this board");
-        assert!(snaps.iter().find(|s| s.arch.name() == "Gus").unwrap().on_desk);
+        assert!(
+            snaps
+                .iter()
+                .find(|s| s.arch.name() == "Gus")
+                .unwrap()
+                .on_desk
+        );
     }
 
     #[test]
     fn past_trades_the_open_position_and_the_day_are_coloured_by_their_r() {
         let mut s = TraderSnapshot::empty(Archetype::Control, Source::Desk);
-        s.day = DayStats { trades: 2, wins: 1, losses: 1, net_r: -0.4, ..Default::default() };
+        s.day = DayStats {
+            trades: 2,
+            wins: 1,
+            losses: 1,
+            net_r: -0.4,
+            ..Default::default()
+        };
         s.last_trades = vec![
-            DeskTrade { symbol: "US500".into(), side: "long".into(), pnl_r: 1.2, why_out: "target".into(), ..Default::default() },
-            DeskTrade { symbol: "US500".into(), side: "short".into(), pnl_r: -1.6, why_out: "stop".into(), ..Default::default() },
+            DeskTrade {
+                symbol: "US500".into(),
+                side: "long".into(),
+                pnl_r: 1.2,
+                why_out: "target".into(),
+                ..Default::default()
+            },
+            DeskTrade {
+                symbol: "US500".into(),
+                side: "short".into(),
+                pnl_r: -1.6,
+                why_out: "stop".into(),
+                ..Default::default()
+            },
         ];
         let toned = detail_lines_toned(&s, None, None, &[]);
         let tone = |p: &str| toned.iter().find(|(l, _)| l.starts_with(p)).map(|x| x.1);
         assert_eq!(tone("Today (since"), Some(LineTone::Pnl(-0.4)));
         assert_eq!(tone("Last 2 trades"), Some(LineTone::Head));
-        let h = toned.iter().position(|(l, _)| l.starts_with("Last 2 trades")).unwrap();
-        assert_eq!((toned[h + 1].1, toned[h + 2].1), (LineTone::Pnl(1.2), LineTone::Pnl(-1.6)), "each trade by its own R");
-        assert_eq!(toned[h + 3].1, LineTone::Plain, "the source line after them is plain");
+        let h = toned
+            .iter()
+            .position(|(l, _)| l.starts_with("Last 2 trades"))
+            .unwrap();
+        assert_eq!(
+            (toned[h + 1].1, toned[h + 2].1),
+            (LineTone::Pnl(1.2), LineTone::Pnl(-1.6)),
+            "each trade by its own R"
+        );
+        assert_eq!(
+            toned[h + 3].1,
+            LineTone::Plain,
+            "the source line after them is plain"
+        );
         assert_ne!(LineTone::Pnl(1.2).color(), LineTone::Pnl(-1.6).color());
-        assert_eq!(detail_lines(&s, None, None, &[]), toned.into_iter().map(|x| x.0).collect::<Vec<_>>(), "same lines, only coloured");
+        assert_eq!(
+            detail_lines(&s, None, None, &[]),
+            toned.into_iter().map(|x| x.0).collect::<Vec<_>>(),
+            "same lines, only coloured"
+        );
     }
 
     #[test]
     fn pressing_the_scrollbar_brings_that_part_of_the_body_into_view() {
         assert_eq!(track_scroll(0.0, 1000.0, 300.0), 0.0);
-        assert_eq!(track_scroll(1.0, 1000.0, 300.0), 700.0, "the bottom, never past it");
-        assert_eq!(track_scroll(0.5, 1000.0, 300.0), 350.0, "the middle of the body to the middle of the window");
+        assert_eq!(
+            track_scroll(1.0, 1000.0, 300.0),
+            700.0,
+            "the bottom, never past it"
+        );
+        assert_eq!(
+            track_scroll(0.5, 1000.0, 300.0),
+            350.0,
+            "the middle of the body to the middle of the window"
+        );
         assert_eq!(track_scroll(0.5, 200.0, 300.0), 0.0, "all of it fits");
     }
 
     #[test]
     fn two_traders_on_one_spot_step_apart_and_far_ones_stay() {
         let a = Vec2::new(10.0, 0.0);
-        assert_eq!(separation_push(a, Vec2::new(30.0, 0.0), 0), None, "far apart: nothing");
+        assert_eq!(
+            separation_push(a, Vec2::new(30.0, 0.0), 0),
+            None,
+            "far apart: nothing"
+        );
         let p = separation_push(a, Vec2::new(12.0, 0.0), 0).unwrap();
-        assert!((p - Vec2::new(-2.0, 0.0)).length() < 1e-4, "half the 4-unit overlap each, away from the other: {p:?}");
+        assert!(
+            (p - Vec2::new(-2.0, 0.0)).length() < 1e-4,
+            "half the 4-unit overlap each, away from the other: {p:?}"
+        );
         let q = separation_push(a, a, 3).unwrap();
-        assert!((q.length() - MIN_SEPARATION * 0.5).abs() < 1e-4, "exactly on top of each other: still pushed apart");
+        assert!(
+            (q.length() - MIN_SEPARATION * 0.5).abs() < 1e-4,
+            "exactly on top of each other: still pushed apart"
+        );
     }
 
     #[test]
     fn the_trader_panel_opens_under_the_list_and_never_on_the_buttons() {
         let floor = 1000.0 - PANEL_BOTTOM;
-        assert_eq!(detail_panel_place(Some(340.0), 1000.0), (340.0, floor - 340.0), "right under the list, down to the buttons");
-        assert_eq!(detail_panel_place(Some(700.0), 1000.0), (floor - DETAIL_MIN_H, DETAIL_MIN_H), "a long list: up over its last rows, never onto the buttons");
-        assert_eq!(detail_panel_place(None, 1000.0).0, crate::panels::COLUMN_TOP, "top of the column with the list hidden");
-        assert_eq!(detail_panel_place(Some(400.0), 300.0).0, crate::panels::COLUMN_TOP, "never above the column");
+        assert_eq!(
+            detail_panel_place(Some(340.0), 1000.0),
+            (340.0, floor - 340.0),
+            "right under the list, down to the buttons"
+        );
+        assert_eq!(
+            detail_panel_place(Some(700.0), 1000.0),
+            (floor - DETAIL_MIN_H, DETAIL_MIN_H),
+            "a long list: up over its last rows, never onto the buttons"
+        );
+        assert_eq!(
+            detail_panel_place(None, 1000.0).0,
+            crate::panels::COLUMN_TOP,
+            "top of the column with the list hidden"
+        );
+        assert_eq!(
+            detail_panel_place(Some(400.0), 300.0).0,
+            crate::panels::COLUMN_TOP,
+            "never above the column"
+        );
     }
 
     #[test]
@@ -2137,7 +2926,10 @@ mod tests {
             assert!(!is_free(stand), "the step is inside the blocked ring");
             assert_eq!(face, c, "faces the well");
             let (rail, _) = rail_stand(Instrument::Gold, k);
-            assert!(rail.distance(stand) < 20.0, "a short straight step down from the rail");
+            assert!(
+                rail.distance(stand) < 20.0,
+                "a short straight step down from the rail"
+            );
             assert!(is_free(rail));
         }
         // Leaving the pit still routes: the path starts from the nearest free cell.
@@ -2180,8 +2972,14 @@ mod tests {
 
     #[test]
     fn the_goal_is_the_open_pit_then_the_last_pit_then_a_wander() {
-        assert_eq!(pick_goal(Some(Instrument::Gold), Some(Instrument::Silver)), Goal::AtRail(Instrument::Gold));
-        assert_eq!(pick_goal(None, Some(Instrument::Silver)), Goal::Visit(Instrument::Silver));
+        assert_eq!(
+            pick_goal(Some(Instrument::Gold), Some(Instrument::Silver)),
+            Goal::AtRail(Instrument::Gold)
+        );
+        assert_eq!(
+            pick_goal(None, Some(Instrument::Silver)),
+            Goal::Visit(Instrument::Silver)
+        );
         assert_eq!(pick_goal(None, None), Goal::Wander);
         assert_eq!(Goal::Wander.pit(), None);
         assert_eq!(Goal::Visit(Instrument::Us30).pit(), Some(Instrument::Us30));
@@ -2191,25 +2989,66 @@ mod tests {
     fn snapshots_from_a_board_carry_the_day_the_open_pit_and_the_last_pit() {
         let b = parse_board(BOARD).unwrap();
         let snaps = snapshots_from_board(&b);
-        assert_eq!(snaps.len(), Archetype::ALL.len(), "every archetype, board or not");
-        let grace = snaps.iter().find(|s| s.arch == Archetype::TrendRider).unwrap();
+        assert_eq!(
+            snaps.len(),
+            Archetype::ALL.len(),
+            "every archetype, board or not"
+        );
+        let grace = snaps
+            .iter()
+            .find(|s| s.arch == Archetype::TrendRider)
+            .unwrap();
         assert_eq!(grace.source, Source::Desk);
-        assert_eq!((grace.day.trades, grace.day.wins, grace.day.losses), (2, 1, 1));
+        assert_eq!(
+            (grace.day.trades, grace.day.wins, grace.day.losses),
+            (2, 1, 1)
+        );
         assert!((grace.day.net_r + 0.7).abs() < 1e-6);
         assert_eq!(grace.open_pit(), Some(Instrument::Silver));
         assert_eq!(grace.last_pit, Some(Instrument::Us30));
-        assert_eq!(pick_goal(grace.open_pit(), grace.last_pit), Goal::AtRail(Instrument::Silver), "the open position wins");
+        assert_eq!(
+            pick_goal(grace.open_pit(), grace.last_pit),
+            Goal::AtRail(Instrument::Silver),
+            "the open position wins"
+        );
         let colin = snaps.iter().find(|s| s.arch == Archetype::Control).unwrap();
-        assert_eq!(pick_goal(colin.open_pit(), colin.last_pit), Goal::Visit(Instrument::Nasdaq), "flat: the last trade's pit");
-        let priya = snaps.iter().find(|s| s.arch == Archetype::IctLevelTrader).unwrap();
-        assert_eq!(pick_goal(priya.open_pit(), priya.last_pit), Goal::Wander, "not on the board at all");
+        assert_eq!(
+            pick_goal(colin.open_pit(), colin.last_pit),
+            Goal::Visit(Instrument::Nasdaq),
+            "flat: the last trade's pit"
+        );
+        let priya = snaps
+            .iter()
+            .find(|s| s.arch == Archetype::IctLevelTrader)
+            .unwrap();
+        assert_eq!(
+            pick_goal(priya.open_pit(), priya.last_pit),
+            Goal::Wander,
+            "not on the board at all"
+        );
         assert_eq!(priya.day, DayStats::default());
 
-        let mut avatars = PaperAvatars { snapshots: snaps, source: Source::Desk, revision: 1, next_refresh: 0.0 };
-        assert_eq!(avatars.goal_and_rank(Archetype::TrendRider), (Goal::AtRail(Instrument::Silver), 0));
+        let mut avatars = PaperAvatars {
+            snapshots: snaps,
+            source: Source::Desk,
+            revision: 1,
+            next_refresh: 0.0,
+        };
+        assert_eq!(
+            avatars.goal_and_rank(Archetype::TrendRider),
+            (Goal::AtRail(Instrument::Silver), 0)
+        );
         // Two traders at one pit take different stands.
-        avatars.snapshots.iter_mut().find(|s| s.arch == Archetype::Control).unwrap().last_pit = Some(Instrument::Silver);
-        assert_eq!(avatars.goal_and_rank(Archetype::Control), (Goal::Visit(Instrument::Silver), 1));
+        avatars
+            .snapshots
+            .iter_mut()
+            .find(|s| s.arch == Archetype::Control)
+            .unwrap()
+            .last_pit = Some(Instrument::Silver);
+        assert_eq!(
+            avatars.goal_and_rank(Archetype::Control),
+            (Goal::Visit(Instrument::Silver), 1)
+        );
         let (a, _) = rail_stand(Instrument::Silver, 0);
         let (b2, _) = rail_stand(Instrument::Silver, 1);
         assert!(a.distance(b2) > 20.0);
@@ -2228,16 +3067,30 @@ mod tests {
         let d = day_stats_from_trades(&trades, day_start);
         assert_eq!((d.trades, d.wins, d.losses), (4, 2, 2));
         assert!((d.net_r - 1.8).abs() < 1e-5, "{}", d.net_r);
-        assert!((d.spread_paid_r - 0.8).abs() < 1e-5, "0.2 R of spread per trade");
-        assert!((d.max_drawdown_r - 1.2).abs() < 1e-5, "peak 1.0 to -0.2 regardless of input order: {}", d.max_drawdown_r);
+        assert!(
+            (d.spread_paid_r - 0.8).abs() < 1e-5,
+            "0.2 R of spread per trade"
+        );
+        assert!(
+            (d.max_drawdown_r - 1.2).abs() < 1e-5,
+            "peak 1.0 to -0.2 regardless of input order: {}",
+            d.max_drawdown_r
+        );
         assert!((d.win_rate() - 0.5).abs() < 1e-6);
         assert_eq!(day_stats_from_trades(&[], day_start), DayStats::default());
-        assert_eq!(day_start_ms(day_start + 5), day_start_ms(day_start + 86_399_999));
+        assert_eq!(
+            day_start_ms(day_start + 5),
+            day_start_ms(day_start + 86_399_999)
+        );
 
         // The in-tab book path reads the same trades.
         let mut book = PaperBook::default();
         book.log_to_relay = false;
-        let g = book.traders.iter().position(|t| t.archetype == Archetype::TrendRider).unwrap();
+        let g = book
+            .traders
+            .iter()
+            .position(|t| t.archetype == Archetype::TrendRider)
+            .unwrap();
         book.traders[g].trades = trades;
         let feed = LiveFeed::default();
         let snaps = snapshots_from_book(&book, &feed, day_start + 10_000);
@@ -2258,8 +3111,16 @@ mod tests {
         assert_eq!(tone_for(1.3, 3), Tone::Up);
         assert_eq!(tone_for(-0.2, 1), Tone::Down);
         assert_eq!(tone_for(0.0, 0), Tone::Flat);
-        assert_eq!(tone_for(0.04, 2), Tone::Flat, "a rounding-to-flat day is grey");
-        assert_eq!(tone_for(2.0, 0), Tone::Flat, "no trades means grey whatever the number says");
+        assert_eq!(
+            tone_for(0.04, 2),
+            Tone::Flat,
+            "a rounding-to-flat day is grey"
+        );
+        assert_eq!(
+            tone_for(2.0, 0),
+            Tone::Flat,
+            "no trades means grey whatever the number says"
+        );
         let open = OpenPosition {
             inst: Some(Instrument::Silver),
             symbol: "XAG/USD".into(),
@@ -2273,7 +3134,11 @@ mod tests {
         };
         assert_eq!(open_line(&open), "LONG XAG/USD  +0.35R");
         assert_eq!(instrument_for_symbol("XAG/USD"), Some(Instrument::Silver));
-        assert_eq!(instrument_for_symbol("XAGUSD"), Some(Instrument::Silver), "the tape's name too");
+        assert_eq!(
+            instrument_for_symbol("XAGUSD"),
+            Some(Instrument::Silver),
+            "the tape's name too"
+        );
         assert_eq!(instrument_for_symbol("DOGE"), None);
     }
 
@@ -2281,21 +3146,74 @@ mod tests {
     fn detail_lines_name_the_rules_the_day_the_open_position_and_the_source() {
         let b = parse_board(BOARD).unwrap();
         let snaps = snapshots_from_board(&b);
-        let grace = snaps.iter().find(|s| s.arch == Archetype::TrendRider).unwrap();
-        let lines = detail_lines(grace, Some(57.91), Some("heartbeat 3s ago".into()), &["Outlook on XAG/USD: Jev: UP 40%".to_string()]);
-        assert!(lines[1].starts_with("Strategy: Needs Jev's lean to agree with the last 20 bars"), "{}", lines[1]);
-        assert!(lines[2].starts_with("Rules: enters 08:00-16:30 UTC"), "{}", lines[2]);
-        assert!(lines[2].contains("stop >= 20 spreads, target >= 4 spreads") && lines[2].ends_with("Jev: yes"), "{}", lines[2]);
-        assert_eq!(lines[3], "Outlook on XAG/USD: Jev: UP 40%", "the outlook follows the rules");
-        assert!(lines[4].starts_with("Today (since 00:00 UTC): 2 trades, 50% win, -0.70R net"), "{}", lines[4]);
-        assert!(lines[5].starts_with("OPEN: LONG XAG/USD from 57.840  stop 57.740  target 58.040  mark 57.910  +0.35R"), "{}", lines[5]);
+        let grace = snaps
+            .iter()
+            .find(|s| s.arch == Archetype::TrendRider)
+            .unwrap();
+        let lines = detail_lines(
+            grace,
+            Some(57.91),
+            Some("heartbeat 3s ago".into()),
+            &["Outlook on XAG/USD: Jev: UP 40%".to_string()],
+        );
+        assert!(
+            lines[1].starts_with("Strategy: Needs Jev's lean to agree with the last 20 bars"),
+            "{}",
+            lines[1]
+        );
+        assert!(
+            lines[2].starts_with("Rules: enters 08:00-16:30 UTC"),
+            "{}",
+            lines[2]
+        );
+        assert!(
+            lines[2].contains("stop >= 20 spreads, target >= 4 spreads")
+                && lines[2].ends_with("Jev: yes"),
+            "{}",
+            lines[2]
+        );
+        assert_eq!(
+            lines[3], "Outlook on XAG/USD: Jev: UP 40%",
+            "the outlook follows the rules"
+        );
+        assert!(
+            lines[4].starts_with("Today (since 00:00 UTC): 2 trades, 50% win, -0.70R net"),
+            "{}",
+            lines[4]
+        );
+        assert!(
+            lines[5].starts_with(
+                "OPEN: LONG XAG/USD from 57.840  stop 57.740  target 58.040  mark 57.910  +0.35R"
+            ),
+            "{}",
+            lines[5]
+        );
         assert!(lines[5].ends_with("since 21:43 UTC"), "{}", lines[5]);
-        assert!(lines.iter().any(|l| l.contains("US30    short 1.0 -> 0.9 +1.00R target | a")), "{:?}", lines);
-        assert!(lines.iter().all(|l| !l.starts_with(" 00:") || l.chars().count() <= 90), "trade lines fit the panel: {:?}", lines);
-        assert!(lines.last().unwrap().contains("DESK") && lines.last().unwrap().ends_with("heartbeat 3s ago"));
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains("US30    short 1.0 -> 0.9 +1.00R target | a")),
+            "{:?}",
+            lines
+        );
+        assert!(
+            lines
+                .iter()
+                .all(|l| !l.starts_with(" 00:") || l.chars().count() <= 90),
+            "trade lines fit the panel: {:?}",
+            lines
+        );
+        assert!(
+            lines.last().unwrap().contains("DESK")
+                && lines.last().unwrap().ends_with("heartbeat 3s ago")
+        );
         let colin = snaps.iter().find(|s| s.arch == Archetype::Control).unwrap();
         let lines = detail_lines(colin, None, None, &[]);
-        assert!(lines.iter().any(|l| l == "Today (since 00:00 UTC): no trades yet"));
+        assert!(
+            lines
+                .iter()
+                .any(|l| l == "Today (since 00:00 UTC): no trades yet")
+        );
         assert!(lines.iter().any(|l| l == "Flat: no open position"));
         assert!(lines[2].ends_with("Jev: no"));
         assert!(lines[1].contains("coin"), "{}", lines[1]);
@@ -2327,36 +3245,60 @@ mod tests {
                 assert_eq!(*path.last().unwrap(), stand);
                 let mut prev = spawn_spot(i);
                 for &p in &path {
-                    assert!(segment_clear(prev, p), "{i} -> {inst:?} clips a pit between {prev} and {p}");
+                    assert!(
+                        segment_clear(prev, p),
+                        "{i} -> {inst:?} clips a pit between {prev} and {p}"
+                    );
                     prev = p;
                 }
             }
         }
         // Gold's rail to the FTSE rail runs the long way round, never through Nasdaq.
-        let path = route(rail_stand(Instrument::Gold, 0).0, rail_stand(Instrument::Uk100, 0).0);
+        let path = route(
+            rail_stand(Instrument::Gold, 0).0,
+            rail_stand(Instrument::Uk100, 0).0,
+        );
         let mut prev = rail_stand(Instrument::Gold, 0).0;
         for &p in &path {
             assert!(segment_clear(prev, p));
             prev = p;
         }
-        let straight = segment_clear(rail_stand(Instrument::Gold, 0).0, rail_stand(Instrument::Uk100, 0).0);
+        let straight = segment_clear(
+            rail_stand(Instrument::Gold, 0).0,
+            rail_stand(Instrument::Uk100, 0).0,
+        );
         assert!(!straight, "the direct line crosses the Nasdaq pit");
-        assert!(path.len() >= 2, "so the route has at least one bend: {path:?}");
+        assert!(
+            path.len() >= 2,
+            "so the route has at least one bend: {path:?}"
+        );
     }
 
     #[test]
     fn picking_prefers_the_nearest_centre_and_the_open_panel_swallows_clicks() {
-        let mut p = AvatarPicking::default();
-        p.hits = vec![
-            (Archetype::TrendRider, Rect::new(100.0, 100.0, 140.0, 200.0)),
-            (Archetype::Control, Rect::new(120.0, 100.0, 160.0, 200.0)),
-        ];
-        assert_eq!(p.hit_at(Vec2::new(105.0, 150.0)), Some(Archetype::TrendRider));
+        let mut p = AvatarPicking {
+            hits: vec![
+                (Archetype::TrendRider, Rect::new(100.0, 100.0, 140.0, 200.0)),
+                (Archetype::Control, Rect::new(120.0, 100.0, 160.0, 200.0)),
+            ],
+            ..Default::default()
+        };
+        assert_eq!(
+            p.hit_at(Vec2::new(105.0, 150.0)),
+            Some(Archetype::TrendRider)
+        );
         assert_eq!(p.hit_at(Vec2::new(155.0, 150.0)), Some(Archetype::Control));
         assert_eq!(p.hit_at(Vec2::new(500.0, 150.0)), None);
         assert!(p.consume_click(Vec2::new(135.0, 150.0)));
-        assert_eq!(p.clicked, Some(Archetype::Control), "nearer to Colin's centre");
-        assert!(!p.consume_click(Vec2::new(500.0, 500.0)), "a floor click goes on to the pit picker");
+        assert_eq!(
+            p.clicked,
+            Some(Archetype::Control),
+            "nearer to Colin's centre"
+        );
+        assert!(
+            !p.consume_click(Vec2::new(500.0, 500.0)),
+            "a floor click goes on to the pit picker"
+        );
         p.panel = Some(Rect::new(8.0, 400.0, 428.0, 660.0));
         p.clicked = None;
         assert!(p.consume_click(Vec2::new(200.0, 500.0)));
@@ -2365,10 +3307,15 @@ mod tests {
 
     #[test]
     fn yaw_faces_the_target_and_angles_wrap() {
-        assert!((yaw_toward(Vec2::new(0.0, 1.0))).abs() < 1e-6, "front is +Z");
+        assert!(
+            (yaw_toward(Vec2::new(0.0, 1.0))).abs() < 1e-6,
+            "front is +Z"
+        );
         assert!((yaw_toward(Vec2::new(1.0, 0.0)) - std::f32::consts::FRAC_PI_2).abs() < 1e-6);
         assert!((wrap_angle(2.5 * std::f32::consts::PI) - 0.5 * std::f32::consts::PI).abs() < 1e-4);
-        assert!((wrap_angle(-2.5 * std::f32::consts::PI) + 0.5 * std::f32::consts::PI).abs() < 1e-4);
+        assert!(
+            (wrap_angle(-2.5 * std::f32::consts::PI) + 0.5 * std::f32::consts::PI).abs() < 1e-4
+        );
         assert!((wrap_angle(-0.5) + 0.5).abs() < 1e-6);
         assert_eq!(fmt_hm(1792619000000), "21:43");
         assert_eq!(fmt_session(&Session::new(7, 15, 8, 45)), "07:15-08:45");

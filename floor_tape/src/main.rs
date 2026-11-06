@@ -37,12 +37,12 @@ use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use rng::Rng;
-use sim::{minute_of, Sim, Tick, MINUTE_MS, T0_MS};
-use store::{parse_range, parse_timeframe, Bar, Series};
-use symbols::{by_name, round_to, SYMBOLS};
+use sim::{MINUTE_MS, Sim, T0_MS, Tick, minute_of};
+use store::{Bar, Series, parse_range, parse_timeframe};
+use symbols::{SYMBOLS, by_name, round_to};
 
 const BTC: usize = 6;
 const LEVELS: usize = 5;
@@ -53,7 +53,10 @@ const USAGE: &str = "usage: floor_tape [--port 8083] [--bind 0.0.0.0] [--seed 42
        floor_tape --write-csv DIR [--days 2]";
 
 fn now_ms() -> i64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
 }
 
 // ---------------------------------------------------------------------------
@@ -81,13 +84,24 @@ fn symbol_list(s: &str) -> Result<Vec<usize>, String> {
     if s.eq_ignore_ascii_case("all") {
         return Ok((0..SYMBOLS.len()).collect());
     }
-    s.split(',').filter(|x| !x.trim().is_empty()).map(|x| by_name(x.trim()).ok_or(format!("unknown symbol {x} (names: {})", SYMBOLS.map(|s| s.name).join(", ")))).collect()
+    s.split(',')
+        .filter(|x| !x.trim().is_empty())
+        .map(|x| {
+            by_name(x.trim()).ok_or(format!(
+                "unknown symbol {x} (names: {})",
+                SYMBOLS.map(|s| s.name).join(", ")
+            ))
+        })
+        .collect()
 }
 
 fn parse_args() -> Result<Args, String> {
     let argv: Vec<String> = std::env::args().skip(1).collect();
     let mut a = Args {
-        port: std::env::var("FLOOR_TAPE_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(8083),
+        port: std::env::var("FLOOR_TAPE_PORT")
+            .ok()
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(8083),
         bind: "0.0.0.0".into(),
         seed: 42,
         history_ms: 30 * 1440 * MINUTE_MS,
@@ -105,9 +119,13 @@ fn parse_args() -> Result<Args, String> {
     let mut i = 0;
     let val = |i: &mut usize| -> Result<String, String> {
         *i += 1;
-        argv.get(*i).cloned().ok_or(format!("{} needs a value", argv[*i - 1]))
+        argv.get(*i)
+            .cloned()
+            .ok_or(format!("{} needs a value", argv[*i - 1]))
     };
-    let dur = |s: String| parse_range(&format!("-{s}")).ok_or(format!("bad duration {s} (like 6h, 2d, 1w)"));
+    let dur = |s: String| {
+        parse_range(&format!("-{s}")).ok_or(format!("bad duration {s} (like 6h, 2d, 1w)"))
+    };
     while i < argv.len() {
         match argv[i].as_str() {
             "--port" => a.port = val(&mut i)?.parse().map_err(|_| "bad --port")?,
@@ -121,7 +139,10 @@ fn parse_args() -> Result<Args, String> {
             "--ingest" => a.ingest = symbol_list(&val(&mut i)?)?,
             "--only" => a.only = Some(symbol_list(&val(&mut i)?)?),
             "--write-cache" => a.write_cache = Some(PathBuf::from(val(&mut i)?)),
-            "--from" => a.from_ms = csv_source::parse_time(&format!("{}T00:00:00Z", val(&mut i)?)).ok_or("bad --from (YYYY-MM-DD)")?,
+            "--from" => {
+                a.from_ms = csv_source::parse_time(&format!("{}T00:00:00Z", val(&mut i)?))
+                    .ok_or("bad --from (YYYY-MM-DD)")?
+            }
             "--write-csv" => a.write_csv = Some(PathBuf::from(val(&mut i)?)),
             "--days" => a.days = val(&mut i)?.parse().map_err(|_| "bad --days")?,
             "-h" | "--help" => return Err(USAGE.into()),
@@ -190,7 +211,10 @@ struct Hub {
 impl Hub {
     fn broadcast(&self, channel: Channel, msg: String) {
         let msg = Arc::new(msg);
-        self.clients.lock().unwrap().retain(|c| c.channel != channel || c.tx.send(msg.clone()).is_ok());
+        self.clients
+            .lock()
+            .unwrap()
+            .retain(|c| c.channel != channel || c.tx.send(msg.clone()).is_ok());
     }
 
     /// One tick in: into the bars, out to every client, and on to the Level 2 book for BTC.
@@ -203,11 +227,19 @@ impl Hub {
             }
             t.quote[sym] = Some(tick);
             t.ticks[sym] += 1;
-            let depth = depth.or_else(|| (t.owner[sym] != Owner::Ingest).then(|| synthetic_ladder(sym, &tick, rng)));
+            let depth = depth.or_else(|| {
+                (t.owner[sym] != Owner::Ingest).then(|| synthetic_ladder(sym, &tick, rng))
+            });
             if let Some(d) = &depth {
                 t.ladder[sym] = Some(d.clone());
             }
-            let l2_msgs = if sym == BTC { t.l2.as_mut().map(|b| b.on_quote(tick.bid, tick.ask, tick.t)).unwrap_or_default() } else { Vec::new() };
+            let l2_msgs = if sym == BTC {
+                t.l2.as_mut()
+                    .map(|b| b.on_quote(tick.bid, tick.ask, tick.t))
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            };
             (depth, l2_msgs)
         };
         let spread = round_to(tick.ask - tick.bid, spec.digits + 1);
@@ -235,7 +267,14 @@ fn synthetic_ladder(sym: usize, tick: &Tick, rng: &mut Rng) -> Ladder {
         _ => 20.0,
     };
     let mut side = |px: f64, dir: f64| -> Vec<(f64, f64)> {
-        (0..LEVELS).map(|i| (round_to(px + dir * step * i as f64, spec.digits), (lot * (0.4 + 1.6 * rng.unit()) * (1.0 + i as f64 * 0.5)).round())).collect()
+        (0..LEVELS)
+            .map(|i| {
+                (
+                    round_to(px + dir * step * i as f64, spec.digits),
+                    (lot * (0.4 + 1.6 * rng.unit()) * (1.0 + i as f64 * 0.5)).round(),
+                )
+            })
+            .collect()
     };
     let bids = side(tick.bid, -1.0);
     let asks = side(tick.ask, 1.0);
@@ -261,16 +300,30 @@ fn synthetic_orderbook(seed: u64, sym: usize, price: f64, now: i64) -> Option<Va
         .map(|k| {
             let px = round_to(k as f64 * width, spec.digits);
             let near_round = ((px / round).round() * round - px).abs() < width * 0.5;
-            let boost = if near_round { 3.0 + 3.0 * rng.unit() } else { 1.0 };
+            let boost = if near_round {
+                3.0 + 3.0 * rng.unit()
+            } else {
+                1.0
+            };
             let below = px < price;
             let (l, s) = (0.05 + 0.15 * rng.unit(), 0.05 + 0.15 * rng.unit());
             // Buy limits rest below the price and sell limits above, so the round numbers there swell.
-            let (l, s) = if below { (l * boost, s) } else { (l, s * boost) };
-            json!([px, (l * 1000.0f64).round() / 1000.0, (s * 1000.0f64).round() / 1000.0])
+            let (l, s) = if below {
+                (l * boost, s)
+            } else {
+                (l, s * boost)
+            };
+            json!([
+                px,
+                (l * 1000.0f64).round() / 1000.0,
+                (s * 1000.0f64).round() / 1000.0
+            ])
         })
         .collect();
     let at = window * 20 * MINUTE_MS;
-    Some(json!({"symbol": spec.name, "instrument": spec.name, "time": format!("{}", at), "price": price, "bucketWidth": width, "buckets": buckets, "positions": [], "fetchedAt": at, "source": "synthetic"}))
+    Some(
+        json!({"symbol": spec.name, "instrument": spec.name, "time": format!("{}", at), "price": price, "bucketWidth": width, "buckets": buckets, "positions": [], "fetchedAt": at, "source": "synthetic"}),
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -293,8 +346,10 @@ fn decode(s: &str) -> String {
     while i < b.len() {
         match b[i] {
             b'+' => out.push(b' '),
-            b'%' if i + 2 < b.len() + 0 && i + 2 <= b.len() - 1 => {
-                if let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
+            b'%' if i + 2 < b.len() => {
+                // From the bytes, not `&s[..]`: a `%` before a multi-byte character must not panic.
+                let hex = std::str::from_utf8(&b[i + 1..i + 3]).ok();
+                if let Some(v) = hex.and_then(|h| u8::from_str_radix(h, 16).ok()) {
                     out.push(v);
                     i += 2;
                 } else {
@@ -318,7 +373,10 @@ fn peek_request(stream: &TcpStream) -> Option<Request> {
         if n == 0 {
             return None;
         }
-        if buf[..n].windows(4).any(|w| w == b"\r\n\r\n") || n == buf.len() || std::time::Instant::now() > deadline {
+        if buf[..n].windows(4).any(|w| w == b"\r\n\r\n")
+            || n == buf.len()
+            || std::time::Instant::now() > deadline
+        {
             break n;
         }
         std::thread::sleep(Duration::from_millis(5));
@@ -330,7 +388,10 @@ fn peek_request(stream: &TcpStream) -> Option<Request> {
     let method = first.next()?.to_string();
     let target = first.next()?.to_string();
     let (path, qs) = target.split_once('?').unwrap_or((&target, ""));
-    let query = qs.split('&').filter_map(|kv| kv.split_once('=').map(|(k, v)| (decode(k), decode(v)))).collect();
+    let query = qs
+        .split('&')
+        .filter_map(|kv| kv.split_once('=').map(|(k, v)| (decode(k), decode(v))))
+        .collect();
     let mut upgrade = false;
     let mut content_length = 0;
     for l in lines {
@@ -344,7 +405,14 @@ fn peek_request(stream: &TcpStream) -> Option<Request> {
             }
         }
     }
-    Some(Request { method, path: path.to_string(), query, upgrade, head_len, content_length })
+    Some(Request {
+        method,
+        path: path.to_string(),
+        query,
+        upgrade,
+        head_len,
+        content_length,
+    })
 }
 
 fn respond(stream: &mut TcpStream, status: u16, body: &str) {
@@ -366,7 +434,9 @@ fn respond(stream: &mut TcpStream, status: u16, body: &str) {
 }
 
 fn serve_ws(hub: Hub, stream: TcpStream, channel: Channel) {
-    let Ok(mut ws) = tungstenite::accept(stream) else { return };
+    let Ok(mut ws) = tungstenite::accept(stream) else {
+        return;
+    };
     let (tx, rx) = mpsc::channel::<Arc<String>>();
     let first = {
         let t = hub.tape.lock().unwrap();
@@ -377,12 +447,14 @@ fn serve_ws(hub: Hub, stream: TcpStream, channel: Channel) {
     };
     // Registered under the lock that publishes, so nothing falls between the snapshot and the stream.
     hub.clients.lock().unwrap().push(Client { channel, tx });
-    if let Some(m) = first {
-        if ws.send(tungstenite::Message::text(m)).is_err() {
-            return;
-        }
+    if let Some(m) = first
+        && ws.send(tungstenite::Message::text(m)).is_err()
+    {
+        return;
     }
-    let _ = ws.get_ref().set_read_timeout(Some(Duration::from_millis(20)));
+    let _ = ws
+        .get_ref()
+        .set_read_timeout(Some(Duration::from_millis(20)));
     loop {
         let mut wrote = false;
         while let Ok(m) = rx.try_recv() {
@@ -397,7 +469,11 @@ fn serve_ws(hub: Hub, stream: TcpStream, channel: Channel) {
         match ws.read() {
             Ok(tungstenite::Message::Close(_)) => return,
             Ok(_) => {}
-            Err(tungstenite::Error::Io(e)) if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => {}
+            Err(tungstenite::Error::Io(e))
+                if matches!(
+                    e.kind(),
+                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                ) => {}
             Err(_) => return,
         }
     }
@@ -405,9 +481,15 @@ fn serve_ws(hub: Hub, stream: TcpStream, channel: Channel) {
 
 fn handle(hub: Hub, mut stream: TcpStream) {
     let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
-    let Some(req) = peek_request(&stream) else { return };
+    let Some(req) = peek_request(&stream) else {
+        return;
+    };
     if req.upgrade {
-        let channel = if req.path.trim_end_matches('/') == "/l2" { Channel::L2 } else { Channel::Tape };
+        let channel = if req.path.trim_end_matches('/') == "/l2" {
+            Channel::L2
+        } else {
+            Channel::Tape
+        };
         let _ = stream.set_read_timeout(None);
         return serve_ws(hub, stream, channel);
     }
@@ -447,32 +529,67 @@ fn route(hub: &Hub, req: &Request, body: &[u8]) -> (u16, String) {
             (200, body.to_string())
         }
         ("GET", "/bars") => {
-            let Some(sym) = symbol() else { return (404, json!({"error": format!("unknown symbol {}", req.query.get("symbol").cloned().unwrap_or_default())}).to_string()) };
-            let tf_s = req.query.get("timeframe").cloned().unwrap_or_else(|| "1m".into());
-            let range_s = req.query.get("range").cloned().unwrap_or_else(|| "-6h".into());
-            let Some(tf) = parse_timeframe(&tf_s) else { return (400, r#"{"error":"timeframe must look like 1m, 5m, 15m, 1h, 1d"}"#.into()) };
-            let Some(range) = parse_range(&range_s) else { return (400, r#"{"error":"range must look like -6h, -2d, -1w"}"#.into()) };
+            let Some(sym) = symbol() else {
+                return (404, json!({"error": format!("unknown symbol {}", req.query.get("symbol").cloned().unwrap_or_default())}).to_string());
+            };
+            let tf_s = req
+                .query
+                .get("timeframe")
+                .cloned()
+                .unwrap_or_else(|| "1m".into());
+            let range_s = req
+                .query
+                .get("range")
+                .cloned()
+                .unwrap_or_else(|| "-6h".into());
+            let Some(tf) = parse_timeframe(&tf_s) else {
+                return (
+                    400,
+                    r#"{"error":"timeframe must look like 1m, 5m, 15m, 1h, 1d"}"#.into(),
+                );
+            };
+            let Some(range) = parse_range(&range_s) else {
+                return (
+                    400,
+                    r#"{"error":"range must look like -6h, -2d, -1w"}"#.into(),
+                );
+            };
             let delta = req.query.get("delta").map(|d| d == "1").unwrap_or(false);
             let t = hub.tape.lock().unwrap();
             let data = t.series[sym].query(now - range, tf, delta);
             (200, json!({"symbol": SYMBOLS[sym].name, "timeframe": tf_s, "range": range_s, "source": t.owner[sym].label(), "delta": delta, "count": data.len(), "data": data}).to_string())
         }
         ("GET", "/book") => {
-            let Some(sym) = symbol() else { return (404, r#"{"error":"unknown symbol"}"#.into()) };
+            let Some(sym) = symbol() else {
+                return (404, r#"{"error":"unknown symbol"}"#.into());
+            };
             let t = hub.tape.lock().unwrap();
-            let (Some(q), Some((b, a))) = (t.quote[sym], t.ladder[sym].clone()) else { return (404, json!({"error": format!("no book yet for {}", SYMBOLS[sym].name)}).to_string()) };
+            let (Some(q), Some((b, a))) = (t.quote[sym], t.ladder[sym].clone()) else {
+                return (
+                    404,
+                    json!({"error": format!("no book yet for {}", SYMBOLS[sym].name)}).to_string(),
+                );
+            };
             (200, json!({"symbol": SYMBOLS[sym].name, "bid": q.bid, "ask": q.ask, "t": q.t, "bids": b, "asks": a}).to_string())
         }
         ("GET", "/orderbook") => {
-            let Some(sym) = symbol() else { return (404, r#"{"error":"unknown symbol"}"#.into()) };
+            let Some(sym) = symbol() else {
+                return (404, r#"{"error":"unknown symbol"}"#.into());
+            };
             let t = hub.tape.lock().unwrap();
             if t.owner[sym] != Owner::Synthetic {
                 return (503, json!({"error": format!("no retail order book source for {} ({} data)", SYMBOLS[sym].name, t.owner[sym].label())}).to_string());
             }
-            let Some(q) = t.quote[sym] else { return (202, json!({"pending": true}).to_string()) };
+            let Some(q) = t.quote[sym] else {
+                return (202, json!({"pending": true}).to_string());
+            };
             match synthetic_orderbook(t.seed, sym, q.bid, now) {
                 Some(b) => (200, b.to_string()),
-                None => (404, json!({"error": format!("no order book for {}", SYMBOLS[sym].name)}).to_string()),
+                None => (
+                    404,
+                    json!({"error": format!("no order book for {}", SYMBOLS[sym].name)})
+                        .to_string(),
+                ),
             }
         }
         ("POST", "/ingest") => ingest(hub, body, false),
@@ -488,7 +605,11 @@ fn rows_of(body: &[u8]) -> Result<Vec<Value>, String> {
     if trimmed.starts_with('[') {
         return serde_json::from_str::<Vec<Value>>(trimmed).map_err(|e| e.to_string());
     }
-    trimmed.lines().filter(|l| !l.trim().is_empty()).map(|l| serde_json::from_str::<Value>(l).map_err(|e| e.to_string())).collect()
+    trimmed
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| serde_json::from_str::<Value>(l).map_err(|e| e.to_string()))
+        .collect()
 }
 
 fn time_of(v: Option<&Value>) -> Option<i64> {
@@ -510,38 +631,85 @@ fn ingest(hub: &Hub, body: &[u8], bars: bool) -> (u16, String) {
     let mut errors: Vec<String> = Vec::new();
     for (i, r) in rows.iter().enumerate() {
         let Some(sym) = r.get("symbol").and_then(|s| s.as_str()).and_then(by_name) else {
-            errors.push(format!("row {i}: unknown or missing symbol (names: {})", SYMBOLS.map(|s| s.name).join(", ")));
+            errors.push(format!(
+                "row {i}: unknown or missing symbol (names: {})",
+                SYMBOLS.map(|s| s.name).join(", ")
+            ));
             continue;
         };
         if !owner_ok(sym) {
-            errors.push(format!("row {i}: {} is not an ingest symbol; start floor_tape with --ingest {}", SYMBOLS[sym].name, SYMBOLS[sym].name));
+            errors.push(format!(
+                "row {i}: {} is not an ingest symbol; start floor_tape with --ingest {}",
+                SYMBOLS[sym].name, SYMBOLS[sym].name
+            ));
             continue;
         }
         let spec = &SYMBOLS[sym];
         if bars {
             // {"symbol": .., "bars": [{timestamp, open, high, low, close, volume} | [t, o, h, l, c, v]]}
-            let list = r.get("bars").and_then(|b| b.as_array()).cloned().unwrap_or_default();
+            let list = r
+                .get("bars")
+                .and_then(|b| b.as_array())
+                .cloned()
+                .unwrap_or_default();
             let parsed: Vec<Bar> = list
                 .iter()
                 .filter_map(|b| {
                     let (t, o, h, l, c, v) = if let Some(a) = b.as_array() {
-                        (time_of(a.first())?, a.get(1)?.as_f64()?, a.get(2)?.as_f64()?, a.get(3)?.as_f64()?, a.get(4)?.as_f64()?, a.get(5).and_then(|v| v.as_f64()).unwrap_or(0.0))
+                        (
+                            time_of(a.first())?,
+                            a.get(1)?.as_f64()?,
+                            a.get(2)?.as_f64()?,
+                            a.get(3)?.as_f64()?,
+                            a.get(4)?.as_f64()?,
+                            a.get(5).and_then(|v| v.as_f64()).unwrap_or(0.0),
+                        )
                     } else {
-                        (time_of(b.get("timestamp").or(b.get("t")).or(b.get("time")))?, b.get("open")?.as_f64()?, b.get("high")?.as_f64()?, b.get("low")?.as_f64()?, b.get("close")?.as_f64()?, b.get("volume").and_then(|v| v.as_f64()).unwrap_or(0.0))
+                        (
+                            time_of(b.get("timestamp").or(b.get("t")).or(b.get("time")))?,
+                            b.get("open")?.as_f64()?,
+                            b.get("high")?.as_f64()?,
+                            b.get("low")?.as_f64()?,
+                            b.get("close")?.as_f64()?,
+                            b.get("volume").and_then(|v| v.as_f64()).unwrap_or(0.0),
+                        )
                     };
-                    Some(Bar { t: store::minute_start(t), o, h, l, c, n: v as u32, up: 0, down: 0, spread_sum: 0.0, spread_n: 0 })
+                    Some(Bar {
+                        t: store::minute_start(t),
+                        o,
+                        h,
+                        l,
+                        c,
+                        n: v as u32,
+                        up: 0,
+                        down: 0,
+                        spread_sum: 0.0,
+                        spread_n: 0,
+                    })
                 })
                 .collect();
             taken += parsed.len();
             if parsed.len() < list.len() {
-                errors.push(format!("row {i}: {} of {} bars unreadable", list.len() - parsed.len(), list.len()));
+                errors.push(format!(
+                    "row {i}: {} of {} bars unreadable",
+                    list.len() - parsed.len(),
+                    list.len()
+                ));
             }
             let mut t = hub.tape.lock().unwrap();
             t.series[sym].add_bars(parsed);
             continue;
         }
         if r.get("type").and_then(|t| t.as_str()) == Some("depth") {
-            let side = |k: &str| -> Vec<(f64, f64)> { r.get(k).and_then(|x| x.as_array()).into_iter().flatten().filter_map(|l| Some((l.get(0)?.as_f64()?, l.get(1)?.as_f64()?))).take(LEVELS).collect() };
+            let side = |k: &str| -> Vec<(f64, f64)> {
+                r.get(k)
+                    .and_then(|x| x.as_array())
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|l| Some((l.get(0)?.as_f64()?, l.get(1)?.as_f64()?)))
+                    .take(LEVELS)
+                    .collect()
+            };
             let (bids, asks) = (side("bids"), side("asks"));
             let t = time_of(r.get("t")).unwrap_or_else(now_ms);
             hub.tape.lock().unwrap().ladder[sym] = Some((bids.clone(), asks.clone()));
@@ -555,15 +723,26 @@ fn ingest(hub: &Hub, body: &[u8], bars: bool) -> (u16, String) {
             continue;
         };
         let unit = 10f64.powi(-(spec.digits as i32));
-        let ask = r.get("ask").and_then(|a| a.as_f64()).filter(|a| *a > bid).unwrap_or_else(|| round_to(bid + spec.spread.max(unit), spec.digits));
+        let ask = r
+            .get("ask")
+            .and_then(|a| a.as_f64())
+            .filter(|a| *a > bid)
+            .unwrap_or_else(|| round_to(bid + spec.spread.max(unit), spec.digits));
         let t = time_of(r.get("t").or(r.get("time"))).unwrap_or_else(now_ms);
         hub.publish(sym, Tick { t, bid, ask }, None, &mut rng);
         taken += 1;
     }
     hub.tape.lock().unwrap().ingested += taken as u64;
     errors.truncate(20);
-    let status = if taken == 0 && !errors.is_empty() { 400 } else { 200 };
-    (status, json!({"ok": taken > 0, "taken": taken, "errors": errors}).to_string())
+    let status = if taken == 0 && !errors.is_empty() {
+        400
+    } else {
+        200
+    };
+    (
+        status,
+        json!({"ok": taken > 0, "taken": taken, "errors": errors}).to_string(),
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -600,7 +779,13 @@ fn write_cache(dir: &PathBuf, seed: u64, from: i64) -> Result<(), String> {
                     }
                 });
                 let path = dir.join(format!("ctrader_{}_SB_15m.json", spec.name));
-                let text = serde_json::to_string(&rows.iter().map(|r| json!([r[0] as i64, r[1], r[2], r[3], r[4], r[5]])).collect::<Vec<_>>()).map_err(|e| e.to_string())?;
+                let text = serde_json::to_string(
+                    &rows
+                        .iter()
+                        .map(|r| json!([r[0] as i64, r[1], r[2], r[3], r[4], r[5]]))
+                        .collect::<Vec<_>>(),
+                )
+                .map_err(|e| e.to_string())?;
                 std::fs::write(&path, text).map_err(|e| format!("{}: {e}", path.display()))?;
                 eprintln!("floor_tape: wrote {} ({} bars)", path.display(), rows.len());
                 Ok(())
@@ -608,7 +793,8 @@ fn write_cache(dir: &PathBuf, seed: u64, from: i64) -> Result<(), String> {
         })
         .collect();
     for h in handles {
-        h.join().map_err(|_| "a cache thread panicked".to_string())??;
+        h.join()
+            .map_err(|_| "a cache thread panicked".to_string())??;
     }
     Ok(())
 }
@@ -624,7 +810,11 @@ fn write_csv(dir: &PathBuf, seed: u64, days: i64) -> Result<(), String> {
             let (o, c) = (ticks[0].bid, ticks[ticks.len() - 1].bid);
             let h = ticks.iter().map(|t| t.bid).fold(f64::MIN, f64::max);
             let l = ticks.iter().map(|t| t.bid).fold(f64::MAX, f64::min);
-            out.push_str(&format!("{},{o},{h},{l},{c},{}\n", T0_MS + m * MINUTE_MS, ticks.len()));
+            out.push_str(&format!(
+                "{},{o},{h},{l},{c},{}\n",
+                T0_MS + m * MINUTE_MS,
+                ticks.len()
+            ));
         });
         let path = dir.join(format!("{}.csv", spec.name));
         std::fs::write(&path, out).map_err(|e| format!("{}: {e}", path.display()))?;
@@ -663,7 +853,13 @@ fn main() {
     let now = now_ms();
     let csv = match &args.csv {
         Some(dir) => match csv_source::load_dir(dir) {
-            Ok(d) => Some(csv_source::Replay::new(d, args.warmup_ms, args.speed, args.looping, now)),
+            Ok(d) => Some(csv_source::Replay::new(
+                d,
+                args.warmup_ms,
+                args.speed,
+                args.looping,
+                now,
+            )),
             Err(e) => {
                 eprintln!("floor_tape: {e}");
                 std::process::exit(1);
@@ -688,7 +884,10 @@ fn main() {
     let listener = match TcpListener::bind((args.bind.as_str(), args.port)) {
         Ok(l) => l,
         Err(e) => {
-            eprintln!("floor_tape: cannot listen on {}:{}: {e}", args.bind, args.port);
+            eprintln!(
+                "floor_tape: cannot listen on {}:{}: {e}",
+                args.bind, args.port
+            );
             std::process::exit(1);
         }
     };
@@ -717,18 +916,30 @@ fn main() {
         let mut t = hub.tape.lock().unwrap();
         for sym in (0..SYMBOLS.len()).filter(|s| owner[*s] == Owner::Synthetic) {
             let series = &mut t.series[sym];
-            sim.range(sym, from_m, now_m, |_, ticks| ticks.iter().for_each(|tk| _ = series.add_tick(tk)));
+            sim.range(sym, from_m, now_m, |_, ticks| {
+                ticks.iter().for_each(|tk| _ = series.add_tick(tk))
+            });
             let cur = sim.minute(sym, now_m);
             let done = cur.partition_point(|tk| tk.t <= now);
             cur[..done].iter().for_each(|tk| _ = series.add_tick(tk));
-            t.quote[sym] = cur[..done].last().copied().or_else(|| series.bars.back().map(|b| Tick { t: b.t, bid: b.c, ask: b.c }));
+            t.quote[sym] = cur[..done].last().copied().or_else(|| {
+                series.bars.back().map(|b| Tick {
+                    t: b.t,
+                    bid: b.c,
+                    ask: b.c,
+                })
+            });
             live.insert(sym, (now_m, cur, done));
         }
-        if owner[BTC] == Owner::Synthetic {
-            if let Some(q) = t.quote[BTC] {
-                let ask = if q.ask > q.bid { q.ask } else { q.bid + SYMBOLS[BTC].spread };
-                t.l2 = Some(l2::L2::new(args.seed, q.bid, ask));
-            }
+        if owner[BTC] == Owner::Synthetic
+            && let Some(q) = t.quote[BTC]
+        {
+            let ask = if q.ask > q.bid {
+                q.ask
+            } else {
+                q.bid + SYMBOLS[BTC].spread
+            };
+            t.l2 = Some(l2::L2::new(args.seed, q.bid, ask));
         }
     }
     let mut csv = csv;
@@ -740,10 +951,28 @@ fn main() {
         }
     }
 
-    let summary: Vec<String> = SYMBOLS.iter().zip(&owner).map(|(s, o)| format!("{}={}", s.name, o.label())).collect();
-    eprintln!("floor_tape: listening on {}:{}  seed={}  {}", args.bind, args.port, args.seed, summary.join(" "));
+    let summary: Vec<String> = SYMBOLS
+        .iter()
+        .zip(&owner)
+        .map(|(s, o)| format!("{}={}", s.name, o.label()))
+        .collect();
+    eprintln!(
+        "floor_tape: listening on {}:{}  seed={}  {}",
+        args.bind,
+        args.port,
+        args.seed,
+        summary.join(" ")
+    );
     if owner.contains(&Owner::Ingest) {
-        eprintln!("floor_tape: POST ticks to http://{}:{}/ingest  e.g. {{\"symbol\":\"BTCUSD\",\"bid\":100000.5,\"ask\":100001.0}}", if args.bind == "0.0.0.0" { "localhost" } else { &args.bind }, args.port);
+        eprintln!(
+            "floor_tape: POST ticks to http://{}:{}/ingest  e.g. {{\"symbol\":\"BTCUSD\",\"bid\":100000.5,\"ask\":100001.0}}",
+            if args.bind == "0.0.0.0" {
+                "localhost"
+            } else {
+                &args.bind
+            },
+            args.port
+        );
     }
 
     let accept_hub = hub.clone();
@@ -789,5 +1018,21 @@ fn main() {
             let keep = now - t.history_ms;
             t.series.iter_mut().for_each(|s| s.trim(keep));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::decode;
+
+    #[test]
+    fn decode_handles_escapes_plus_and_stray_percents() {
+        assert_eq!(decode("EUR%2FUSD"), "EUR/USD");
+        assert_eq!(decode("a+b"), "a b");
+        assert_eq!(decode("100%"), "100%");
+        assert_eq!(decode("%zz"), "%zz");
+        // A `%` right before a multi-byte character used to panic on a char boundary.
+        assert_eq!(decode("%é"), "%é");
+        assert_eq!(decode("x%€y"), "x%€y");
     }
 }

@@ -95,7 +95,10 @@ impl ReportTrade {
 /// The string `serde` writes for an archetype (its variant name), which is what `trades.jsonl`
 /// carries.
 pub fn archetype_key(a: Archetype) -> String {
-    serde_json::to_value(a).ok().and_then(|v| v.as_str().map(str::to_string)).unwrap_or_else(|| format!("{a:?}"))
+    serde_json::to_value(a)
+        .ok()
+        .and_then(|v| v.as_str().map(str::to_string))
+        .unwrap_or_else(|| format!("{a:?}"))
 }
 
 /// One trade per line, as `replay` writes them. Blank and unparseable lines are skipped and
@@ -134,7 +137,13 @@ pub enum Session {
 }
 
 impl Session {
-    pub const ALL: [Session; 5] = [Session::Asia, Session::London, Session::Overlap, Session::NewYork, Session::Late];
+    pub const ALL: [Session; 5] = [
+        Session::Asia,
+        Session::London,
+        Session::Overlap,
+        Session::NewYork,
+        Session::Late,
+    ];
 
     pub fn of_ms(ms: i64) -> Session {
         let minute = ms.rem_euclid(86_400_000) / 60_000;
@@ -170,7 +179,12 @@ impl Session {
     /// Accepts the names a person types on the command line: `london`, `ny`, `newyork`,
     /// `new_york`, `overlap`, `asia`, `late`.
     pub fn parse(s: &str) -> Option<Session> {
-        match s.trim().to_ascii_lowercase().replace(['_', '-', ' '], "").as_str() {
+        match s
+            .trim()
+            .to_ascii_lowercase()
+            .replace(['_', '-', ' '], "")
+            .as_str()
+        {
             "asia" | "tokyo" => Some(Session::Asia),
             "london" | "ldn" | "eu" => Some(Session::London),
             "overlap" | "lonny" => Some(Session::Overlap),
@@ -184,7 +198,9 @@ impl Session {
     pub fn parse_list(list: &str) -> Result<Vec<Session>, String> {
         let mut out = Vec::new();
         for part in list.split(',').filter(|p| !p.trim().is_empty()) {
-            let s = Session::parse(part).ok_or_else(|| format!("unknown session {part:?} (asia, london, overlap, ny, late)"))?;
+            let s = Session::parse(part).ok_or_else(|| {
+                format!("unknown session {part:?} (asia, london, overlap, ny, late)")
+            })?;
             if !out.contains(&s) {
                 out.push(s);
             }
@@ -259,7 +275,11 @@ pub fn trader_stats(trades: &[ReportTrade]) -> TraderStats {
         },
         max_drawdown_r: max_drawdown(&rs),
         spread_r,
-        spread_share_of_gross: if before_cost > 0.0 { Some(spread_r / before_cost) } else { None },
+        spread_share_of_gross: if before_cost > 0.0 {
+            Some(spread_r / before_cost)
+        } else {
+            None
+        },
         avg_hold_min: by_exit.iter().map(|t| t.hold_minutes()).sum::<f64>() / n as f64,
         longest_losing_run: longest_run(&rs, |r| r <= 0.0),
     }
@@ -272,7 +292,11 @@ pub fn median(xs: &[f64]) -> f64 {
     let mut v = xs.to_vec();
     v.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     let n = v.len();
-    if n % 2 == 1 { v[n / 2] } else { (v[n / 2 - 1] + v[n / 2]) / 2.0 }
+    if n % 2 == 1 {
+        v[n / 2]
+    } else {
+        (v[n / 2 - 1] + v[n / 2]) / 2.0
+    }
 }
 
 pub fn sample_sd(xs: &[f64]) -> f64 {
@@ -355,7 +379,9 @@ fn erf(x: f64) -> f64 {
     let sign = if x < 0.0 { -1.0 } else { 1.0 };
     let x = x.abs();
     let t = 1.0 / (1.0 + 0.3275911 * x);
-    let poly = t * (0.254829592 + t * (-0.284496736 + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429))));
+    let poly = t
+        * (0.254829592
+            + t * (-0.284496736 + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429))));
     sign * (1.0 - poly * (-x * x).exp())
 }
 
@@ -367,25 +393,53 @@ pub fn norm_cdf(z: f64) -> f64 {
 /// (0,1).
 pub fn norm_ppf(p: f64) -> f64 {
     let p = p.clamp(1e-12, 1.0 - 1e-12);
-    const A: [f64; 6] = [-3.969683028665376e1, 2.209460984245205e2, -2.759285104469687e2, 1.383577518672690e2, -3.066479806614716e1, 2.506628277459239];
-    const B: [f64; 5] = [-5.447609879822406e1, 1.615858368580409e2, -1.556989798598866e2, 6.680131188771972e1, -1.328068155288572e1];
-    const C: [f64; 6] = [-7.784894002430293e-3, -3.223964580411365e-1, -2.400758277161838, -2.549732539343734, 4.374664141464968, 2.938163982698783];
-    const D: [f64; 4] = [7.784695709041462e-3, 3.224671290700398e-1, 2.445134137142996, 3.754408661907416];
+    const A: [f64; 6] = [
+        -3.969683028665376e1,
+        2.209460984245205e2,
+        -2.759285104469687e2,
+        1.383_577_518_672_69e2,
+        -3.066479806614716e1,
+        2.506628277459239,
+    ];
+    const B: [f64; 5] = [
+        -5.447609879822406e1,
+        1.615858368580409e2,
+        -1.556989798598866e2,
+        6.680131188771972e1,
+        -1.328068155288572e1,
+    ];
+    const C: [f64; 6] = [
+        -7.784894002430293e-3,
+        -3.223964580411365e-1,
+        -2.400758277161838,
+        -2.549732539343734,
+        4.374664141464968,
+        2.938163982698783,
+    ];
+    const D: [f64; 4] = [
+        7.784695709041462e-3,
+        3.224671290700398e-1,
+        2.445134137142996,
+        3.754408661907416,
+    ];
     const P_LOW: f64 = 0.02425;
-    let x = if p < P_LOW {
+
+    // No Newton polish: Acklam's 1.15e-9 already beats the 1.5e-7 erf above, so a step
+    // against `norm_cdf` could only drag it toward that error.
+    if p < P_LOW {
         let q = (-2.0 * p.ln()).sqrt();
-        (((((C[0] * q + C[1]) * q + C[2]) * q + C[3]) * q + C[4]) * q + C[5]) / ((((D[0] * q + D[1]) * q + D[2]) * q + D[3]) * q + 1.0)
+        (((((C[0] * q + C[1]) * q + C[2]) * q + C[3]) * q + C[4]) * q + C[5])
+            / ((((D[0] * q + D[1]) * q + D[2]) * q + D[3]) * q + 1.0)
     } else if p <= 1.0 - P_LOW {
         let q = p - 0.5;
         let r = q * q;
-        (((((A[0] * r + A[1]) * r + A[2]) * r + A[3]) * r + A[4]) * r + A[5]) * q / (((((B[0] * r + B[1]) * r + B[2]) * r + B[3]) * r + B[4]) * r + 1.0)
+        (((((A[0] * r + A[1]) * r + A[2]) * r + A[3]) * r + A[4]) * r + A[5]) * q
+            / (((((B[0] * r + B[1]) * r + B[2]) * r + B[3]) * r + B[4]) * r + 1.0)
     } else {
         let q = (-2.0 * (1.0 - p).ln()).sqrt();
-        -(((((C[0] * q + C[1]) * q + C[2]) * q + C[3]) * q + C[4]) * q + C[5]) / ((((D[0] * q + D[1]) * q + D[2]) * q + D[3]) * q + 1.0)
-    };
-    // No Newton polish: Acklam's 1.15e-9 already beats the 1.5e-7 erf above, so a step
-    // against `norm_cdf` could only drag it toward that error.
-    x
+        -(((((C[0] * q + C[1]) * q + C[2]) * q + C[3]) * q + C[4]) * q + C[5])
+            / ((((D[0] * q + D[1]) * q + D[2]) * q + D[3]) * q + 1.0)
+    }
 }
 
 // --- probabilistic / deflated Sharpe ------------------------------------------
@@ -407,7 +461,9 @@ pub fn psr(sr: f64, n: usize, skew: f64, kurt: f64, sr_star: f64) -> Option<f64>
     if !(var_term > 0.0) {
         return None;
     }
-    Some(norm_cdf((sr - sr_star) * ((n - 1) as f64).sqrt() / var_term.sqrt()))
+    Some(norm_cdf(
+        (sr - sr_star) * ((n - 1) as f64).sqrt() / var_term.sqrt(),
+    ))
 }
 
 /// Expected maximum Sharpe among `n_trials` independent zero-skill trials whose Sharpe
@@ -422,9 +478,13 @@ pub fn expected_max_sharpe(n_trials: usize, var_sr: f64) -> f64 {
     if n_trials < 2 || !(var_sr > 0.0) {
         return 0.0;
     }
+    // Spelled out: `f64::consts::EULER_GAMMA` is newer than the Rust this builds on.
+    #[allow(clippy::approx_constant)]
     const EULER_GAMMA: f64 = 0.577_215_664_901_532_9;
     let n = n_trials as f64;
-    var_sr.sqrt() * ((1.0 - EULER_GAMMA) * norm_ppf(1.0 - 1.0 / n) + EULER_GAMMA * norm_ppf(1.0 - 1.0 / (n * std::f64::consts::E)))
+    var_sr.sqrt()
+        * ((1.0 - EULER_GAMMA) * norm_ppf(1.0 - 1.0 / n)
+            + EULER_GAMMA * norm_ppf(1.0 - 1.0 / (n * std::f64::consts::E)))
 }
 
 /// Deflated Sharpe ratio: PSR with the hurdle set to the Sharpe one would expect from the best
@@ -465,7 +525,10 @@ fn resample_sum(rs: &[f64], rng: &mut SplitMix64) -> f64 {
 fn percentile_pair(mut draws: Vec<f64>, lo: f64, hi: f64) -> (f64, f64) {
     draws.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     let last = (draws.len() - 1) as f64;
-    (draws[(lo * last).round() as usize], draws[(hi * last).round() as usize])
+    (
+        draws[(lo * last).round() as usize],
+        draws[(hi * last).round() as usize],
+    )
 }
 
 /// 95% percentile bootstrap interval of net R: resample the trades with replacement `draws`
@@ -481,12 +544,19 @@ pub fn bootstrap_net_r(rs: &[f64], draws: usize, seed: u64) -> Option<(f64, f64)
 
 /// 95% bootstrap interval of (trader net R − control net R), both resampled independently in
 /// each draw, so the control's own luck is in the interval too.
-pub fn bootstrap_diff_r(rs: &[f64], control: &[f64], draws: usize, seed: u64) -> Option<(f64, f64)> {
+pub fn bootstrap_diff_r(
+    rs: &[f64],
+    control: &[f64],
+    draws: usize,
+    seed: u64,
+) -> Option<(f64, f64)> {
     if rs.is_empty() || control.is_empty() || draws == 0 {
         return None;
     }
     let mut rng = SplitMix64::new(seed ^ 0xD1FF_0000_0000_0001);
-    let diffs: Vec<f64> = (0..draws).map(|_| resample_sum(rs, &mut rng) - resample_sum(control, &mut rng)).collect();
+    let diffs: Vec<f64> = (0..draws)
+        .map(|_| resample_sum(rs, &mut rng) - resample_sum(control, &mut rng))
+        .collect();
     Some(percentile_pair(diffs, 0.025, 0.975))
 }
 
@@ -596,7 +666,11 @@ pub struct Report {
     pub trades: Vec<ReportTrade>,
 }
 
-fn breakdown<K: Ord + Clone>(trades: &[&ReportTrade], key: impl Fn(&ReportTrade) -> K, name: impl Fn(&K) -> String) -> Vec<Breakdown> {
+fn breakdown<K: Ord + Clone>(
+    trades: &[&ReportTrade],
+    key: impl Fn(&ReportTrade) -> K,
+    name: impl Fn(&K) -> String,
+) -> Vec<Breakdown> {
     let mut groups: BTreeMap<K, Vec<f64>> = BTreeMap::new();
     for t in trades {
         groups.entry(key(t)).or_default().push(t.pnl_r as f64);
@@ -606,7 +680,13 @@ fn breakdown<K: Ord + Clone>(trades: &[&ReportTrade], key: impl Fn(&ReportTrade)
         .map(|(k, rs)| {
             let n = rs.len();
             let net: f64 = rs.iter().sum();
-            Breakdown { key: name(&k), trades: n, win_rate: rs.iter().filter(|r| **r > 0.0).count() as f64 / n as f64, net_r: net, mean_r: net / n as f64 }
+            Breakdown {
+                key: name(&k),
+                trades: n,
+                win_rate: rs.iter().filter(|r| **r > 0.0).count() as f64 / n as f64,
+                net_r: net,
+                mean_r: net / n as f64,
+            }
         })
         .collect()
 }
@@ -614,21 +694,43 @@ fn breakdown<K: Ord + Clone>(trades: &[&ReportTrade], key: impl Fn(&ReportTrade)
 impl Report {
     /// `n_trials` is how many strategies were tried in parallel (the archetypes on the floor);
     /// it sets the DSR hurdle. `seed` fixes the bootstrap.
-    pub fn build(title: &str, trades: Vec<ReportTrade>, from_ms: i64, to_ms: i64, n_trials: usize, seed: u64) -> Report {
+    pub fn build(
+        title: &str,
+        trades: Vec<ReportTrade>,
+        from_ms: i64,
+        to_ms: i64,
+        n_trials: usize,
+        seed: u64,
+    ) -> Report {
         let to_ms = to_ms.max(from_ms + 1);
         // Trader rows in `Archetype::ALL` order first (so every archetype shows, trades or
         // not), then any archetype the file names that the enum does not know.
         let mut keys: Vec<(String, String, String, bool)> = Archetype::ALL
             .iter()
-            .map(|a| (archetype_key(*a), a.name().to_string(), a.label().to_string(), *a == Archetype::Control))
+            .map(|a| {
+                (
+                    archetype_key(*a),
+                    a.name().to_string(),
+                    a.label().to_string(),
+                    *a == Archetype::Control,
+                )
+            })
             .collect();
         for t in &trades {
             if !keys.iter().any(|k| k.0 == t.archetype) {
-                keys.push((t.archetype.clone(), t.trader.clone(), t.archetype.clone(), false));
+                keys.push((
+                    t.archetype.clone(),
+                    t.trader.clone(),
+                    t.archetype.clone(),
+                    false,
+                ));
             }
         }
         let control_rs: Vec<f64> = {
-            let mut c: Vec<&ReportTrade> = trades.iter().filter(|t| t.archetype == archetype_key(Archetype::Control)).collect();
+            let mut c: Vec<&ReportTrade> = trades
+                .iter()
+                .filter(|t| t.archetype == archetype_key(Archetype::Control))
+                .collect();
             c.sort_by_key(|t| t.closed_ms);
             c.iter().map(|t| t.pnl_r as f64).collect()
         };
@@ -637,18 +739,27 @@ impl Report {
         let sharpes: Vec<f64> = keys
             .iter()
             .filter_map(|k| {
-                let rs: Vec<f64> = trades.iter().filter(|t| t.archetype == k.0).map(|t| t.pnl_r as f64).collect();
+                let rs: Vec<f64> = trades
+                    .iter()
+                    .filter(|t| t.archetype == k.0)
+                    .map(|t| t.pnl_r as f64)
+                    .collect();
                 sharpe(&rs)
             })
             .collect();
-        let var_sr = if sharpes.len() >= 2 { sample_sd(&sharpes).powi(2) } else { 0.0 };
+        let var_sr = if sharpes.len() >= 2 {
+            sample_sd(&sharpes).powi(2)
+        } else {
+            0.0
+        };
         let hurdle = expected_max_sharpe(n_trials, var_sr);
 
         let mut traders: Vec<TraderReport> = keys
             .iter()
             .enumerate()
             .map(|(i, (key, name, label, is_control))| {
-                let mut mine: Vec<&ReportTrade> = trades.iter().filter(|t| &t.archetype == key).collect();
+                let mut mine: Vec<&ReportTrade> =
+                    trades.iter().filter(|t| &t.archetype == key).collect();
                 mine.sort_by_key(|t| (t.closed_ms, t.opened_ms));
                 let owned: Vec<ReportTrade> = mine.iter().map(|t| (*t).clone()).collect();
                 let stats = trader_stats(&owned);
@@ -656,7 +767,11 @@ impl Report {
                 let (skew, kurt) = skew_kurt(&rs);
                 let sr = sharpe(&rs);
                 let trader_seed = seed.wrapping_add(i as u64 * 7919);
-                let boot_vs_control = if *is_control { None } else { bootstrap_diff_r(&rs, &control_rs, BOOTSTRAP_DRAWS, trader_seed) };
+                let boot_vs_control = if *is_control {
+                    None
+                } else {
+                    bootstrap_diff_r(&rs, &control_rs, BOOTSTRAP_DRAWS, trader_seed)
+                };
                 let edge = Edge {
                     t_stat: t_stat(&rs),
                     sharpe: sr,
@@ -689,21 +804,42 @@ impl Report {
             })
             .collect();
         // Leaderboard order: net R, the control wherever it lands.
-        traders.sort_by(|a, b| b.stats.net_r.partial_cmp(&a.stats.net_r).unwrap_or(std::cmp::Ordering::Equal));
+        traders.sort_by(|a, b| {
+            b.stats
+                .net_r
+                .partial_cmp(&a.stats.net_r)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         let control = traders.iter().position(|t| t.is_control);
 
         let mut by_day: BTreeMap<String, Vec<(usize, f64)>> = BTreeMap::new();
         for t in &trades {
             let day = fmt_day(t.opened_ms);
-            let row = by_day.entry(day).or_insert_with(|| vec![(0, 0.0); traders.len()]);
+            let row = by_day
+                .entry(day)
+                .or_insert_with(|| vec![(0, 0.0); traders.len()]);
             if let Some(i) = traders.iter().position(|tr| tr.archetype == t.archetype) {
                 row[i].0 += 1;
                 row[i].1 += t.pnl_r as f64;
             }
         }
-        let days = by_day.into_iter().map(|(day, cells)| DayRow { day, cells }).collect();
+        let days = by_day
+            .into_iter()
+            .map(|(day, cells)| DayRow { day, cells })
+            .collect();
 
-        Report { title: title.to_string(), from_ms, to_ms, n_trials, seed, traders, control, days, total_trades: trades.len(), trades }
+        Report {
+            title: title.to_string(),
+            from_ms,
+            to_ms,
+            n_trials,
+            seed,
+            traders,
+            control,
+            days,
+            total_trades: trades.len(),
+            trades,
+        }
     }
 
     pub fn spans_days(&self) -> bool {
@@ -716,7 +852,12 @@ impl Report {
 
     /// Cumulative R of a curve at time `ms` (step function, holds the last exit's value).
     pub fn curve_at(curve: &[(i64, f64)], ms: i64) -> f64 {
-        curve.iter().take_while(|(t, _)| *t <= ms).last().map(|(_, v)| *v).unwrap_or(0.0)
+        curve
+            .iter()
+            .take_while(|(t, _)| *t <= ms)
+            .last()
+            .map(|(_, v)| *v)
+            .unwrap_or(0.0)
     }
 
     // ---------------------------------------------------------------------
@@ -725,7 +866,13 @@ impl Report {
 
     pub fn text(&self) -> String {
         let mut s = String::new();
-        let w = |x: f64| if x.is_finite() { format!("{x:+.2}") } else { "inf".into() };
+        let w = |x: f64| {
+            if x.is_finite() {
+                format!("{x:+.2}")
+            } else {
+                "inf".into()
+            }
+        };
         s.push_str(&format!("{}\n", self.title));
         s.push_str(&format!(
             "window {} -> {} UTC   {} trades   {} strategies tried (DSR hurdle E[max SR] {:.3})   bootstrap {} draws seed {}\n",
@@ -743,7 +890,19 @@ impl Report {
         s.push_str("PER TRADER\n");
         s.push_str(&format!(
             "{:<8} {:<8} {:>6} {:>5} {:>8} {:>7} {:>7} {:>6} {:>8} {:>8} {:>7} {:>8} {:>7}\n",
-            "trader", "type", "trades", "win%", "net R", "mean R", "med R", "PF", "max ddR", "spreadR", "spr%", "hold min", "lose run"
+            "trader",
+            "type",
+            "trades",
+            "win%",
+            "net R",
+            "mean R",
+            "med R",
+            "PF",
+            "max ddR",
+            "spreadR",
+            "spr%",
+            "hold min",
+            "lose run"
         ));
         for t in &self.traders {
             let st = &t.stats;
@@ -764,16 +923,32 @@ impl Report {
                 st.longest_losing_run
             ));
         }
-        s.push_str("spr% = spread paid / before-cost result (n/a when that result is not positive)\n\n");
+        s.push_str(
+            "spr% = spread paid / before-cost result (n/a when that result is not positive)\n\n",
+        );
 
         // 2. Edge.
         s.push_str("EDGE  (does the row earn belief?)\n");
         s.push_str(&format!(
             "{:<8} {:>6} {:>6} {:>7} {:>18} {:>18} {:>6} {:>6}  {}\n",
-            "trader", "trades", "t", "SR/trd", "net R 95% CI", "vs control 95% CI", "PSR0", "DSR", "beats control after costs"
+            "trader",
+            "trades",
+            "t",
+            "SR/trd",
+            "net R 95% CI",
+            "vs control 95% CI",
+            "PSR0",
+            "DSR",
+            "beats control after costs"
         ));
-        let ci = |x: Option<(f64, f64)>| x.map(|(a, b)| format!("[{a:+.2}, {b:+.2}]")).unwrap_or_else(|| "-".into());
-        let opt = |x: Option<f64>, d: usize| x.map(|v| format!("{:.*}", d, v)).unwrap_or_else(|| "-".into());
+        let ci = |x: Option<(f64, f64)>| {
+            x.map(|(a, b)| format!("[{a:+.2}, {b:+.2}]"))
+                .unwrap_or_else(|| "-".into())
+        };
+        let opt = |x: Option<f64>, d: usize| {
+            x.map(|v| format!("{:.*}", d, v))
+                .unwrap_or_else(|| "-".into())
+        };
         for t in &self.traders {
             let e = &t.edge;
             s.push_str(&format!(
@@ -813,7 +988,10 @@ impl Report {
         for t in &self.traders {
             s.push_str(&format!("{:<8}", t.name));
             for sym in &symbols {
-                s.push_str(&format!(" {:>16}", cell(t.by_symbol.iter().find(|b| &b.key == sym))));
+                s.push_str(&format!(
+                    " {:>16}",
+                    cell(t.by_symbol.iter().find(|b| &b.key == sym))
+                ));
             }
             s.push('\n');
         }
@@ -822,13 +1000,19 @@ impl Report {
         s.push_str("BY SESSION (UTC, entry time; trades / win% / net R)\n");
         s.push_str(&format!("{:<8}", "trader"));
         for ses in Session::ALL {
-            s.push_str(&format!(" {:>20}", format!("{} {}", ses.label(), ses.hours())));
+            s.push_str(&format!(
+                " {:>20}",
+                format!("{} {}", ses.label(), ses.hours())
+            ));
         }
         s.push('\n');
         for t in &self.traders {
             s.push_str(&format!("{:<8}", t.name));
             for ses in Session::ALL {
-                s.push_str(&format!(" {:>20}", cell(t.by_session.iter().find(|b| b.key == ses.label()))));
+                s.push_str(&format!(
+                    " {:>20}",
+                    cell(t.by_session.iter().find(|b| b.key == ses.label()))
+                ));
             }
             s.push('\n');
         }
@@ -845,7 +1029,14 @@ impl Report {
             for d in &self.days {
                 s.push_str(&format!("{:<11}", d.day));
                 for (n, r) in &d.cells {
-                    s.push_str(&format!(" {:>13}", if *n == 0 { "-".to_string() } else { format!("{n} / {r:+.2}") }));
+                    s.push_str(&format!(
+                        " {:>13}",
+                        if *n == 0 {
+                            "-".to_string()
+                        } else {
+                            format!("{n} / {r:+.2}")
+                        }
+                    ));
                 }
                 s.push('\n');
             }
@@ -853,10 +1044,16 @@ impl Report {
         }
 
         // 5. Equity sparklines.
-        s.push_str(&format!("EQUITY (cumulative R by exit time, {} columns across the window; control last)\n", SPARK_COLS));
+        s.push_str(&format!(
+            "EQUITY (cumulative R by exit time, {} columns across the window; control last)\n",
+            SPARK_COLS
+        ));
         for t in &self.traders {
             let (spark, lo, hi) = sparkline(&t.curve, self.from_ms, self.to_ms);
-            s.push_str(&format!("{:<8} {} min {:+.2} max {:+.2} end {:+.2}\n", t.name, spark, lo, hi, t.stats.net_r));
+            s.push_str(&format!(
+                "{:<8} {} min {:+.2} max {:+.2} end {:+.2}\n",
+                t.name, spark, lo, hi, t.stats.net_r
+            ));
         }
         s
     }
@@ -946,8 +1143,14 @@ impl Report {
         h.push_str(&format!("{} skill-less strategies), after Bailey &amp; López de Prado; the edge-lab bar is 0.95.</p><div class=\"wrap\"><table><thead><tr><th>trader</th><th>trades</th><th>t</th><th>SR/trade</th><th>net R 95% CI</th><th>vs control 95% CI</th><th>PSR0</th><th>DSR</th><th>beats control after costs</th></tr></thead><tbody>\n", self.n_trials));
         for t in &self.traders {
             let e = &t.edge;
-            let ci = |x: Option<(f64, f64)>| x.map(|(a, b)| format!("[{a:+.2}, {b:+.2}]")).unwrap_or_else(|| "–".into());
-            let opt = |x: Option<f64>, d: usize| x.map(|v| format!("{:.*}", d, v)).unwrap_or_else(|| "–".into());
+            let ci = |x: Option<(f64, f64)>| {
+                x.map(|(a, b)| format!("[{a:+.2}, {b:+.2}]"))
+                    .unwrap_or_else(|| "–".into())
+            };
+            let opt = |x: Option<f64>, d: usize| {
+                x.map(|v| format!("{:.*}", d, v))
+                    .unwrap_or_else(|| "–".into())
+            };
             let v = e.verdict.unwrap_or(Verdict::TooFewTrades);
             h.push_str(&format!(
                 "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td class=\"v-{}\">{}</td></tr>\n",
@@ -985,7 +1188,11 @@ impl Report {
             h.push_str(&format!("<tr><td>{}</td>", esc(&t.name)));
             for sym in &symbols {
                 let b = t.by_symbol.iter().find(|b| &b.key == sym);
-                h.push_str(&format!("<td class=\"{}\">{}</td>", b.map(|b| sign_class(b.net_r)).unwrap_or(""), cell(b)));
+                h.push_str(&format!(
+                    "<td class=\"{}\">{}</td>",
+                    b.map(|b| sign_class(b.net_r)).unwrap_or(""),
+                    cell(b)
+                ));
             }
             h.push_str("</tr>\n");
         }
@@ -993,14 +1200,22 @@ impl Report {
 
         h.push_str("<section><h2>By session</h2><p class=\"sub\">UTC, by entry time; trades / win% / net R</p><div class=\"wrap\"><table><thead><tr><th>trader</th>");
         for ses in Session::ALL {
-            h.push_str(&format!("<th>{}<br><small>{}</small></th>", ses.label(), ses.hours()));
+            h.push_str(&format!(
+                "<th>{}<br><small>{}</small></th>",
+                ses.label(),
+                ses.hours()
+            ));
         }
         h.push_str("</tr></thead><tbody>\n");
         for t in &self.traders {
             h.push_str(&format!("<tr><td>{}</td>", esc(&t.name)));
             for ses in Session::ALL {
                 let b = t.by_session.iter().find(|b| b.key == ses.label());
-                h.push_str(&format!("<td class=\"{}\">{}</td>", b.map(|b| sign_class(b.net_r)).unwrap_or(""), cell(b)));
+                h.push_str(&format!(
+                    "<td class=\"{}\">{}</td>",
+                    b.map(|b| sign_class(b.net_r)).unwrap_or(""),
+                    cell(b)
+                ));
             }
             h.push_str("</tr>\n");
         }
@@ -1018,7 +1233,10 @@ impl Report {
                     if *n == 0 {
                         h.push_str("<td>–</td>");
                     } else {
-                        h.push_str(&format!("<td class=\"{}\">{n} / {r:+.2}</td>", sign_class(*r)));
+                        h.push_str(&format!(
+                            "<td class=\"{}\">{n} / {r:+.2}</td>",
+                            sign_class(*r)
+                        ));
                     }
                 }
                 h.push_str("</tr>\n");
@@ -1038,7 +1256,7 @@ impl Report {
         for t in trades.iter().take(MAX_ROWS) {
             h.push_str(&format!(
                 "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td class=\"{}\">{:+.2}</td><td>{:.1}</td><td>{:.2}</td><td>{}</td><td class=\"why\">{}</td><td class=\"why\">{}</td></tr>\n",
-                &fmt_ms(t.opened_ms)[5..16].replace('T', " "),
+                fmt_ms(t.opened_ms)[5..16].replace('T', " "),
                 esc(&t.trader),
                 esc(&t.symbol),
                 esc(&t.side),
@@ -1064,7 +1282,10 @@ impl Report {
         if t.is_control {
             return "#898781";
         }
-        let i = Archetype::ALL.iter().position(|a| archetype_key(*a) == t.archetype).unwrap_or(5);
+        let i = Archetype::ALL
+            .iter()
+            .position(|a| archetype_key(*a) == t.archetype)
+            .unwrap_or(5);
         SERIES[i.min(SERIES.len() - 1)]
     }
 
@@ -1087,7 +1308,9 @@ impl Report {
         }
         let pad = (hi - lo) * 0.08;
         let (lo, hi) = (lo - pad, hi + pad);
-        let x = |ms: i64| L + (ms - self.from_ms).clamp(0, self.to_ms - self.from_ms) as f64 / span * (W - L - R);
+        let x = |ms: i64| {
+            L + (ms - self.from_ms).clamp(0, self.to_ms - self.from_ms) as f64 / span * (W - L - R)
+        };
         let y = |v: f64| T + (hi - v) / (hi - lo) * (H - T - B);
         let path = |c: &[(i64, f64)]| -> String {
             let mut d = String::new();
@@ -1110,7 +1333,12 @@ impl Report {
             d
         };
         let mut s = String::new();
-        let pts: String = t.curve.iter().map(|(ms, v)| format!("{ms}:{v:.3}")).collect::<Vec<_>>().join(",");
+        let pts: String = t
+            .curve
+            .iter()
+            .map(|(ms, v)| format!("{ms}:{v:.3}"))
+            .collect::<Vec<_>>()
+            .join(",");
         s.push_str(&format!(
             "<figure class=\"panel\"><figcaption><span class=\"swatch\" style=\"background:{}\"></span>{} <small>{}</small> <span class=\"end {}\">{:+.2} R</span></figcaption>\n<svg viewBox=\"0 0 {W} {H}\" data-from=\"{}\" data-to=\"{}\" data-l=\"{L}\" data-r=\"{R}\" data-pts=\"{}\" data-name=\"{}\" role=\"img\" aria-label=\"equity curve of {} in R\">\n",
             self.colour(t),
@@ -1132,12 +1360,16 @@ impl Report {
         }
         // X labels: start, end.
         s.push_str(&format!("<text class=\"tick\" x=\"{L}\" y=\"{:.1}\">{}</text><text class=\"tick\" x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"end\">{}</text>\n", H - 6.0, hhmm(self.from_ms), W - R, H - 6.0, hhmm(self.to_ms)));
-        if let Some(c) = control {
-            if !t.is_control {
-                s.push_str(&format!("<path class=\"control\" d=\"{}\"/>\n", path(c)));
-            }
+        if let Some(c) = control
+            && !t.is_control
+        {
+            s.push_str(&format!("<path class=\"control\" d=\"{}\"/>\n", path(c)));
         }
-        s.push_str(&format!("<path class=\"series\" style=\"stroke:{}\" d=\"{}\"/>\n", self.colour(t), path(&t.curve)));
+        s.push_str(&format!(
+            "<path class=\"series\" style=\"stroke:{}\" d=\"{}\"/>\n",
+            self.colour(t),
+            path(&t.curve)
+        ));
         s.push_str(&format!("<line class=\"cursor\" x1=\"0\" x2=\"0\" y1=\"{T}\" y2=\"{:.1}\" visibility=\"hidden\"/><text class=\"tip\" x=\"0\" y=\"{:.1}\" visibility=\"hidden\"></text>\n", H - B, T + 10.0));
         s.push_str("</svg></figure>\n");
         s
@@ -1151,14 +1383,18 @@ fn nice_ticks(lo: f64, hi: f64) -> Vec<f64> {
     }
     let raw = (hi - lo) / 3.0;
     let mag = 10f64.powf(raw.log10().floor());
-    let step = [1.0, 2.0, 5.0, 10.0].iter().map(|m| m * mag).find(|s| *s >= raw).unwrap_or(mag * 10.0);
+    let step = [1.0, 2.0, 5.0, 10.0]
+        .iter()
+        .map(|m| m * mag)
+        .find(|s| *s >= raw)
+        .unwrap_or(mag * 10.0);
     let mut v = Vec::new();
     let mut t = (lo / step).ceil() * step;
     while t <= hi + 1e-9 {
         v.push(if t.abs() < 1e-9 { 0.0 } else { t });
         t += step;
     }
-    if lo < 0.0 && hi > 0.0 && !v.iter().any(|x| *x == 0.0) {
+    if lo < 0.0 && hi > 0.0 && !v.contains(&0.0) {
         v.push(0.0);
     }
     v
@@ -1167,7 +1403,12 @@ fn nice_ticks(lo: f64, hi: f64) -> Vec<f64> {
 fn cell(b: Option<&Breakdown>) -> String {
     match b {
         None => "-".into(),
-        Some(b) => format!("{} / {:.0}% / {:+.2}", b.trades, b.win_rate * 100.0, b.net_r),
+        Some(b) => format!(
+            "{} / {:.0}% / {:+.2}",
+            b.trades,
+            b.win_rate * 100.0,
+            b.net_r
+        ),
     }
 }
 
@@ -1185,24 +1426,33 @@ fn sparkline(curve: &[(i64, f64)], from_ms: i64, to_ms: i64) -> (String, f64, f6
     const BLOCKS: [char; 8] = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
     let samples: Vec<f64> = (0..SPARK_COLS)
         .map(|i| {
-            let ms = from_ms + ((to_ms - from_ms) as f64 * (i as f64 + 1.0) / SPARK_COLS as f64) as i64;
+            let ms =
+                from_ms + ((to_ms - from_ms) as f64 * (i as f64 + 1.0) / SPARK_COLS as f64) as i64;
             Report::curve_at(curve, ms)
         })
         .collect();
     let lo = samples.iter().cloned().fold(0.0f64, f64::min);
     let hi = samples.iter().cloned().fold(0.0f64, f64::max);
     let range = (hi - lo).max(1e-9);
-    let line: String = samples.iter().map(|v| BLOCKS[(((v - lo) / range) * 7.0).round().clamp(0.0, 7.0) as usize]).collect();
+    let line: String = samples
+        .iter()
+        .map(|v| BLOCKS[(((v - lo) / range) * 7.0).round().clamp(0.0, 7.0) as usize])
+        .collect();
     (line, lo, hi)
 }
 
 pub fn esc(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
 
 /// Categorical dark-surface palette (validated adjacent-pair order; see the dataviz
 /// reference palette). Index = position in `Archetype::ALL`; the control is drawn grey.
-const SERIES: [&str; 6] = ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300"];
+const SERIES: [&str; 6] = [
+    "#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300",
+];
 
 // ---------------------------------------------------------------------------
 // Time formatting (UTC, no chrono)
@@ -1226,7 +1476,12 @@ pub fn fmt_ms(ms: i64) -> String {
     let secs = ms.div_euclid(1000);
     let (y, m, d) = civil(secs.div_euclid(86_400));
     let day = secs.rem_euclid(86_400);
-    format!("{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z", day / 3600, (day % 3600) / 60, day % 60)
+    format!(
+        "{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z",
+        day / 3600,
+        (day % 3600) / 60,
+        day % 60
+    )
 }
 
 pub fn fmt_day(ms: i64) -> String {
@@ -1310,7 +1565,15 @@ mod tests {
 
     const T0: i64 = 1_792_627_200_000; // 2026-10-22T00:00:00Z
 
-    fn rt(archetype: Archetype, symbol: &str, opened_min: i64, hold_min: i64, pnl_r: f32, stop: f32, spread: f32) -> ReportTrade {
+    fn rt(
+        archetype: Archetype,
+        symbol: &str,
+        opened_min: i64,
+        hold_min: i64,
+        pnl_r: f32,
+        stop: f32,
+        spread: f32,
+    ) -> ReportTrade {
         ReportTrade {
             trader: archetype.name().into(),
             archetype: archetype_key(archetype),
@@ -1329,7 +1592,10 @@ mod tests {
     }
 
     fn series(archetype: Archetype, rs: &[f32]) -> Vec<ReportTrade> {
-        rs.iter().enumerate().map(|(i, r)| rt(archetype, "XAG/USD", i as i64 * 10, 5, *r, 10.0, 1.0)).collect()
+        rs.iter()
+            .enumerate()
+            .map(|(i, r)| rt(archetype, "XAG/USD", i as i64 * 10, 5, *r, 10.0, 1.0))
+            .collect()
     }
 
     #[test]
@@ -1352,8 +1618,14 @@ mod tests {
 
     #[test]
     fn session_names_parse() {
-        assert_eq!(Session::parse_list("london,ny").unwrap(), vec![Session::London, Session::NewYork]);
-        assert_eq!(Session::parse_list("NY, Overlap,new_york").unwrap(), vec![Session::Overlap, Session::NewYork]);
+        assert_eq!(
+            Session::parse_list("london,ny").unwrap(),
+            vec![Session::London, Session::NewYork]
+        );
+        assert_eq!(
+            Session::parse_list("NY, Overlap,new_york").unwrap(),
+            vec![Session::Overlap, Session::NewYork]
+        );
         assert!(Session::parse_list("london,mars").is_err());
     }
 
@@ -1400,7 +1672,10 @@ mod tests {
     #[test]
     fn drawdown_and_runs_direct() {
         assert!((max_drawdown(&[1.0, 1.0, -3.0, 2.0, -1.0, -1.0]) - 3.0).abs() < 1e-9);
-        assert_eq!(longest_run(&[-1.0, -1.0, 1.0, -1.0, -1.0, -1.0, 1.0], |r| r <= 0.0), 3);
+        assert_eq!(
+            longest_run(&[-1.0, -1.0, 1.0, -1.0, -1.0, -1.0, 1.0], |r| r <= 0.0),
+            3
+        );
         assert!((median(&[3.0, 1.0, 2.0]) - 2.0).abs() < 1e-9);
         assert!((median(&[4.0, 1.0, 2.0, 3.0]) - 2.5).abs() < 1e-9);
     }
@@ -1478,14 +1753,22 @@ mod tests {
 
     #[test]
     fn bootstrap_is_seeded_and_sane() {
-        let rs: Vec<f64> = (0..40).map(|i| if i % 3 == 0 { -1.0 } else { 0.8 }).collect();
+        let rs: Vec<f64> = (0..40)
+            .map(|i| if i % 3 == 0 { -1.0 } else { 0.8 })
+            .collect();
         let a = bootstrap_net_r(&rs, 2000, 7).unwrap();
         let b = bootstrap_net_r(&rs, 2000, 7).unwrap();
         assert_eq!(a, b, "same seed, same interval");
         let c = bootstrap_net_r(&rs, 2000, 8).unwrap();
         let net: f64 = rs.iter().sum();
-        assert!(a.0 < net && net < a.1, "interval {a:?} should bracket the net {net}");
-        assert!(c.0 < net && net < c.1, "interval {c:?} should bracket the net {net}");
+        assert!(
+            a.0 < net && net < a.1,
+            "interval {a:?} should bracket the net {net}"
+        );
+        assert!(
+            c.0 < net && net < c.1,
+            "interval {c:?} should bracket the net {net}"
+        );
         assert!(a.0 < a.1);
         // A constant series has no sampling variance at all.
         let flat = bootstrap_net_r(&[1.0; 25], 500, 1).unwrap();
@@ -1496,39 +1779,100 @@ mod tests {
     #[test]
     fn bootstrap_difference_against_control() {
         let good = vec![1.0; 30];
-        let coin: Vec<f64> = (0..30).map(|i| if i % 2 == 0 { 1.0 } else { -1.0 }).collect();
+        let coin: Vec<f64> = (0..30)
+            .map(|i| if i % 2 == 0 { 1.0 } else { -1.0 })
+            .collect();
         let (lo, hi) = bootstrap_diff_r(&good, &coin, 2000, 3).unwrap();
         assert!(lo > 0.0, "a sure +1R trader beats a coin flip: {lo} {hi}");
         let (lo, hi) = bootstrap_diff_r(&coin, &coin, 2000, 3).unwrap();
-        assert!(lo < 0.0 && hi > 0.0, "a coin flip does not beat itself: {lo} {hi}");
+        assert!(
+            lo < 0.0 && hi > 0.0,
+            "a coin flip does not beat itself: {lo} {hi}"
+        );
     }
 
     #[test]
     fn verdict_rules() {
         assert_eq!(verdict(true, 100, None), Verdict::Control);
-        assert_eq!(verdict(false, MIN_TRADES_FOR_VERDICT - 1, Some((1.0, 2.0))), Verdict::TooFewTrades);
-        assert_eq!(verdict(false, MIN_TRADES_FOR_VERDICT, Some((0.1, 2.0))), Verdict::Yes);
-        assert_eq!(verdict(false, MIN_TRADES_FOR_VERDICT, Some((-0.1, 2.0))), Verdict::No);
-        assert_eq!(verdict(false, MIN_TRADES_FOR_VERDICT, None), Verdict::NoControl);
+        assert_eq!(
+            verdict(false, MIN_TRADES_FOR_VERDICT - 1, Some((1.0, 2.0))),
+            Verdict::TooFewTrades
+        );
+        assert_eq!(
+            verdict(false, MIN_TRADES_FOR_VERDICT, Some((0.1, 2.0))),
+            Verdict::Yes
+        );
+        assert_eq!(
+            verdict(false, MIN_TRADES_FOR_VERDICT, Some((-0.1, 2.0))),
+            Verdict::No
+        );
+        assert_eq!(
+            verdict(false, MIN_TRADES_FOR_VERDICT, None),
+            Verdict::NoControl
+        );
     }
 
     #[test]
+    #[allow(clippy::vec_init_then_push)] // one push per trade reads as the scenario
     fn report_assembles_breakdowns_curves_and_days() {
         let mut trades = Vec::new();
         // Grace: London XAG +1, Overlap NAS -0.5, next day Asia XAG +2.
-        trades.push(rt(Archetype::TrendRider, "XAG/USD", 8 * 60, 30, 1.0, 10.0, 1.0));
-        trades.push(rt(Archetype::TrendRider, "NAS100", 13 * 60, 10, -0.5, 10.0, 1.0));
-        trades.push(rt(Archetype::TrendRider, "XAG/USD", 24 * 60 + 60, 10, 2.0, 10.0, 1.0));
+        trades.push(rt(
+            Archetype::TrendRider,
+            "XAG/USD",
+            8 * 60,
+            30,
+            1.0,
+            10.0,
+            1.0,
+        ));
+        trades.push(rt(
+            Archetype::TrendRider,
+            "NAS100",
+            13 * 60,
+            10,
+            -0.5,
+            10.0,
+            1.0,
+        ));
+        trades.push(rt(
+            Archetype::TrendRider,
+            "XAG/USD",
+            24 * 60 + 60,
+            10,
+            2.0,
+            10.0,
+            1.0,
+        ));
         // Colin: one flat trade.
-        trades.push(rt(Archetype::Control, "XAG/USD", 9 * 60, 10, 0.0, 10.0, 1.0));
+        trades.push(rt(
+            Archetype::Control,
+            "XAG/USD",
+            9 * 60,
+            10,
+            0.0,
+            10.0,
+            1.0,
+        ));
         let n = Archetype::ALL.len();
         let rep = Report::build("test", trades, T0, T0 + 2 * 86_400_000, n, 1);
         assert_eq!(rep.traders.len(), n, "every archetype has a row");
         let grace = rep.traders.iter().find(|t| t.name == "Grace").unwrap();
         assert_eq!(grace.stats.trades, 3);
         assert!((grace.stats.net_r - 2.5).abs() < 1e-6);
-        assert_eq!(grace.by_symbol.iter().map(|b| (b.key.as_str(), b.trades)).collect::<Vec<_>>(), vec![("NAS100", 1), ("XAG/USD", 2)]);
-        let sessions: Vec<(&str, usize)> = grace.by_session.iter().map(|b| (b.key.as_str(), b.trades)).collect();
+        assert_eq!(
+            grace
+                .by_symbol
+                .iter()
+                .map(|b| (b.key.as_str(), b.trades))
+                .collect::<Vec<_>>(),
+            vec![("NAS100", 1), ("XAG/USD", 2)]
+        );
+        let sessions: Vec<(&str, usize)> = grace
+            .by_session
+            .iter()
+            .map(|b| (b.key.as_str(), b.trades))
+            .collect();
         assert_eq!(sessions, vec![("Asia", 1), ("London", 1), ("Overlap", 1)]);
         assert_eq!(grace.edge.verdict, Some(Verdict::TooFewTrades));
         // Curve: start, then cumulative by exit: +1, +0.5, +2.5.
@@ -1552,13 +1896,22 @@ mod tests {
         let html = rep.html();
         assert!(html.starts_with("<!doctype html>"));
         assert!(html.contains("<svg"));
-        assert!(!html.contains("http://") && !html.contains("https://"), "self-contained");
+        assert!(
+            !html.contains("http://") && !html.contains("https://"),
+            "self-contained"
+        );
     }
 
     #[test]
     fn verdict_yes_in_a_full_report() {
         let mut trades = series(Archetype::IctLevelTrader, &[1.0; 30]);
-        trades.extend(series(Archetype::Control, &[1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0]));
+        trades.extend(series(
+            Archetype::Control,
+            &[
+                1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0,
+                -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0,
+            ],
+        ));
         let rep = Report::build("t", trades, T0, T0 + 3_600_000, 6, 42);
         let priya = rep.traders.iter().find(|t| t.name == "Priya").unwrap();
         assert_eq!(priya.edge.verdict, Some(Verdict::Yes));
@@ -1618,7 +1971,10 @@ mod tests {
         assert_eq!(line.chars().count(), SPARK_COLS);
         assert_eq!((lo, hi), (-1.0, 2.0));
         // First sample is still at 0 R (▃ on a -1..2 scale), the +2 plateau is full height, the end is the trough.
-        assert!(line.starts_with('▃') && line.contains('█') && line.ends_with('▁'), "{line}");
+        assert!(
+            line.starts_with('▃') && line.contains('█') && line.ends_with('▁'),
+            "{line}"
+        );
         let t = nice_ticks(-1.2, 3.4);
         assert!(t.contains(&0.0) && t.iter().all(|v| *v >= -1.2 && *v <= 3.4));
     }

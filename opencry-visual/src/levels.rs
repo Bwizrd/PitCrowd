@@ -19,7 +19,9 @@ use crate::market::Instrument;
 use crate::pit::set_ui_text;
 use crate::pit_engine::tick_size;
 use crate::scenario::MarketScenarioController;
-use crate::tape_chart::{candle_layout, chart_source, ChartLayout, TapeHistory, BOARD_BARS, CANDLE_BASE, CHART_W};
+use crate::tape_chart::{
+    BOARD_BARS, CANDLE_BASE, CHART_W, ChartLayout, TapeHistory, candle_layout, chart_source,
+};
 use crate::ui::Selection;
 
 /// Bands drawn at once per chart.
@@ -64,7 +66,10 @@ impl LevelKind {
 
     /// The kind whose `tag` this is (the text the state and the TRIGGER line carry).
     pub fn from_tag(tag: &str) -> Option<LevelKind> {
-        LevelKind::ALL.iter().copied().find(|k| k.tag() == tag.trim())
+        LevelKind::ALL
+            .iter()
+            .copied()
+            .find(|k| k.tag() == tag.trim())
     }
 
     pub fn tag(self) -> &'static str {
@@ -86,8 +91,16 @@ impl LevelKind {
     /// +1 buyers expected to defend it, -1 sellers, 0 neutral.
     pub fn bias(self) -> i8 {
         match self {
-            LevelKind::BullOrderBlock | LevelKind::BullFvg | LevelKind::SwingLow | LevelKind::SessionLow | LevelKind::OandaLongOrders => 1,
-            LevelKind::BearOrderBlock | LevelKind::BearFvg | LevelKind::SwingHigh | LevelKind::SessionHigh | LevelKind::OandaShortOrders => -1,
+            LevelKind::BullOrderBlock
+            | LevelKind::BullFvg
+            | LevelKind::SwingLow
+            | LevelKind::SessionLow
+            | LevelKind::OandaLongOrders => 1,
+            LevelKind::BearOrderBlock
+            | LevelKind::BearFvg
+            | LevelKind::SwingHigh
+            | LevelKind::SessionHigh
+            | LevelKind::OandaShortOrders => -1,
             LevelKind::Round => 0,
         }
     }
@@ -105,14 +118,21 @@ impl LevelKind {
     }
 
     pub fn is_oanda(self) -> bool {
-        matches!(self, LevelKind::OandaLongOrders | LevelKind::OandaShortOrders)
+        matches!(
+            self,
+            LevelKind::OandaLongOrders | LevelKind::OandaShortOrders
+        )
     }
 
     /// Band alpha on the board chart. OANDA clusters are drawn solid enough to read at a
     /// glance (they are the only levels that come from other people's orders); the
     /// structure levels stay translucent so candles show through them.
     pub fn band_alpha(self, strength: f32) -> f32 {
-        if self.is_oanda() { 0.40 + 0.40 * strength } else { 0.10 + 0.18 * strength }
+        if self.is_oanda() {
+            0.40 + 0.40 * strength
+        } else {
+            0.10 + 0.18 * strength
+        }
     }
 
     /// Minimum band thickness in logical px on the board chart.
@@ -167,7 +187,9 @@ impl Level {
 
     pub fn label(&self) -> String {
         match self.kind {
-            LevelKind::OandaLongOrders | LevelKind::OandaShortOrders => format!("{} {:.1}%", self.kind.tag(), self.pct),
+            LevelKind::OandaLongOrders | LevelKind::OandaShortOrders => {
+                format!("{} {:.1}%", self.kind.tag(), self.pct)
+            }
             _ if self.touched => format!("{} (touched)", self.kind.tag()),
             _ => self.kind.tag().to_string(),
         }
@@ -218,8 +240,12 @@ pub fn detect_levels(bars: &[Candle], tick: f32, round: f32) -> Vec<Level> {
     let mut bull_obs: Vec<Level> = Vec::new();
     for &s in &swing_highs {
         let h = bars[s].high;
-        let Some(b) = (s + 1..n).find(|&b| bars[b].close > h) else { continue };
-        let Some(j) = (s..b).rev().find(|&j| bars[j].close < bars[j].open) else { continue };
+        let Some(b) = (s + 1..n).find(|&b| bars[b].close > h) else {
+            continue;
+        };
+        let Some(j) = (s..b).rev().find(|&j| bars[j].close < bars[j].open) else {
+            continue;
+        };
         let (lo, hi) = (bars[j].low, bars[j].high);
         if bars[b + 1..].iter().any(|x| x.close < lo) {
             continue;
@@ -228,13 +254,25 @@ pub fn detect_levels(bars: &[Candle], tick: f32, round: f32) -> Vec<Level> {
             continue;
         }
         let touched = bars[b + 1..].iter().any(|x| x.low <= hi);
-        bull_obs.push(Level { kind: LevelKind::BullOrderBlock, lo, hi, strength: if touched { 0.5 } else { 0.9 }, time_ms: bars[j].time_ms, touched, pct: 0.0 });
+        bull_obs.push(Level {
+            kind: LevelKind::BullOrderBlock,
+            lo,
+            hi,
+            strength: if touched { 0.5 } else { 0.9 },
+            time_ms: bars[j].time_ms,
+            touched,
+            pct: 0.0,
+        });
     }
     let mut bear_obs: Vec<Level> = Vec::new();
     for &s in &swing_lows {
         let l = bars[s].low;
-        let Some(b) = (s + 1..n).find(|&b| bars[b].close < l) else { continue };
-        let Some(j) = (s..b).rev().find(|&j| bars[j].close > bars[j].open) else { continue };
+        let Some(b) = (s + 1..n).find(|&b| bars[b].close < l) else {
+            continue;
+        };
+        let Some(j) = (s..b).rev().find(|&j| bars[j].close > bars[j].open) else {
+            continue;
+        };
         let (lo, hi) = (bars[j].low, bars[j].high);
         if bars[b + 1..].iter().any(|x| x.close > hi) {
             continue;
@@ -243,7 +281,15 @@ pub fn detect_levels(bars: &[Candle], tick: f32, round: f32) -> Vec<Level> {
             continue;
         }
         let touched = bars[b + 1..].iter().any(|x| x.high >= lo);
-        bear_obs.push(Level { kind: LevelKind::BearOrderBlock, lo, hi, strength: if touched { 0.5 } else { 0.9 }, time_ms: bars[j].time_ms, touched, pct: 0.0 });
+        bear_obs.push(Level {
+            kind: LevelKind::BearOrderBlock,
+            lo,
+            hi,
+            strength: if touched { 0.5 } else { 0.9 },
+            time_ms: bars[j].time_ms,
+            touched,
+            pct: 0.0,
+        });
     }
     out.extend(newest(bull_obs, 2));
     out.extend(newest(bear_obs, 2));
@@ -256,12 +302,28 @@ pub fn detect_levels(bars: &[Candle], tick: f32, round: f32) -> Vec<Level> {
         let (glo, ghi) = (bars[i - 1].high, bars[i + 1].low);
         if ghi - glo >= MIN_FVG_TICKS * tick * 0.999 && !later.iter().any(|x| x.low <= glo) {
             let hi = later.iter().map(|x| x.low).fold(ghi, f32::min);
-            bull_fvg.push(Level { kind: LevelKind::BullFvg, lo: glo, hi, strength: if hi < ghi { 0.5 } else { 0.8 }, time_ms: bars[i].time_ms, touched: hi < ghi, pct: 0.0 });
+            bull_fvg.push(Level {
+                kind: LevelKind::BullFvg,
+                lo: glo,
+                hi,
+                strength: if hi < ghi { 0.5 } else { 0.8 },
+                time_ms: bars[i].time_ms,
+                touched: hi < ghi,
+                pct: 0.0,
+            });
         }
         let (glo, ghi) = (bars[i + 1].high, bars[i - 1].low);
         if ghi - glo >= MIN_FVG_TICKS * tick * 0.999 && !later.iter().any(|x| x.high >= ghi) {
             let lo = later.iter().map(|x| x.high).fold(glo, f32::max);
-            bear_fvg.push(Level { kind: LevelKind::BearFvg, lo, hi: ghi, strength: if lo > glo { 0.5 } else { 0.8 }, time_ms: bars[i].time_ms, touched: lo > glo, pct: 0.0 });
+            bear_fvg.push(Level {
+                kind: LevelKind::BearFvg,
+                lo,
+                hi: ghi,
+                strength: if lo > glo { 0.5 } else { 0.8 },
+                time_ms: bars[i].time_ms,
+                touched: lo > glo,
+                pct: 0.0,
+            });
         }
     }
     out.extend(newest(bull_fvg, 2));
@@ -272,13 +334,29 @@ pub fn detect_levels(bars: &[Candle], tick: f32, round: f32) -> Vec<Level> {
         .iter()
         .rev()
         .filter(|&&i| bars[i + 1..].iter().all(|x| x.close <= bars[i].high))
-        .map(|&i| Level { kind: LevelKind::SwingHigh, lo: bars[i].high - tick * 0.5, hi: bars[i].high + tick * 0.5, strength: 0.6, time_ms: bars[i].time_ms, touched: false, pct: 0.0 })
+        .map(|&i| Level {
+            kind: LevelKind::SwingHigh,
+            lo: bars[i].high - tick * 0.5,
+            hi: bars[i].high + tick * 0.5,
+            strength: 0.6,
+            time_ms: bars[i].time_ms,
+            touched: false,
+            pct: 0.0,
+        })
         .collect();
     let mut lows: Vec<Level> = swing_lows
         .iter()
         .rev()
         .filter(|&&i| bars[i + 1..].iter().all(|x| x.close >= bars[i].low))
-        .map(|&i| Level { kind: LevelKind::SwingLow, lo: bars[i].low - tick * 0.5, hi: bars[i].low + tick * 0.5, strength: 0.6, time_ms: bars[i].time_ms, touched: false, pct: 0.0 })
+        .map(|&i| Level {
+            kind: LevelKind::SwingLow,
+            lo: bars[i].low - tick * 0.5,
+            hi: bars[i].low + tick * 0.5,
+            strength: 0.6,
+            time_ms: bars[i].time_ms,
+            touched: false,
+            pct: 0.0,
+        })
         .collect();
     dedup_near(&mut highs, tick * 2.0);
     dedup_near(&mut lows, tick * 2.0);
@@ -291,11 +369,33 @@ pub fn detect_levels(bars: &[Candle], tick: f32, round: f32) -> Vec<Level> {
     let (mut lo, mut hi) = (f32::MAX, f32::MIN);
     let (mut lo_t, mut hi_t) = (0i64, 0i64);
     for b in bars {
-        if b.low < lo { lo = b.low; lo_t = b.time_ms; }
-        if b.high > hi { hi = b.high; hi_t = b.time_ms; }
+        if b.low < lo {
+            lo = b.low;
+            lo_t = b.time_ms;
+        }
+        if b.high > hi {
+            hi = b.high;
+            hi_t = b.time_ms;
+        }
     }
-    out.push(Level { kind: LevelKind::SessionHigh, lo: hi - tick * 0.5, hi: hi + tick * 0.5, strength: 0.5, time_ms: hi_t, touched: false, pct: 0.0 });
-    out.push(Level { kind: LevelKind::SessionLow, lo: lo - tick * 0.5, hi: lo + tick * 0.5, strength: 0.5, time_ms: lo_t, touched: false, pct: 0.0 });
+    out.push(Level {
+        kind: LevelKind::SessionHigh,
+        lo: hi - tick * 0.5,
+        hi: hi + tick * 0.5,
+        strength: 0.5,
+        time_ms: hi_t,
+        touched: false,
+        pct: 0.0,
+    });
+    out.push(Level {
+        kind: LevelKind::SessionLow,
+        lo: lo - tick * 0.5,
+        hi: lo + tick * 0.5,
+        strength: 0.5,
+        time_ms: lo_t,
+        touched: false,
+        pct: 0.0,
+    });
 
     // Round numbers inside the window, nearest to the last close first.
     if round > 0.0 {
@@ -308,7 +408,15 @@ pub fn detect_levels(bars: &[Candle], tick: f32, round: f32) -> Vec<Level> {
         }
         rounds.sort_by(|a, b| (a - last).abs().partial_cmp(&(b - last).abs()).unwrap());
         for px in rounds.into_iter().take(4) {
-            out.push(Level { kind: LevelKind::Round, lo: px - tick * 0.5, hi: px + tick * 0.5, strength: 0.4, time_ms: 0, touched: false, pct: 0.0 });
+            out.push(Level {
+                kind: LevelKind::Round,
+                lo: px - tick * 0.5,
+                hi: px + tick * 0.5,
+                strength: 0.4,
+                time_ms: 0,
+                touched: false,
+                pct: 0.0,
+            });
         }
     }
     out
@@ -334,7 +442,12 @@ fn dedup_near(v: &mut Vec<Level>, gap: f32) {
 /// Order the levels for drawing: most useful kinds first, newest first inside a kind, at most
 /// `cap`.
 pub fn compose(mut levels: Vec<Level>, cap: usize) -> Vec<Level> {
-    levels.sort_by(|a, b| a.kind.priority().cmp(&b.kind.priority()).then(b.time_ms.cmp(&a.time_ms)));
+    levels.sort_by(|a, b| {
+        a.kind
+            .priority()
+            .cmp(&b.kind.priority())
+            .then(b.time_ms.cmp(&a.time_ms))
+    });
     levels.truncate(cap);
     levels
 }
@@ -370,10 +483,23 @@ pub fn parse_oanda(text: &str) -> Result<OandaBook, String> {
         .iter()
         .filter_map(|row| {
             let r = row.as_array()?;
-            Some((r.first()?.as_f64()? as f32, r.get(1)?.as_f64()? as f32, r.get(2)?.as_f64()? as f32))
+            Some((
+                r.first()?.as_f64()? as f32,
+                r.get(1)?.as_f64()? as f32,
+                r.get(2)?.as_f64()? as f32,
+            ))
         })
         .collect();
-    Ok(OandaBook { time: v.get("time").and_then(|t| t.as_str()).unwrap_or("").to_string(), price, bucket_width, buckets })
+    Ok(OandaBook {
+        time: v
+            .get("time")
+            .and_then(|t| t.as_str())
+            .unwrap_or("")
+            .to_string(),
+        price,
+        bucket_width,
+        buckets,
+    })
 }
 
 /// The biggest order clusters inside the chart's range, up to three a side.
@@ -389,19 +515,37 @@ pub const OANDA_MIN_SHARE: f32 = 0.35;
 pub fn oanda_levels(book: &OandaBook, lo: f32, hi: f32) -> Vec<Level> {
     let width = book.bucket_width.max(0.0);
     let half = width * 0.5;
-    let in_range: Vec<&(f32, f32, f32)> = book.buckets.iter().filter(|b| b.0 >= lo && b.0 <= hi).collect();
+    let in_range: Vec<&(f32, f32, f32)> = book
+        .buckets
+        .iter()
+        .filter(|b| b.0 >= lo && b.0 <= hi)
+        .collect();
     let mut out = Vec::new();
-    for (kind, pick) in [(LevelKind::OandaLongOrders, 1usize), (LevelKind::OandaShortOrders, 2usize)] {
+    for (kind, pick) in [
+        (LevelKind::OandaLongOrders, 1usize),
+        (LevelKind::OandaShortOrders, 2usize),
+    ] {
         let pct_of = |b: &(f32, f32, f32)| if pick == 1 { b.1 } else { b.2 };
         let clusters = cluster_buckets(&in_range, |b| pct_of(b), width * OANDA_CLUSTER_GAP);
         let max_pct = clusters.iter().map(|c| c.2).fold(0.0f32, f32::max);
         if max_pct <= 0.0 {
             continue;
         }
-        let mut rows: Vec<(f32, f32, f32)> = clusters.into_iter().filter(|c| c.2 >= max_pct * OANDA_MIN_SHARE).collect();
+        let mut rows: Vec<(f32, f32, f32)> = clusters
+            .into_iter()
+            .filter(|c| c.2 >= max_pct * OANDA_MIN_SHARE)
+            .collect();
         rows.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap());
         for (clo, chi, pct) in rows.into_iter().take(3) {
-            out.push(Level { kind, lo: clo - half, hi: chi + half, strength: (pct / max_pct).clamp(0.2, 1.0), time_ms: 0, touched: false, pct });
+            out.push(Level {
+                kind,
+                lo: clo - half,
+                hi: chi + half,
+                strength: (pct / max_pct).clamp(0.2, 1.0),
+                time_ms: 0,
+                touched: false,
+                pct,
+            });
         }
     }
     out
@@ -409,8 +553,16 @@ pub fn oanda_levels(book: &OandaBook, lo: f32, hi: f32) -> Vec<Level> {
 
 /// Merge buckets with a non-zero share into runs whose neighbours sit within `gap` of each
 /// other: `(lowest price, highest price, summed share)`, in price order.
-fn cluster_buckets(buckets: &[&(f32, f32, f32)], share: impl Fn(&(f32, f32, f32)) -> f32, gap: f32) -> Vec<(f32, f32, f32)> {
-    let mut rows: Vec<(f32, f32)> = buckets.iter().map(|b| (b.0, share(b))).filter(|r| r.1 > 0.0).collect();
+fn cluster_buckets(
+    buckets: &[&(f32, f32, f32)],
+    share: impl Fn(&(f32, f32, f32)) -> f32,
+    gap: f32,
+) -> Vec<(f32, f32, f32)> {
+    let mut rows: Vec<(f32, f32)> = buckets
+        .iter()
+        .map(|b| (b.0, share(b)))
+        .filter(|r| r.1 > 0.0)
+        .collect();
     rows.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
     let mut out: Vec<(f32, f32, f32)> = Vec::new();
     for (price, pct) in rows {
@@ -491,14 +643,23 @@ impl LevelStore {
     }
 
     /// Recompute a pit's trading levels from its 1m bars (at most every 2 s).
-    pub fn refresh_trading(&mut self, inst: Instrument, bars: &[Candle], series_rev: u64, now: f64) {
+    pub fn refresh_trading(
+        &mut self,
+        inst: Instrument,
+        bars: &[Candle],
+        series_rev: u64,
+        now: f64,
+    ) {
         let i = inst as usize;
         if self.trade_computed[i] == series_rev || now < self.trade_next[i] {
             return;
         }
         self.trade_computed[i] = series_rev;
         self.trade_next[i] = now + 2.0;
-        self.trade_levels[i] = compose(detect_levels(bars, tick_size(inst), round_step(inst)), LEVEL_NODES * 2);
+        self.trade_levels[i] = compose(
+            detect_levels(bars, tick_size(inst), round_step(inst)),
+            LEVEL_NODES * 2,
+        );
     }
 
     pub fn oanda(&self, inst: Instrument) -> Option<&OandaBook> {
@@ -527,7 +688,8 @@ impl LevelStore {
                     self.oanda_next[i] = now + 30.0;
                 }
                 Err(e) => {
-                    self.oanda_status = format!("OANDA: {}", e.chars().take(70).collect::<String>());
+                    self.oanda_status =
+                        format!("OANDA: {}", e.chars().take(70).collect::<String>());
                     self.oanda_next[i] = now + OANDA_REFRESH_SECS * 2.0;
                 }
             }
@@ -548,7 +710,10 @@ impl LevelStore {
                 Ok(r) if r.ok || r.status == 202 => parse_oanda(r.text().unwrap_or("")),
                 Ok(r) if r.status == 503 => Err("not configured on the tape".into()),
                 Ok(r) => Err(format!("HTTP {}", r.status)),
-                Err(e) => Err(format!("tape unreachable ({})", e.chars().take(40).collect::<String>())),
+                Err(e) => Err(format!(
+                    "tape unreachable ({})",
+                    e.chars().take(40).collect::<String>()
+                )),
             };
             if let Ok(mut p) = pending.lock() {
                 p.push((inst, out));
@@ -557,7 +722,14 @@ impl LevelStore {
     }
 
     /// Recompute a pit's levels if its bars or its OANDA book changed.
-    fn refresh(&mut self, inst: Instrument, bars: &[Candle], series_rev: u64, tf: Timeframe, mode: FeedMode) {
+    fn refresh(
+        &mut self,
+        inst: Instrument,
+        bars: &[Candle],
+        series_rev: u64,
+        tf: Timeframe,
+        mode: FeedMode,
+    ) {
         let i = inst as usize;
         let key = (series_rev, tf, mode, self.oanda_rev);
         if self.computed[i] == Some(key) {
@@ -567,7 +739,9 @@ impl LevelStore {
         let tick = tick_size(inst);
         let mut levels = detect_levels(bars, tick, round_step(inst));
         if let (Some(book), Some(first)) = (self.oanda[i].as_ref(), bars.first()) {
-            let (lo, hi) = bars.iter().fold((first.low, first.high), |(l, h), b| (l.min(b.low), h.max(b.high)));
+            let (lo, hi) = bars.iter().fold((first.low, first.high), |(l, h), b| {
+                (l.min(b.low), h.max(b.high))
+            });
             levels.extend(oanda_levels(book, lo, hi));
         }
         self.levels[i] = compose(levels, LEVEL_NODES);
@@ -589,12 +763,20 @@ pub fn update_levels(
     // Trading levels for every pit that is ticking, from its 1m bars.
     if feed.mode == FeedMode::Live {
         for inst in Instrument::ALL {
-            if !matches!(feed.pit_status(inst, now), crate::live_feed::PitFeedStatus::Live { .. }) {
+            if !matches!(
+                feed.pit_status(inst, now),
+                crate::live_feed::PitFeedStatus::Live { .. }
+            ) {
                 continue;
             }
             let series = store.series(inst, Timeframe::M1, FeedMode::Live);
             let n = series.bars.len();
-            let bars: Vec<Candle> = series.bars.iter().skip(n.saturating_sub(BOARD_BARS)).copied().collect();
+            let bars: Vec<Candle> = series
+                .bars
+                .iter()
+                .skip(n.saturating_sub(BOARD_BARS))
+                .copied()
+                .collect();
             let rev = series.revision;
             levels.refresh_trading(inst, &bars, rev, now);
         }
@@ -602,7 +784,9 @@ pub fn update_levels(
     if !settings.levels {
         return;
     }
-    let Some(inst) = selection.selected_instrument else { return };
+    let Some(inst) = selection.selected_instrument else {
+        return;
+    };
     let (mode, _) = chart_source(&feed, inst, now);
     if mode == FeedMode::Live {
         levels.request_oanda(inst, now);
@@ -630,15 +814,29 @@ pub fn spawn_level_nodes(chart: &mut ChildSpawnerCommands) {
     for i in 0..LEVEL_NODES {
         chart.spawn((
             ChartLevelBand(i),
-            Node { position_type: PositionType::Absolute, left: Val::Px(0.0), width: Val::Px(CHART_W), display: Display::None, ..default() },
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(0.0),
+                width: Val::Px(CHART_W),
+                display: Display::None,
+                ..default()
+            },
             BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.2)),
         ));
         chart.spawn((
             ChartLevelTag(i),
             Text::new(""),
-            TextFont { font_size: 8.0, ..default() },
+            TextFont {
+                font_size: 8.0,
+                ..default()
+            },
             TextColor(Color::WHITE),
-            Node { position_type: PositionType::Absolute, right: Val::Px(3.0), display: Display::None, ..default() },
+            Node {
+                position_type: PositionType::Absolute,
+                right: Val::Px(3.0),
+                display: Display::None,
+                ..default()
+            },
         ));
     }
 }
@@ -657,37 +855,75 @@ pub fn update_board_levels(
     levels: Res<LevelStore>,
     mut drawn: Local<Option<(Instrument, u64, u64, u64, bool, bool)>>,
     mut bands: Query<(&ChartLevelBand, &mut Node, &mut BackgroundColor), Without<ChartLevelTag>>,
-    mut tags: Query<(&ChartLevelTag, &mut Node, &mut Text, &mut TextColor), Without<ChartLevelBand>>,
+    mut tags: Query<
+        (&ChartLevelTag, &mut Node, &mut Text, &mut TextColor),
+        Without<ChartLevelBand>,
+    >,
 ) {
-    let Some(inst) = selection.selected_instrument else { return };
+    let Some(inst) = selection.selected_instrument else {
+        return;
+    };
     let now = time.elapsed_secs_f64();
     let (mode, _) = chart_source(&feed, inst, now);
     let tf = settings.timeframe;
     let series = store.series(inst, tf, mode);
     let tape = history.tape(inst);
     let show = settings.board_chart && settings.levels;
-    let key = (inst, series.revision, tape.revision, levels.revision, show, settings.deal_markers);
+    let key = (
+        inst,
+        series.revision,
+        tape.revision,
+        levels.revision,
+        show,
+        settings.deal_markers,
+    );
     if *drawn == Some(key) && !size.is_changed() {
         return;
     }
     *drawn = Some(key);
-    let hide_all = |bands: &mut Query<(&ChartLevelBand, &mut Node, &mut BackgroundColor), Without<ChartLevelTag>>, tags: &mut Query<(&ChartLevelTag, &mut Node, &mut Text, &mut TextColor), Without<ChartLevelBand>>| {
-        for (_, mut n, _) in bands.iter_mut() { n.display = Display::None; }
-        for (_, mut n, _, _) in tags.iter_mut() { n.display = Display::None; }
+    let hide_all = |bands: &mut Query<
+        (&ChartLevelBand, &mut Node, &mut BackgroundColor),
+        Without<ChartLevelTag>,
+    >,
+                    tags: &mut Query<
+        (&ChartLevelTag, &mut Node, &mut Text, &mut TextColor),
+        Without<ChartLevelBand>,
+    >| {
+        for (_, mut n, _) in bands.iter_mut() {
+            n.display = Display::None;
+        }
+        for (_, mut n, _, _) in tags.iter_mut() {
+            n.display = Display::None;
+        }
     };
     if !show {
         hide_all(&mut bands, &mut tags);
         return;
     }
     let bars = series.shown();
-    let marks = if settings.deal_markers { tape.marks() } else { Vec::new() };
+    let marks = if settings.deal_markers {
+        tape.marks()
+    } else {
+        Vec::new()
+    };
     let (chart_w, candle_h, pad) = (size.chart_w, size.candle_h(), size.pad);
-    let Some(layout) = candle_layout(&bars, &marks, tf.millis(), chart_w, candle_h, tick_size(inst) * 6.0, BOARD_BARS) else {
+    let Some(layout) = candle_layout(
+        &bars,
+        &marks,
+        tf.millis(),
+        chart_w,
+        candle_h,
+        tick_size(inst) * 6.0,
+        BOARD_BARS,
+    ) else {
         hide_all(&mut bands, &mut tags);
         return;
     };
     let span = (layout.hi - layout.lo).max(1e-6);
-    let y_of = |p: f32| (CANDLE_BASE + pad + (p - layout.lo) / span * (candle_h - 2.0 * pad)).clamp(CANDLE_BASE, CANDLE_BASE + candle_h);
+    let y_of = |p: f32| {
+        (CANDLE_BASE + pad + (p - layout.lo) / span * (candle_h - 2.0 * pad))
+            .clamp(CANDLE_BASE, CANDLE_BASE + candle_h)
+    };
     let shown = &bars[bars.len() - layout.candles.len()..];
     // A level starts at the bar it came from and runs to the right edge, like a trader draws it.
     let x_start = |l: &Level| level_start_x(l, shown, &layout.candles, size.slot());
@@ -707,7 +943,10 @@ pub fn update_board_levels(
                 node.height = Val::Px(h);
                 // A cluster wider than a few pips on a tight FX chart would otherwise paint
                 // the whole panel: past 16 px tall an OANDA band fades toward a tint.
-                color.0 = l.kind.color().with_alpha(l.kind.band_alpha(l.strength) * l.kind.tall_band_fade(h));
+                color.0 = l
+                    .kind
+                    .color()
+                    .with_alpha(l.kind.band_alpha(l.strength) * l.kind.tall_band_fade(h));
             }
             _ => node.display = Display::None,
         }
@@ -732,7 +971,12 @@ pub fn update_board_levels(
 
 /// X where a level's band begins: the left edge of the bar it came from, or the chart's left
 /// edge for levels with no bar (round numbers, OANDA clusters, bars scrolled off).
-pub fn level_start_x(l: &Level, shown: &[Candle], candles: &[crate::tape_chart::CandleBox], slot: f32) -> f32 {
+pub fn level_start_x(
+    l: &Level,
+    shown: &[Candle],
+    candles: &[crate::tape_chart::CandleBox],
+    slot: f32,
+) -> f32 {
     if l.time_ms == 0 {
         return 0.0;
     }
@@ -746,7 +990,11 @@ pub fn level_start_x(l: &Level, shown: &[Candle], candles: &[crate::tape_chart::
 
 pub fn toggle_levels(settings: &mut ChartSettings, controller: &mut MarketScenarioController) {
     settings.levels = !settings.levels;
-    controller.announcement_banner = if settings.levels { "LEVELS ON: swings, blocks, gaps, OANDA orders".into() } else { "LEVELS OFF".into() };
+    controller.announcement_banner = if settings.levels {
+        "LEVELS ON: swings, blocks, gaps, OANDA orders".into()
+    } else {
+        "LEVELS OFF".into()
+    };
     controller.banner_timer = 2.0;
 }
 
@@ -755,7 +1003,15 @@ mod tests {
     use super::*;
 
     fn bar(i: i64, o: f32, h: f32, l: f32, c: f32) -> Candle {
-        Candle { time_ms: i * 60_000, open: o, high: h, low: l, close: c, volume: 1.0, ..Default::default() }
+        Candle {
+            time_ms: i * 60_000,
+            open: o,
+            high: h,
+            low: l,
+            close: c,
+            volume: 1.0,
+            ..Default::default()
+        }
     }
 
     /// A base, a swing high at bar 2, a pullback whose last red candle is bar 5, then an impulse
@@ -767,7 +1023,7 @@ mod tests {
             bar(2, 101.5, 104.0, 101.0, 103.0), // swing high 104
             bar(3, 103.0, 103.5, 101.5, 102.0),
             bar(4, 102.0, 102.5, 100.5, 101.0),
-            bar(5, 101.0, 101.5, 99.0, 99.5),   // last bearish candle before the impulse: OB 99.0..101.5
+            bar(5, 101.0, 101.5, 99.0, 99.5), // last bearish candle before the impulse: OB 99.0..101.5
             bar(6, 99.5, 102.5, 99.5, 102.3),
             bar(7, 102.3, 105.0, 102.0, 104.8), // BOS: close above 104
             bar(8, 104.8, 106.0, 104.5, 105.5),
@@ -779,7 +1035,10 @@ mod tests {
     #[test]
     fn finds_the_bull_order_block_behind_a_break_of_structure() {
         let lv = detect_levels(&bull_structure(), 0.1, 5.0);
-        let ob = lv.iter().find(|l| l.kind == LevelKind::BullOrderBlock).expect("bull OB");
+        let ob = lv
+            .iter()
+            .find(|l| l.kind == LevelKind::BullOrderBlock)
+            .expect("bull OB");
         assert_eq!((ob.lo, ob.hi), (99.0, 101.5));
         assert_eq!(ob.time_ms, 5 * 60_000);
         assert!(!ob.touched && ob.strength > 0.8);
@@ -791,7 +1050,10 @@ mod tests {
         let mut bars = bull_structure();
         bars.push(bar(11, 106.8, 106.9, 100.8, 101.2)); // trades into the block
         let lv = detect_levels(&bars, 0.1, 5.0);
-        let ob = lv.iter().find(|l| l.kind == LevelKind::BullOrderBlock).expect("still there");
+        let ob = lv
+            .iter()
+            .find(|l| l.kind == LevelKind::BullOrderBlock)
+            .expect("still there");
         assert!(ob.touched && ob.strength < 0.6);
         bars.push(bar(12, 101.2, 101.3, 98.0, 98.5)); // closes below it
         let lv = detect_levels(&bars, 0.1, 5.0);
@@ -802,28 +1064,61 @@ mod tests {
     fn finds_an_unfilled_fair_value_gap_and_shrinks_a_partly_filled_one() {
         let lv = detect_levels(&bull_structure(), 0.1, 5.0);
         let gaps: Vec<&Level> = lv.iter().filter(|l| l.kind == LevelKind::BullFvg).collect();
-        assert_eq!(gaps.len(), 2, "newest two of the three gaps (5-7, 7-9, 8-10): {gaps:?}");
-        let gap = gaps.iter().find(|l| (l.lo - 105.0).abs() < 1e-5).expect("the 105.0..105.3 gap");
+        assert_eq!(
+            gaps.len(),
+            2,
+            "newest two of the three gaps (5-7, 7-9, 8-10): {gaps:?}"
+        );
+        let gap = gaps
+            .iter()
+            .find(|l| (l.lo - 105.0).abs() < 1e-5)
+            .expect("the 105.0..105.3 gap");
         assert!((gap.hi - 105.3).abs() < 1e-5 && !gap.touched, "{gap:?}");
         let mut bars = bull_structure();
         bars.push(bar(11, 106.8, 107.0, 105.1, 106.5)); // dips into the gap but not through it
         let lv = detect_levels(&bars, 0.1, 5.0);
         let gaps: Vec<&Level> = lv.iter().filter(|l| l.kind == LevelKind::BullFvg).collect();
-        assert!(gaps.iter().all(|l| (l.lo - 106.0).abs() > 1e-3), "the 106.0..106.4 gap was filled by the dip: {gaps:?}");
-        let gap = gaps.iter().find(|l| (l.lo - 105.0).abs() < 1e-5).expect("shrunk gap");
+        assert!(
+            gaps.iter().all(|l| (l.lo - 106.0).abs() > 1e-3),
+            "the 106.0..106.4 gap was filled by the dip: {gaps:?}"
+        );
+        let gap = gaps
+            .iter()
+            .find(|l| (l.lo - 105.0).abs() < 1e-5)
+            .expect("shrunk gap");
         assert!((gap.hi - 105.1).abs() < 1e-4 && gap.touched, "{gap:?}");
     }
 
     #[test]
     fn swings_session_extremes_and_round_numbers_are_marked() {
         let lv = detect_levels(&bull_structure(), 0.1, 5.0);
-        assert!(lv.iter().any(|l| l.kind == LevelKind::SessionHigh && (l.mid() - 107.5).abs() < 1e-4));
-        assert!(lv.iter().any(|l| l.kind == LevelKind::SessionLow && (l.mid() - 99.0).abs() < 1e-4));
-        let rounds: Vec<f32> = lv.iter().filter(|l| l.kind == LevelKind::Round).map(|l| l.mid()).collect();
-        assert!(rounds.iter().any(|&r| (r - 105.0).abs() < 1e-4) && rounds.iter().any(|&r| (r - 100.0).abs() < 1e-4), "{rounds:?}");
+        assert!(
+            lv.iter()
+                .any(|l| l.kind == LevelKind::SessionHigh && (l.mid() - 107.5).abs() < 1e-4)
+        );
+        assert!(
+            lv.iter()
+                .any(|l| l.kind == LevelKind::SessionLow && (l.mid() - 99.0).abs() < 1e-4)
+        );
+        let rounds: Vec<f32> = lv
+            .iter()
+            .filter(|l| l.kind == LevelKind::Round)
+            .map(|l| l.mid())
+            .collect();
+        assert!(
+            rounds.iter().any(|&r| (r - 105.0).abs() < 1e-4)
+                && rounds.iter().any(|&r| (r - 100.0).abs() < 1e-4),
+            "{rounds:?}"
+        );
         // The 104 swing high was broken, so it is not a resting level any more.
-        assert!(lv.iter().all(|l| l.kind != LevelKind::SwingHigh || (l.mid() - 104.0).abs() > 0.2));
-        let low = lv.iter().find(|l| l.kind == LevelKind::SwingLow).expect("swing low");
+        assert!(
+            lv.iter()
+                .all(|l| l.kind != LevelKind::SwingHigh || (l.mid() - 104.0).abs() > 0.2)
+        );
+        let low = lv
+            .iter()
+            .find(|l| l.kind == LevelKind::SwingLow)
+            .expect("swing low");
         assert!((low.mid() - 99.0).abs() < 1e-4);
     }
 
@@ -834,14 +1129,30 @@ mod tests {
         let book = parse_oanda(text).unwrap();
         assert_eq!(book.buckets.len(), 5);
         let lv = oanda_levels(&book, 1.1100, 1.1300);
-        let longs: Vec<&Level> = lv.iter().filter(|l| l.kind == LevelKind::OandaLongOrders).collect();
-        let shorts: Vec<&Level> = lv.iter().filter(|l| l.kind == LevelKind::OandaShortOrders).collect();
+        let longs: Vec<&Level> = lv
+            .iter()
+            .filter(|l| l.kind == LevelKind::OandaLongOrders)
+            .collect();
+        let shorts: Vec<&Level> = lv
+            .iter()
+            .filter(|l| l.kind == LevelKind::OandaShortOrders)
+            .collect();
         assert!((longs[0].mid() - 1.1200).abs() < 1e-5 && (longs[0].pct - 1.9).abs() < 1e-5);
         assert!((shorts[0].mid() - 1.1150).abs() < 1e-5);
-        assert!(lv.iter().all(|l| l.mid() < 1.1300), "the 1.14 bucket is outside the chart");
+        assert!(
+            lv.iter().all(|l| l.mid() < 1.1300),
+            "the 1.14 bucket is outside the chart"
+        );
         assert_eq!(longs[0].label(), "OANDA LONG 1.9%");
-        assert_eq!(longs.len(), 1, "0.4% and 0.2% are under a third of the 1.9% cluster");
-        assert!((shorts[0].hi - shorts[0].lo - 0.0005).abs() < 1e-6, "a lone bucket is one bucket wide");
+        assert_eq!(
+            longs.len(),
+            1,
+            "0.4% and 0.2% are under a third of the 1.9% cluster"
+        );
+        assert!(
+            (shorts[0].hi - shorts[0].lo - 0.0005).abs() < 1e-6,
+            "a lone bucket is one bucket wide"
+        );
     }
 
     #[test]
@@ -850,19 +1161,34 @@ mod tests {
             "buckets":[[4040.0,0.3,0.0],[4040.5,0.4,0.0],[4041.0,0.3,0.0],[4046.0,0.5,0.0],[4060.0,0.0,0.6],[4061.0,0.0,0.5],[4070.0,0.0,0.3]],"positions":[]}"#;
         let book = parse_oanda(text).unwrap();
         let lv = oanda_levels(&book, 4000.0, 4100.0);
-        let longs: Vec<&Level> = lv.iter().filter(|l| l.kind == LevelKind::OandaLongOrders).collect();
-        let shorts: Vec<&Level> = lv.iter().filter(|l| l.kind == LevelKind::OandaShortOrders).collect();
+        let longs: Vec<&Level> = lv
+            .iter()
+            .filter(|l| l.kind == LevelKind::OandaLongOrders)
+            .collect();
+        let shorts: Vec<&Level> = lv
+            .iter()
+            .filter(|l| l.kind == LevelKind::OandaShortOrders)
+            .collect();
         // 4040..4041 is one cluster of 1.0% spanning three buckets; 4046 alone is 0.5%.
         assert_eq!(longs.len(), 2);
-        assert!((longs[0].pct - 1.0).abs() < 1e-5 && (longs[0].lo - 4039.75).abs() < 1e-3 && (longs[0].hi - 4041.25).abs() < 1e-3);
+        assert!(
+            (longs[0].pct - 1.0).abs() < 1e-5
+                && (longs[0].lo - 4039.75).abs() < 1e-3
+                && (longs[0].hi - 4041.25).abs() < 1e-3
+        );
         assert!((longs[1].pct - 0.5).abs() < 1e-5);
         assert_eq!(longs[0].label(), "OANDA LONG 1.0%");
         // 4060 and 4061 are 2 widths apart (within the 2.5 gap) so they merge; 4070 is 0.3 of 1.1, under the share floor.
         assert_eq!(shorts.len(), 1);
         assert!((shorts[0].pct - 1.1).abs() < 1e-5);
-        assert!(LevelKind::OandaLongOrders.band_alpha(1.0) > LevelKind::BullOrderBlock.band_alpha(1.0));
+        assert!(
+            LevelKind::OandaLongOrders.band_alpha(1.0) > LevelKind::BullOrderBlock.band_alpha(1.0)
+        );
         assert_eq!(LevelKind::OandaLongOrders.tall_band_fade(8.0), 1.0);
-        assert!((LevelKind::OandaShortOrders.tall_band_fade(160.0) - 0.15).abs() < 1e-6, "a band as tall as the chart is a tint");
+        assert!(
+            (LevelKind::OandaShortOrders.tall_band_fade(160.0) - 0.15).abs() < 1e-6,
+            "a band as tall as the chart is a tint"
+        );
         assert_eq!(LevelKind::BullOrderBlock.tall_band_fade(300.0), 1.0);
         assert!(matches!(parse_oanda(r#"{"pending":true}"#), Err(e) if e == "pending"));
         assert!(parse_oanda(r#"{"error":"OANDA not configured"}"#).is_err());

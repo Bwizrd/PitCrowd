@@ -1,26 +1,28 @@
-use bevy::prelude::*;
-use std::collections::HashMap;
+use crate::camera::FloorViewMode;
 use crate::market::{Firm, Instrument};
 use crate::pit::{Pit, PitBounds};
-use crate::camera::FloorViewMode;
-use crate::pit_engine::{role_for_slot, ParticipantRole, Phase, PitEngines, PitEventKind, PitMarket, Side};
+use crate::pit_engine::{
+    ParticipantRole, Phase, PitEngines, PitEventKind, PitMarket, Side, role_for_slot,
+};
+use bevy::prelude::*;
+use std::collections::HashMap;
 
 /// Concourse waypoints connecting all trading districts across the shared floor
 pub const CONCOURSE_WAYPOINTS: [Vec2; 14] = [
-    Vec2::new(0.0, 380.0),     // North Concourse between Gold & Silver
-    Vec2::new(720.0, 180.0),   // North-East Concourse above US30
-    Vec2::new(1080.0, -390.0), // East Concourse between US30 & GBP
-    Vec2::new(750.0, -580.0),  // South-East Concourse between BTC & GBP
-    Vec2::new(0.0, -540.0),    // South Grand Plaza between EUR & BTC
-    Vec2::new(-750.0, -580.0), // South-West Concourse between UK100 & EUR
-    Vec2::new(-1080.0, -390.0),// West Concourse between Nasdaq & UK100
-    Vec2::new(-720.0, 180.0),  // North-West Concourse above Nasdaq
-    Vec2::new(0.0, 200.0),     // Center Hub North
-    Vec2::new(480.0, 0.0),     // Center Hub East
-    Vec2::new(0.0, -200.0),    // Center Hub South
-    Vec2::new(-480.0, 0.0),    // Center Hub West
-    Vec2::new(-350.0, -250.0), // South-West Inner Aisle
-    Vec2::new(350.0, -250.0),  // South-East Inner Aisle
+    Vec2::new(0.0, 380.0),      // North Concourse between Gold & Silver
+    Vec2::new(720.0, 180.0),    // North-East Concourse above US30
+    Vec2::new(1080.0, -390.0),  // East Concourse between US30 & GBP
+    Vec2::new(750.0, -580.0),   // South-East Concourse between BTC & GBP
+    Vec2::new(0.0, -540.0),     // South Grand Plaza between EUR & BTC
+    Vec2::new(-750.0, -580.0),  // South-West Concourse between UK100 & EUR
+    Vec2::new(-1080.0, -390.0), // West Concourse between Nasdaq & UK100
+    Vec2::new(-720.0, 180.0),   // North-West Concourse above Nasdaq
+    Vec2::new(0.0, 200.0),      // Center Hub North
+    Vec2::new(480.0, 0.0),      // Center Hub East
+    Vec2::new(0.0, -200.0),     // Center Hub South
+    Vec2::new(-480.0, 0.0),     // Center Hub West
+    Vec2::new(-350.0, -250.0),  // South-West Inner Aisle
+    Vec2::new(350.0, -250.0),   // South-East Inner Aisle
 ];
 
 /// Visual trader entity participating in pit order flow
@@ -256,8 +258,12 @@ pub fn activity_to_speed(activity: f32, min_speed: f32, max_speed: f32) -> f32 {
 
 /// Pure deterministic pseudo-random helper for unit testing & waypoint picking without external crates
 pub fn pseudo_random_offset(seed: u64, max_radius_x: f32, max_radius_y: f32) -> Vec2 {
-    let next_x = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-    let next_y = next_x.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+    let next_x = seed
+        .wrapping_mul(6364136223846793005)
+        .wrapping_add(1442695040888963407);
+    let next_y = next_x
+        .wrapping_mul(6364136223846793005)
+        .wrapping_add(1442695040888963407);
     let norm_x = ((next_x >> 32) as u32 as f32 / u32::MAX as f32) * 2.0 - 1.0;
     let norm_y = ((next_y >> 32) as u32 as f32 / u32::MAX as f32) * 2.0 - 1.0;
     Vec2::new(norm_x * max_radius_x, norm_y * max_radius_y)
@@ -367,7 +373,16 @@ pub fn sync_crowd_density(
                     1.25 + (600.0 - step_spot.y) * 0.001
                 };
 
-                let (spawn_pos, target_pos, speed, z_depth, coat_color, collar_color, tie_color, hair_color) = match role {
+                let (
+                    spawn_pos,
+                    target_pos,
+                    speed,
+                    z_depth,
+                    coat_color,
+                    collar_color,
+                    tie_color,
+                    hair_color,
+                ) = match role {
                     TraderRole::PriceReporter => (
                         step_spot,
                         step_spot,
@@ -385,7 +400,7 @@ pub fn sync_crowd_density(
                         zd,
                         Color::srgb(0.10, 0.25, 0.75), // Royal Blue Blazer
                         Color::srgb(0.96, 0.82, 0.22), // Gold Trim Lapels
-                        Color::srgb(1.0, 0.88, 0.28), // Bright Gold Execution Badge
+                        Color::srgb(1.0, 0.88, 0.28),  // Bright Gold Execution Badge
                         Color::srgb(0.12, 0.12, 0.14),
                     ),
                     TraderRole::LocalScalper => {
@@ -411,7 +426,7 @@ pub fn sync_crowd_density(
                             tie_colors[(seed as usize) % tie_colors.len()],
                             hair_colors[(seed as usize) % hair_colors.len()],
                         )
-                    },
+                    }
                     _ => unreachable!(),
                 };
 
@@ -447,68 +462,72 @@ pub fn sync_crowd_density(
 
     // 2. Maintain Floor Runners (jogging between pits along the concourses)
     let target_runners = 8;
-    if runner_count < target_runners {
-        if let Some((first_pit_entity, first_pit, _)) = pits.iter().next() {
-            let wp_idx = runner_count % CONCOURSE_WAYPOINTS.len();
-            let start_pos = CONCOURSE_WAYPOINTS[wp_idx];
-            let next_wp_idx = (wp_idx + 1) % CONCOURSE_WAYPOINTS.len();
-            let target_pos = CONCOURSE_WAYPOINTS[next_wp_idx];
+    if runner_count < target_runners
+        && let Some((first_pit_entity, first_pit, _)) = pits.iter().next()
+    {
+        let wp_idx = runner_count % CONCOURSE_WAYPOINTS.len();
+        let start_pos = CONCOURSE_WAYPOINTS[wp_idx];
+        let next_wp_idx = (wp_idx + 1) % CONCOURSE_WAYPOINTS.len();
+        let target_pos = CONCOURSE_WAYPOINTS[next_wp_idx];
 
-            let firm = Firm::ALL[runner_count % Firm::ALL.len()];
-            let z_depth = 1.2 + (600.0 - start_pos.y) * 0.001;
+        let firm = Firm::ALL[runner_count % Firm::ALL.len()];
+        let z_depth = 1.2 + (600.0 - start_pos.y) * 0.001;
 
-            spawn_avatar_entity(
-                &mut commands,
-                first_pit.instrument,
-                firm,
-                first_pit_entity,
-                start_pos,
-                target_pos,
-                92.0,
-                z_depth,
-                TraderRole::FloorRunner,
-                false,
-                true,
-                next_wp_idx,
-                firm.color(),
-                Color::srgb(0.96, 0.96, 0.98),
-                Color::srgb(0.15, 0.10, 0.08),
-                Color::srgb(0.85, 0.20, 0.20),
-            );
-        }
+        spawn_avatar_entity(
+            &mut commands,
+            first_pit.instrument,
+            firm,
+            first_pit_entity,
+            start_pos,
+            target_pos,
+            92.0,
+            z_depth,
+            TraderRole::FloorRunner,
+            false,
+            true,
+            next_wp_idx,
+            firm.color(),
+            Color::srgb(0.96, 0.96, 0.98),
+            Color::srgb(0.15, 0.10, 0.08),
+            Color::srgb(0.85, 0.20, 0.20),
+        );
     }
 
     // 3. Maintain Concourse Loungers (pairs of traders resting/chatting on concourses outside pits)
     let target_loungers = 12;
-    if lounger_count < target_loungers {
-        if let Some((first_pit_entity, first_pit, _)) = pits.iter().next() {
-            let wp_idx = (lounger_count / 2) % CONCOURSE_WAYPOINTS.len();
-            let base_wp = CONCOURSE_WAYPOINTS[wp_idx];
-            let is_second = lounger_count % 2 == 1;
-            let offset = if is_second { Vec2::new(14.0, 0.0) } else { Vec2::new(-14.0, 0.0) };
-            let pos = base_wp + offset;
-            let firm = Firm::ALL[(lounger_count * 2) % Firm::ALL.len()];
-            let z_depth = 1.1 + (600.0 - pos.y) * 0.001;
+    if lounger_count < target_loungers
+        && let Some((first_pit_entity, first_pit, _)) = pits.iter().next()
+    {
+        let wp_idx = (lounger_count / 2) % CONCOURSE_WAYPOINTS.len();
+        let base_wp = CONCOURSE_WAYPOINTS[wp_idx];
+        let is_second = lounger_count % 2 == 1;
+        let offset = if is_second {
+            Vec2::new(14.0, 0.0)
+        } else {
+            Vec2::new(-14.0, 0.0)
+        };
+        let pos = base_wp + offset;
+        let firm = Firm::ALL[(lounger_count * 2) % Firm::ALL.len()];
+        let z_depth = 1.1 + (600.0 - pos.y) * 0.001;
 
-            spawn_avatar_entity(
-                &mut commands,
-                first_pit.instrument,
-                firm,
-                first_pit_entity,
-                pos,
-                pos,
-                0.0,
-                z_depth,
-                TraderRole::ConcourseLounger,
-                false,
-                false,
-                0,
-                firm.color(),
-                Color::srgb(0.96, 0.96, 0.98),
-                Color::srgb(0.18, 0.12, 0.08),
-                Color::srgb(0.20, 0.55, 0.85),
-            );
-        }
+        spawn_avatar_entity(
+            &mut commands,
+            first_pit.instrument,
+            firm,
+            first_pit_entity,
+            pos,
+            pos,
+            0.0,
+            z_depth,
+            TraderRole::ConcourseLounger,
+            false,
+            false,
+            0,
+            firm.color(),
+            Color::srgb(0.96, 0.96, 0.98),
+            Color::srgb(0.18, 0.12, 0.08),
+            Color::srgb(0.20, 0.55, 0.85),
+        );
     }
 }
 
@@ -556,19 +575,20 @@ fn spawn_avatar_entity(
         .id();
 
     commands.entity(trader_id).with_children(|parent| {
-            // 1. Soft Elliptical Drop Shadow on floorboards
-            parent.spawn((
-                TraderShadowVisual,
-                Sprite {
-                    color: Color::srgba(0.0, 0.0, 0.0, 0.38),
-                    custom_size: Some(Vec2::new(26.0, 10.0)),
-                    ..default()
-                },
-                Transform::from_xyz(0.0, -15.0, -0.01),
-            ));
+        // 1. Soft Elliptical Drop Shadow on floorboards
+        parent.spawn((
+            TraderShadowVisual,
+            Sprite {
+                color: Color::srgba(0.0, 0.0, 0.0, 0.38),
+                custom_size: Some(Vec2::new(26.0, 10.0)),
+                ..default()
+            },
+            Transform::from_xyz(0.0, -15.0, -0.01),
+        ));
 
-            // 2. Left Leg & Shoe
-            parent.spawn((
+        // 2. Left Leg & Shoe
+        parent
+            .spawn((
                 TraderLegVisual { is_left: true },
                 Sprite {
                     color: Color::srgb(0.12, 0.14, 0.20),
@@ -576,7 +596,8 @@ fn spawn_avatar_entity(
                     ..default()
                 },
                 Transform::from_xyz(-4.5, -7.5, 0.01),
-            )).with_children(|leg| {
+            ))
+            .with_children(|leg| {
                 leg.spawn((
                     TraderShoeVisual { is_left: true },
                     Sprite {
@@ -588,8 +609,9 @@ fn spawn_avatar_entity(
                 ));
             });
 
-            // 3. Right Leg & Shoe
-            parent.spawn((
+        // 3. Right Leg & Shoe
+        parent
+            .spawn((
                 TraderLegVisual { is_left: false },
                 Sprite {
                     color: Color::srgb(0.12, 0.14, 0.20),
@@ -597,7 +619,8 @@ fn spawn_avatar_entity(
                     ..default()
                 },
                 Transform::from_xyz(4.5, -7.5, 0.01),
-            )).with_children(|leg| {
+            ))
+            .with_children(|leg| {
                 leg.spawn((
                     TraderShoeVisual { is_left: false },
                     Sprite {
@@ -609,8 +632,9 @@ fn spawn_avatar_entity(
                 ));
             });
 
-            // 4. Torso & Firm / Role Colored Blazer
-            parent.spawn((
+        // 4. Torso & Firm / Role Colored Blazer
+        parent
+            .spawn((
                 TraderJacketVisual,
                 Sprite {
                     color: coat_color,
@@ -618,7 +642,8 @@ fn spawn_avatar_entity(
                     ..default()
                 },
                 Transform::from_xyz(0.0, 4.5, 0.02),
-            )).with_children(|torso| {
+            ))
+            .with_children(|torso| {
                 torso.spawn((
                     TraderCollarVisual,
                     Sprite {
@@ -643,19 +668,24 @@ fn spawn_avatar_entity(
                 }
             });
 
-            // 5. Necktie / Execution Badge
-            parent.spawn((
-                TraderTieVisual,
-                Sprite {
-                    color: tie_color,
-                    custom_size: Some(if role == TraderRole::FloorBroker { Vec2::new(4.5, 8.5) } else { Vec2::new(3.2, 7.5) }),
-                    ..default()
-                },
-                Transform::from_xyz(0.0, 4.5, 0.03),
-            ));
+        // 5. Necktie / Execution Badge
+        parent.spawn((
+            TraderTieVisual,
+            Sprite {
+                color: tie_color,
+                custom_size: Some(if role == TraderRole::FloorBroker {
+                    Vec2::new(4.5, 8.5)
+                } else {
+                    Vec2::new(3.2, 7.5)
+                }),
+                ..default()
+            },
+            Transform::from_xyz(0.0, 4.5, 0.03),
+        ));
 
-            // 6. Chunky Head, Hair & Retro Sunglasses / Visor
-            parent.spawn((
+        // 6. Chunky Head, Hair & Retro Sunglasses / Visor
+        parent
+            .spawn((
                 TraderHeadVisual,
                 Sprite {
                     color: Color::srgb(0.93, 0.76, 0.62),
@@ -663,7 +693,8 @@ fn spawn_avatar_entity(
                     ..default()
                 },
                 Transform::from_xyz(0.0, 18.0, 0.04),
-            )).with_children(|head| {
+            ))
+            .with_children(|head| {
                 head.spawn((
                     TraderHairVisual,
                     Sprite {
@@ -691,12 +722,14 @@ fn spawn_avatar_entity(
                 ));
             });
 
-            // 7. Left Arm: Shoulder pivot entity with sleeve fabric, palm aura, ticket, and hand hanging down at hip
-            parent.spawn((
+        // 7. Left Arm: Shoulder pivot entity with sleeve fabric, palm aura, ticket, and hand hanging down at hip
+        parent
+            .spawn((
                 TraderArmVisual { is_left: true },
                 Transform::from_xyz(-9.5, 10.5, 0.035),
                 Visibility::default(),
-            )).with_children(|arm| {
+            ))
+            .with_children(|arm| {
                 // Sleeve fabric: hangs down from shoulder (0, 0) to wrist (0, -11)
                 arm.spawn((
                     Sprite {
@@ -709,7 +742,11 @@ fn spawn_avatar_entity(
 
                 // Blooming palm aura (illuminates emerald on buy, crimson on sell)
                 arm.spawn((
-                    TraderHandAuraVisual { instrument, is_left: true, trader_entity: trader_id },
+                    TraderHandAuraVisual {
+                        instrument,
+                        is_left: true,
+                        trader_entity: trader_id,
+                    },
                     Sprite {
                         color: Color::srgba(0.0, 0.0, 0.0, 0.0),
                         custom_size: Some(Vec2::new(22.0, 22.0)),
@@ -720,7 +757,11 @@ fn spawn_avatar_entity(
 
                 // Color-coded buy (white/cyan) or sell (pink) execution ticket held in hand
                 arm.spawn((
-                    TraderOrderSlipVisual { instrument, is_left: true, trader_entity: trader_id },
+                    TraderOrderSlipVisual {
+                        instrument,
+                        is_left: true,
+                        trader_entity: trader_id,
+                    },
                     Sprite {
                         color: Color::srgb(0.92, 0.96, 1.0),
                         custom_size: Some(Vec2::new(7.0, 11.0)),
@@ -742,10 +783,19 @@ fn spawn_avatar_entity(
 
                 // Main chunky articulated hand palm (at wrist, pointing down by hip when idle)
                 arm.spawn((
-                    TraderHandVisual { instrument, role, is_left: true, trader_entity: trader_id },
+                    TraderHandVisual {
+                        instrument,
+                        role,
+                        is_left: true,
+                        trader_entity: trader_id,
+                    },
                     Sprite {
                         color: Color::srgb(0.95, 0.78, 0.62),
-                        custom_size: Some(if role == TraderRole::FloorBroker { Vec2::new(13.0, 13.0) } else { Vec2::new(11.0, 11.0) }),
+                        custom_size: Some(if role == TraderRole::FloorBroker {
+                            Vec2::new(13.0, 13.0)
+                        } else {
+                            Vec2::new(11.0, 11.0)
+                        }),
                         ..default()
                     },
                     Transform::from_xyz(0.0, -11.0, 0.025),
@@ -753,7 +803,11 @@ fn spawn_avatar_entity(
 
                 // Articulated finger pads (at fingertips below palm)
                 arm.spawn((
-                    TraderHandFingerVisual { instrument, is_left: true, trader_entity: trader_id },
+                    TraderHandFingerVisual {
+                        instrument,
+                        is_left: true,
+                        trader_entity: trader_id,
+                    },
                     Sprite {
                         color: Color::srgb(0.98, 0.88, 0.75),
                         custom_size: Some(Vec2::new(7.5, 5.0)),
@@ -763,12 +817,14 @@ fn spawn_avatar_entity(
                 ));
             });
 
-            // 8. Right Arm: Shoulder pivot entity with sleeve fabric, palm aura, ticket, and hand hanging down at hip
-            parent.spawn((
+        // 8. Right Arm: Shoulder pivot entity with sleeve fabric, palm aura, ticket, and hand hanging down at hip
+        parent
+            .spawn((
                 TraderArmVisual { is_left: false },
                 Transform::from_xyz(9.5, 10.5, 0.035),
                 Visibility::default(),
-            )).with_children(|arm| {
+            ))
+            .with_children(|arm| {
                 // Sleeve fabric: hangs down from shoulder (0, 0) to wrist (0, -11)
                 arm.spawn((
                     Sprite {
@@ -781,7 +837,11 @@ fn spawn_avatar_entity(
 
                 // Blooming palm aura (illuminates emerald on buy, crimson on sell)
                 arm.spawn((
-                    TraderHandAuraVisual { instrument, is_left: false, trader_entity: trader_id },
+                    TraderHandAuraVisual {
+                        instrument,
+                        is_left: false,
+                        trader_entity: trader_id,
+                    },
                     Sprite {
                         color: Color::srgba(0.0, 0.0, 0.0, 0.0),
                         custom_size: Some(Vec2::new(22.0, 22.0)),
@@ -792,7 +852,11 @@ fn spawn_avatar_entity(
 
                 // Color-coded buy (white/cyan) or sell (pink) execution ticket held in hand
                 arm.spawn((
-                    TraderOrderSlipVisual { instrument, is_left: false, trader_entity: trader_id },
+                    TraderOrderSlipVisual {
+                        instrument,
+                        is_left: false,
+                        trader_entity: trader_id,
+                    },
                     Sprite {
                         color: Color::srgb(0.92, 0.96, 1.0),
                         custom_size: Some(Vec2::new(7.0, 11.0)),
@@ -814,10 +878,19 @@ fn spawn_avatar_entity(
 
                 // Main chunky articulated hand palm (at wrist, pointing down by hip when idle)
                 arm.spawn((
-                    TraderHandVisual { instrument, role, is_left: false, trader_entity: trader_id },
+                    TraderHandVisual {
+                        instrument,
+                        role,
+                        is_left: false,
+                        trader_entity: trader_id,
+                    },
                     Sprite {
                         color: Color::srgb(0.95, 0.78, 0.62),
-                        custom_size: Some(if role == TraderRole::FloorBroker { Vec2::new(13.0, 13.0) } else { Vec2::new(11.0, 11.0) }),
+                        custom_size: Some(if role == TraderRole::FloorBroker {
+                            Vec2::new(13.0, 13.0)
+                        } else {
+                            Vec2::new(11.0, 11.0)
+                        }),
                         ..default()
                     },
                     Transform::from_xyz(0.0, -11.0, 0.025),
@@ -825,7 +898,11 @@ fn spawn_avatar_entity(
 
                 // Articulated finger pads (at fingertips below palm)
                 arm.spawn((
-                    TraderHandFingerVisual { instrument, is_left: false, trader_entity: trader_id },
+                    TraderHandFingerVisual {
+                        instrument,
+                        is_left: false,
+                        trader_entity: trader_id,
+                    },
                     Sprite {
                         color: Color::srgb(0.98, 0.88, 0.75),
                         custom_size: Some(Vec2::new(7.5, 5.0)),
@@ -835,9 +912,10 @@ fn spawn_avatar_entity(
                 ));
             });
 
-            // 9. Floating Overhead Palm Signal Status Badge for Lead Broker
-            if role == TraderRole::FloorBroker {
-                parent.spawn((
+        // 9. Floating Overhead Palm Signal Status Badge for Lead Broker
+        if role == TraderRole::FloorBroker {
+            parent
+                .spawn((
                     BrokerPalmBadgeVisual,
                     Sprite {
                         color: Color::srgba(0.04, 0.18, 0.08, 0.94),
@@ -845,7 +923,8 @@ fn spawn_avatar_entity(
                         ..default()
                     },
                     Transform::from_xyz(0.0, 36.0, 0.10),
-                )).with_children(|badge| {
+                ))
+                .with_children(|badge| {
                     badge.spawn((
                         BrokerPalmBadgeText,
                         Text2d::new("✋ PALMS IN // BUY"),
@@ -857,8 +936,8 @@ fn spawn_avatar_entity(
                         Transform::from_xyz(0.0, 0.0, 0.01),
                     ));
                 });
-            }
-        });
+        }
+    });
 
     trader_id
 }
@@ -868,7 +947,12 @@ fn spawn_avatar_entity(
 /// closes with "SOLD" (hitting a bid) or "BUY 'EM" (lifting an offer).
 pub fn cry_for_event(pit: &PitMarket, kind: &PitEventKind) -> Option<(usize, String, bool)> {
     match *kind {
-        PitEventKind::Quote { slot, side, price_ticks, qty } => {
+        PitEventKind::Quote {
+            slot,
+            side,
+            price_ticks,
+            qty,
+        } => {
             let d = pit.price_digit(price_ticks);
             let text = match side {
                 Side::Buy => format!("{d} FOR {qty}!"),
@@ -876,7 +960,12 @@ pub fn cry_for_event(pit: &PitMarket, kind: &PitEventKind) -> Option<(usize, Str
             };
             Some((slot, text, side.is_buy()))
         }
-        PitEventKind::Fill { aggressor, side, qty, .. } => {
+        PitEventKind::Fill {
+            aggressor,
+            side,
+            qty,
+            ..
+        } => {
             let text = match side {
                 Side::Buy => format!("BUY 'EM! {qty}"),
                 Side::Sell => format!("SOLD! {qty}"),
@@ -897,7 +986,13 @@ pub fn cry_for_event(pit: &PitMarket, kind: &PitEventKind) -> Option<(usize, Str
 }
 
 /// Helper: Spawns a floating trade shout popup above a trader
-fn spawn_trade_shout(commands: &mut Commands, pos: Vec3, role: TraderRole, text: &str, is_buying: bool) {
+fn spawn_trade_shout(
+    commands: &mut Commands,
+    pos: Vec3,
+    role: TraderRole,
+    text: &str,
+    is_buying: bool,
+) {
     let shout_color = match role {
         TraderRole::PriceReporter => Color::srgb(0.96, 0.85, 0.30),
         _ => {
@@ -1026,15 +1121,25 @@ pub fn update_trader_movement(
     for (_, trader, role, slot, _, _, _, _, transform, _) in traders.iter() {
         if let Some(slot) = slot {
             slot_positions.insert((trader.pit_entity, slot.0), transform.translation);
-            slot_roles.insert((trader.pit_entity, slot.0), role.copied().unwrap_or(TraderRole::LocalScalper));
+            slot_roles.insert(
+                (trader.pit_entity, slot.0),
+                role.copied().unwrap_or(TraderRole::LocalScalper),
+            );
         }
     }
 
     // Shouts come from this frame's engine events, one per event, in pit convention.
     // Locals' routine quotes are thinned so the floor reads as a crowd, not a wall of text.
-    for (pit_entity, _) in slot_positions.keys().map(|(e, _)| (*e, ())).collect::<HashMap<_, _>>() {
+    for (pit_entity, _) in slot_positions
+        .keys()
+        .map(|(e, _)| (*e, ()))
+        .collect::<HashMap<_, _>>()
+    {
         // Find this pit's instrument via any trader in it.
-        let Some((_, trader, _, _, _, _, _, _, _, _)) = traders.iter().find(|(_, t, _, s, ..)| t.pit_entity == pit_entity && s.is_some()) else {
+        let Some((_, trader, _, _, _, _, _, _, _, _)) = traders
+            .iter()
+            .find(|(_, t, _, s, ..)| t.pit_entity == pit_entity && s.is_some())
+        else {
             continue;
         };
         let pit = engines.pit(trader.instrument);
@@ -1047,7 +1152,10 @@ pub fn update_trader_movement(
                 continue;
             }
             if let Some(pos) = slot_positions.get(&(pit_entity, slot)) {
-                let role = slot_roles.get(&(pit_entity, slot)).copied().unwrap_or(TraderRole::LocalScalper);
+                let role = slot_roles
+                    .get(&(pit_entity, slot))
+                    .copied()
+                    .unwrap_or(TraderRole::LocalScalper);
                 spawn_trade_shout(&mut commands, *pos, role, &text, is_buying);
             }
         }
@@ -1068,7 +1176,9 @@ pub fn update_trader_movement(
     {
         let pit = engines.pit(trader.instrument);
         let current_role = role.copied().unwrap_or(TraderRole::LocalScalper);
-        let phase = slot.map(|s| pit.participant(s.0).phase).unwrap_or(Phase::Idle);
+        let phase = slot
+            .map(|s| pit.participant(s.0).phase)
+            .unwrap_or(Phase::Idle);
         let mut badge_text: Option<(&str, String)> = None;
 
         if current_role == TraderRole::ConcourseLounger {
@@ -1120,7 +1230,11 @@ pub fn update_trader_movement(
             let my_slot = slot.map(|s| s.0).unwrap_or(2);
             let home = movement.target;
             let to_center = bounds.center - home;
-            let inward = if to_center.length_squared() > 1.0 { to_center.normalize() } else { Vec2::Y };
+            let inward = if to_center.length_squared() > 1.0 {
+                to_center.normalize()
+            } else {
+                Vec2::Y
+            };
 
             // Hands: shown while bidding, offering or pointing; the side is the participant's own.
             match phase.signalled_side() {
@@ -1174,23 +1288,41 @@ pub fn update_trader_movement(
                 if dx.abs() > 2.0 {
                     movement.facing_x = dx.signum();
                 }
-            } else if matches!(phase, Phase::Quoting { .. } | Phase::Working { .. }) && inward.x.abs() > 0.2 {
+            } else if matches!(phase, Phase::Quoting { .. } | Phase::Working { .. })
+                && inward.x.abs() > 0.2
+            {
                 movement.facing_x = inward.x.signum();
             }
 
             let clamped_xy = bounds.clamp_point(transform.translation.xy(), 12.0);
             transform.translation.x = clamped_xy.x;
             transform.translation.y = clamped_xy.y;
-            let z_base = if current_role == TraderRole::FloorBroker { 1.35 } else { 1.2 };
+            let z_base = if current_role == TraderRole::FloorBroker {
+                1.35
+            } else {
+                1.2
+            };
             transform.translation.z = z_base + (600.0 - clamped_xy.y) * 0.001;
 
             if current_role == TraderRole::FloorBroker {
                 let deck = pit.participant(my_slot).deck.len();
                 badge_text = Some(match phase {
-                    Phase::Working { side: Side::Buy, qty_left, .. } => ("buy", format!("✋ IN: BUY {qty_left}")),
-                    Phase::Working { side: Side::Sell, qty_left, .. } => ("sell", format!("✋ OUT: SELL {qty_left}")),
-                    Phase::Hitting { side: Side::Buy, .. } => ("buy", "BUY 'EM!".to_string()),
-                    Phase::Hitting { side: Side::Sell, .. } => ("sell", "SOLD!".to_string()),
+                    Phase::Working {
+                        side: Side::Buy,
+                        qty_left,
+                        ..
+                    } => ("buy", format!("✋ IN: BUY {qty_left}")),
+                    Phase::Working {
+                        side: Side::Sell,
+                        qty_left,
+                        ..
+                    } => ("sell", format!("✋ OUT: SELL {qty_left}")),
+                    Phase::Hitting {
+                        side: Side::Buy, ..
+                    } => ("buy", "BUY 'EM!".to_string()),
+                    Phase::Hitting {
+                        side: Side::Sell, ..
+                    } => ("sell", "SOLD!".to_string()),
                     Phase::Endorsing { .. } => ("deck", "📋 ENDORSING".to_string()),
                     _ if deck > 0 => ("deck", format!("📋 DECK: {deck} ORDERS")),
                     _ => ("deck", "📋 ORDER DECK".to_string()),
@@ -1249,23 +1381,29 @@ pub fn update_trader_movement(
             }
 
             // Floating overhead badge (brokers): what the card says right now
-            if let Ok((_badge, mut badge_sprite, badge_children)) =
-                palm_badge_query.get_mut(child)
+            if let Ok((_badge, mut badge_sprite, badge_children)) = palm_badge_query.get_mut(child)
             {
                 let (kind, text) = badge_text
                     .clone()
                     .unwrap_or(("deck", "📋 ORDER DECK".to_string()));
                 let (bg_color, text_color) = match kind {
-                    "buy" => (Color::srgba(0.03, 0.22, 0.08, 0.95), Color::srgb(0.20, 1.0, 0.45)),
-                    "sell" => (Color::srgba(0.28, 0.04, 0.04, 0.95), Color::srgb(1.0, 0.28, 0.28)),
-                    _ => (Color::srgba(0.14, 0.11, 0.05, 0.90), Color::srgb(1.0, 0.85, 0.30)),
+                    "buy" => (
+                        Color::srgba(0.03, 0.22, 0.08, 0.95),
+                        Color::srgb(0.20, 1.0, 0.45),
+                    ),
+                    "sell" => (
+                        Color::srgba(0.28, 0.04, 0.04, 0.95),
+                        Color::srgb(1.0, 0.28, 0.28),
+                    ),
+                    _ => (
+                        Color::srgba(0.14, 0.11, 0.05, 0.90),
+                        Color::srgb(1.0, 0.85, 0.30),
+                    ),
                 };
 
                 badge_sprite.color = bg_color;
                 for b_child in badge_children.iter() {
-                    if let Ok((_, mut btext, mut color)) =
-                        palm_badge_text_query.get_mut(b_child)
-                    {
+                    if let Ok((_, mut btext, mut color)) = palm_badge_text_query.get_mut(b_child) {
                         **btext = text.clone();
                         *color = TextColor(text_color);
                     }
@@ -1278,7 +1416,8 @@ pub fn update_trader_movement(
                 let shoulder_x = if arm.is_left { -9.5 } else { 9.5 };
                 let shoulder_y = 10.5 + idle_breath * 0.3;
 
-                let (target_arm_pos, target_arm_rot) = if current_role == TraderRole::PriceReporter {
+                let (target_arm_pos, target_arm_rot) = if current_role == TraderRole::PriceReporter
+                {
                     // Reporter taps keys on podium terminal: arms angled forward resting on desk
                     let tap = (elapsed * 5.0 + phase).sin() * 0.06;
                     (
@@ -1325,8 +1464,12 @@ pub fn update_trader_movement(
                 };
 
                 // Smoothly slerp arm transform to eliminate any snapping or jitter
-                arm_transform.translation = arm_transform.translation.lerp(target_arm_pos, (dt * 12.0).min(1.0));
-                arm_transform.rotation = arm_transform.rotation.slerp(target_arm_rot, (dt * 12.0).min(1.0));
+                arm_transform.translation = arm_transform
+                    .translation
+                    .lerp(target_arm_pos, (dt * 12.0).min(1.0));
+                arm_transform.rotation = arm_transform
+                    .rotation
+                    .slerp(target_arm_rot, (dt * 12.0).min(1.0));
             }
 
             // Necktie / Badge Flash during executions
@@ -1391,7 +1534,11 @@ pub fn update_trader_hand_signals(
             .map(|g| (g.flash_timer > 0.0, g.is_buying))
             .unwrap_or((false, true));
 
-        let base_size = if hand.role == TraderRole::FloorBroker { 13.0 } else { 11.0 };
+        let base_size = if hand.role == TraderRole::FloorBroker {
+            13.0
+        } else {
+            11.0
+        };
 
         if is_active {
             if is_buying {
@@ -1549,7 +1696,10 @@ mod tests {
     fn test_compute_phalanx_target_market_maker_anchored() {
         let bounds = PitBounds::new(Vec2::ZERO, 200.0, 100.0);
         let target = compute_phalanx_target(&bounds, 0.95, 42, true);
-        assert!(target.length() < 70.0, "Market maker should remain near center post");
+        assert!(
+            target.length() < 70.0,
+            "Market maker should remain near center post"
+        );
     }
 
     #[test]
@@ -1566,7 +1716,11 @@ mod tests {
         assert_ne!(TraderRole::FloorBroker, TraderRole::LocalScalper);
         assert_ne!(TraderRole::LocalScalper, TraderRole::FloorRunner);
         assert!(TraderRole::PriceReporter.label().contains("Price Reporter"));
-        assert!(TraderRole::FloorBroker.label().contains("Lead Floor Broker"));
+        assert!(
+            TraderRole::FloorBroker
+                .label()
+                .contains("Lead Floor Broker")
+        );
     }
 
     #[test]
@@ -1614,4 +1768,3 @@ mod tests {
         assert_ne!(TraderRole::ConcourseLounger, TraderRole::FloorRunner);
     }
 }
-

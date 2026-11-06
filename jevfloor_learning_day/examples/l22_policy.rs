@@ -23,7 +23,7 @@ fn decide_behaviour(
 }
 
 fn main() {
-    let prices = vec![100, 101, 103];
+    let prices = [100, 101, 103];
 
     let delta = prices[prices.len() - 1] - prices[0];
 

@@ -1,7 +1,7 @@
-use bevy::prelude::*;
-use crate::market::Instrument;
 use crate::camera::FloorViewMode;
+use crate::market::Instrument;
 use crate::pit_engine::{PitEngines, PitSignals};
+use bevy::prelude::*;
 
 /// Standard isometric tile dimension ratio (2:1 width to height, 30-degree dimetric)
 pub const TILE_WIDTH: f32 = 120.0;
@@ -65,8 +65,12 @@ impl PitBounds {
         let half_w = (self.width * 0.5 - margin).max(10.0);
         let half_h = (self.height * 0.5 - margin).max(10.0);
         Vec2::new(
-            point.x.clamp(self.center.x - half_w, self.center.x + half_w),
-            point.y.clamp(self.center.y - half_h, self.center.y + half_h),
+            point
+                .x
+                .clamp(self.center.x - half_w, self.center.x + half_w),
+            point
+                .y
+                .clamp(self.center.y - half_h, self.center.y + half_h),
         )
     }
 }
@@ -153,7 +157,7 @@ impl PitLayoutDefinition {
             },
             PitLayoutDefinition {
                 instrument: Instrument::Sp500, // Central Grand Flagship Octagonal Arena
-                grid_pos: Vec2::new(0.0, 0.0),  // iso: (0, 0)
+                grid_pos: Vec2::new(0.0, 0.0), // iso: (0, 0)
                 width: 580.0,
                 height: 290.0,
             },
@@ -241,7 +245,8 @@ pub fn spawn_pits(mut commands: Commands) {
             let pos = grid_to_isometric(Vec2::new(gx as f32, gy as f32), tile_size);
 
             // Grand concourse avenues connecting the trading pits
-            let is_main_concourse = gx.abs() <= 1 || gy.abs() <= 1 || (gx + gy).abs() <= 1 || (gx - gy).abs() <= 1;
+            let is_main_concourse =
+                gx.abs() <= 1 || gy.abs() <= 1 || (gx + gy).abs() <= 1 || (gx - gy).abs() <= 1;
 
             let tile_color = if is_main_concourse {
                 // Polished ceremonial walkway with warm amber teak
@@ -566,7 +571,7 @@ pub fn spawn_pits(mut commands: Commands) {
             let rot = Quat::from_rotation_z(dir.y.atan2(dir.x));
 
             // 3D vertical drop wall on South/East facing facets (edges 2, 3, 4, 5)
-            if i >= 2 && i <= 5 {
+            if (2..=5).contains(&i) {
                 commands.spawn((
                     Sprite {
                         color: Color::srgb(0.08, 0.05, 0.04),
@@ -638,7 +643,7 @@ pub fn spawn_pits(mut commands: Commands) {
             let len = dir.length();
             let rot = Quat::from_rotation_z(dir.y.atan2(dir.x));
 
-            if i >= 2 && i <= 5 {
+            if (2..=5).contains(&i) {
                 commands.spawn((
                     Sprite {
                         color: Color::srgb(0.05, 0.06, 0.09),
@@ -824,7 +829,11 @@ pub fn spawn_pits(mut commands: Commands) {
 
         // Row 1: Large bold instrument title
         commands.spawn((
-            Text2d::new(format!("{} / {}", def.instrument.name(), def.instrument.symbol())),
+            Text2d::new(format!(
+                "{} / {}",
+                def.instrument.name(),
+                def.instrument.symbol()
+            )),
             TextFont {
                 font_size: 17.5,
                 ..default()
@@ -838,7 +847,10 @@ pub fn spawn_pits(mut commands: Commands) {
             PodiumPriceDisplay {
                 instrument: def.instrument,
             },
-            Text2d::new(format_price_with_commas(def.instrument.base_price() as f64, instrument_decimals(def.instrument))),
+            Text2d::new(format_price_with_commas(
+                def.instrument.base_price() as f64,
+                instrument_decimals(def.instrument),
+            )),
             TextFont {
                 font_size: 22.0,
                 ..default()
@@ -1062,7 +1074,10 @@ pub fn update_institutional_waves(
         } else {
             let alpha = (1.0 - progress) * 0.75;
             sprite.color = wave.base_color.with_alpha(alpha);
-            sprite.custom_size = Some(Vec2::new(wave.current_radius * 2.0, wave.current_radius * 1.1));
+            sprite.custom_size = Some(Vec2::new(
+                wave.current_radius * 2.0,
+                wave.current_radius * 1.1,
+            ));
         }
     }
 }
@@ -1089,7 +1104,7 @@ pub fn format_price_with_commas(val: f64, decimals: usize) -> String {
     for (i, ch) in int_part.chars().enumerate() {
         with_commas.push(ch);
         let remaining = len - 1 - i;
-        if remaining > 0 && remaining % 3 == 0 {
+        if remaining > 0 && remaining.is_multiple_of(3) {
             with_commas.push(',');
         }
     }
@@ -1121,7 +1136,10 @@ pub fn update_podium_price_displays(
             None => "=",
         };
 
-        let formatted = format_price_with_commas(pit.last_price() as f64, instrument_decimals(display.instrument));
+        let formatted = format_price_with_commas(
+            pit.last_price() as f64,
+            instrument_decimals(display.instrument),
+        );
         set_text2d(&mut text, format!("{} {}", formatted, arrow));
 
         let new_color = match last_up {

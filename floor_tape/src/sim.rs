@@ -20,7 +20,7 @@
 //! the paper desk and the backtests have something honest-looking to run on, offline.
 
 use crate::rng::Rng;
-use crate::symbols::{round_to, Spec, SYMBOLS};
+use crate::symbols::{SYMBOLS, Spec, round_to};
 
 /// The path starts at 2021-01-01T00:00:00Z, so the backtests have years before their 2025
 /// holdout (evolve/evolve.py `HOLDOUT_FROM`) as well as after it.
@@ -51,7 +51,10 @@ struct State {
 
 impl State {
     fn start(spec: &Spec) -> Self {
-        State { logp: spec.anchor.ln(), logv: 0.0 }
+        State {
+            logp: spec.anchor.ln(),
+            logv: 0.0,
+        }
     }
 }
 
@@ -91,7 +94,9 @@ fn advance(seed: u64, sym: usize, m: i64, st: &mut State) -> (Rng, f64, f64) {
 fn bridge(spec: &Spec, m: i64, open: f64, close: f64, v: f64, s: f64, rng: &mut Rng) -> Vec<Tick> {
     let lambda = spec.tick_rate * 60.0 * s * v.sqrt().min(3.0);
     let k = rng.poisson(lambda).clamp(1, 600) as usize;
-    let mut times: Vec<i64> = (0..k).map(|_| (rng.unit() * MINUTE_MS as f64) as i64).collect();
+    let mut times: Vec<i64> = (0..k)
+        .map(|_| (rng.unit() * MINUTE_MS as f64) as i64)
+        .collect();
     times.sort_unstable();
     let step = minute_sigma(spec) * v * s / (k as f64).sqrt();
     let mut cum = Vec::with_capacity(k);
@@ -107,8 +112,13 @@ fn bridge(spec: &Spec, m: i64, open: f64, close: f64, v: f64, s: f64, rng: &mut 
             let f = (i + 1) as f64 / k as f64;
             let x = open + (cum[i] - f * acc) * step + f * (close - open);
             let bid = round_to(x.exp(), spec.digits);
-            let spread = (spec.spread * (0.8 + 0.4 * rng.unit()) * v.sqrt().clamp(0.7, 3.0)).max(unit);
-            Tick { t: t_start + times[i], bid, ask: round_to(bid + spread, spec.digits) }
+            let spread =
+                (spec.spread * (0.8 + 0.4 * rng.unit()) * v.sqrt().clamp(0.7, 3.0)).max(unit);
+            Tick {
+                t: t_start + times[i],
+                bid,
+                ask: round_to(bid + spread, spec.digits),
+            }
         })
         .collect()
 }
@@ -125,7 +135,10 @@ pub fn minute_of(t_ms: i64) -> i64 {
 
 impl Sim {
     pub fn new(seed: u64) -> Self {
-        Sim { seed, checkpoints: SYMBOLS.iter().map(|s| vec![State::start(s)]).collect() }
+        Sim {
+            seed,
+            checkpoints: SYMBOLS.iter().map(|s| vec![State::start(s)]).collect(),
+        }
     }
 
     fn ensure_day(&mut self, sym: usize, day: i64) {
@@ -190,7 +203,11 @@ mod tests {
             let ticks = s.minute(sym, 50_000);
             assert!(!ticks.is_empty());
             let start = T0_MS + 50_000 * MINUTE_MS;
-            assert!(ticks.iter().all(|t| t.t >= start && t.t < start + MINUTE_MS && t.ask > t.bid));
+            assert!(
+                ticks
+                    .iter()
+                    .all(|t| t.t >= start && t.t < start + MINUTE_MS && t.ask > t.bid)
+            );
             assert!(ticks.windows(2).all(|w| w[0].t <= w[1].t));
         }
     }
@@ -208,7 +225,10 @@ mod tests {
         let rets: Vec<f64> = closes.windows(2).map(|w| (w[1] / w[0]).ln()).collect();
         let sd = (rets.iter().map(|r| r * r).sum::<f64>() / rets.len() as f64).sqrt();
         let spec = &SYMBOLS[sym];
-        assert!(sd > spec.daily_vol * 0.6 && sd < spec.daily_vol * 1.8, "daily sd {sd}");
+        assert!(
+            sd > spec.daily_vol * 0.6 && sd < spec.daily_vol * 1.8,
+            "daily sd {sd}"
+        );
         let last = *closes.last().unwrap();
         let mut hourly = Vec::new();
         let mut prev: Option<f64> = None;
@@ -221,8 +241,15 @@ mod tests {
                 prev = Some(c);
             }
         });
-        let ac = hourly.windows(2).map(|w| w[0] * w[1]).sum::<f64>() / hourly.iter().map(|r| r * r).sum::<f64>();
-        assert!(ac.abs() < 0.05, "hourly returns must not predict the next hour (no free edge): autocorrelation {ac}");
-        assert!(last > spec.anchor * 0.6 && last < spec.anchor * 1.6, "drifted to {last}");
+        let ac = hourly.windows(2).map(|w| w[0] * w[1]).sum::<f64>()
+            / hourly.iter().map(|r| r * r).sum::<f64>();
+        assert!(
+            ac.abs() < 0.05,
+            "hourly returns must not predict the next hour (no free edge): autocorrelation {ac}"
+        );
+        assert!(
+            last > spec.anchor * 0.6 && last < spec.anchor * 1.6,
+            "drifted to {last}"
+        );
     }
 }

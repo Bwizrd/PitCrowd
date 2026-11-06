@@ -1,8 +1,8 @@
+use crate::market::Instrument;
+use crate::pit_3d::{FLOOR_3D_CENTER, nearest_pit, pit_3d_origin};
+use crate::ui::Selection;
 use bevy::input::mouse::{MouseMotion, MouseScrollUnit, MouseWheel};
 use bevy::prelude::*;
-use crate::market::Instrument;
-use crate::pit_3d::{nearest_pit, pit_3d_origin, FLOOR_3D_CENTER};
-use crate::ui::Selection;
 
 /// Whether the retired 2D isometric floor is compiled in and reachable.
 pub const LEGACY_2D_FLOOR: bool = cfg!(feature = "legacy_2d_floor");
@@ -16,7 +16,11 @@ pub enum FloorViewMode {
 
 impl Default for FloorViewMode {
     fn default() -> Self {
-        if LEGACY_2D_FLOOR { FloorViewMode::FloorOverview2D } else { FloorViewMode::PitDeepDive3D }
+        if LEGACY_2D_FLOOR {
+            FloorViewMode::FloorOverview2D
+        } else {
+            FloorViewMode::PitDeepDive3D
+        }
     }
 }
 
@@ -44,7 +48,11 @@ impl CameraRequest {
     }
 
     pub fn zoom(&mut self, factor: f32) {
-        let f = if self.zoom_factor == 0.0 { 1.0 } else { self.zoom_factor };
+        let f = if self.zoom_factor == 0.0 {
+            1.0
+        } else {
+            self.zoom_factor
+        };
         self.zoom_factor = f * factor;
     }
 }
@@ -345,18 +353,16 @@ pub fn camera_pan_zoom(
 
     // 4. Touch Navigation for mobile: Single-finger drag pan & two-finger pinch zoom
     let win_height = windows.single().map(|w| w.height()).unwrap_or(800.0);
-    let is_on_ui = |pos: Vec2| -> bool {
-        pos.y <= 65.0 || pos.y >= win_height - 95.0
-    };
+    let is_on_ui = |pos: Vec2| -> bool { pos.y <= 65.0 || pos.y >= win_height - 95.0 };
 
     let active_touch_count = touches.iter().count();
     if active_touch_count == 1 {
-        if let Some(touch) = touches.iter().next() {
-            if !is_on_ui(touch.start_position()) {
-                let delta = touch.delta();
-                transform.translation.x -= delta.x * current_scale;
-                transform.translation.y += delta.y * current_scale;
-            }
+        if let Some(touch) = touches.iter().next()
+            && !is_on_ui(touch.start_position())
+        {
+            let delta = touch.delta();
+            transform.translation.x -= delta.x * current_scale;
+            transform.translation.y += delta.y * current_scale;
         }
     } else if active_touch_count >= 2 {
         let mut iter = touches.iter();
@@ -401,7 +407,10 @@ pub fn camera_orbit_3d(
     mut mouse_wheel: MessageReader<MouseWheel>,
     mut mouse_motion: MessageReader<MouseMotion>,
     mut avatars: ResMut<crate::paper_avatars::AvatarPicking>,
-    mut query: Query<(&mut Transform, &mut OrbitCamera, &Camera, &GlobalTransform), With<PitCamera3d>>,
+    mut query: Query<
+        (&mut Transform, &mut OrbitCamera, &Camera, &GlobalTransform),
+        With<PitCamera3d>,
+    >,
     ui: Query<&Interaction>,
 ) {
     if !view_mode.is_3d() {
@@ -419,10 +428,10 @@ pub fn camera_orbit_3d(
     let is_on_ui = |pos: Vec2| -> bool { pos.y <= 65.0 || pos.y >= win_height - 95.0 };
 
     // External selection change (digit keys, 2D click then Space): re-aim at that pit.
-    if selection.selected_instrument != orbit.framed {
-        if let Some(inst) = selection.selected_instrument {
-            orbit.focus_pit(inst);
-        }
+    if selection.selected_instrument != orbit.framed
+        && let Some(inst) = selection.selected_instrument
+    {
+        orbit.focus_pit(inst);
     }
 
     if keyboard.just_pressed(KeyCode::KeyM) {
@@ -452,7 +461,10 @@ pub fn camera_orbit_3d(
     }
     if keyboard.just_pressed(KeyCode::Tab) {
         let current = selection.selected_instrument.unwrap_or(Instrument::Silver);
-        let idx = Instrument::ALL.iter().position(|i| *i == current).unwrap_or(0);
+        let idx = Instrument::ALL
+            .iter()
+            .position(|i| *i == current)
+            .unwrap_or(0);
         let next = Instrument::ALL[(idx + 1) % Instrument::ALL.len()];
         selection.pick(next);
         orbit.focus_pit(next);
@@ -460,7 +472,8 @@ pub fn camera_orbit_3d(
 
     // Wheel dolly. Crossing the market threshold swaps the framing.
     // The wheel over a trader's panel scrolls the panel (`paper_avatars::scroll_trader_detail`).
-    let over_panel = matches!((avatars.panel, window.cursor_position()), (Some(r), Some(c)) if r.contains(c));
+    let over_panel =
+        matches!((avatars.panel, window.cursor_position()), (Some(r), Some(c)) if r.contains(c));
     for ev in mouse_wheel.read() {
         if over_panel {
             continue;
@@ -484,10 +497,13 @@ pub fn camera_orbit_3d(
     }
 
     // Drag orbit.
-    if mouse_buttons.just_pressed(MouseButton::Left) || mouse_buttons.just_pressed(MouseButton::Middle) {
+    if mouse_buttons.just_pressed(MouseButton::Left)
+        || mouse_buttons.just_pressed(MouseButton::Middle)
+    {
         orbit.drag_travel = 0.0;
     }
-    let is_orbiting = mouse_buttons.pressed(MouseButton::Left) || mouse_buttons.pressed(MouseButton::Middle);
+    let is_orbiting =
+        mouse_buttons.pressed(MouseButton::Left) || mouse_buttons.pressed(MouseButton::Middle);
     for ev in mouse_motion.read() {
         if is_orbiting {
             orbit.drag_travel += ev.delta.length();
@@ -501,40 +517,47 @@ pub fn camera_orbit_3d(
     // the cursor is inspected.
     // A click on a button (a row of the Traders panel, say) is the button's, not the floor's.
     let on_button = ui.iter().any(|i| *i != Interaction::None);
-    if mouse_buttons.just_released(MouseButton::Left) && orbit.drag_travel < 6.0 && !on_button {
-        if let Some(cursor) = window.cursor_position() {
-            if !is_on_ui(cursor) && !avatars.consume_click(cursor) {
-                let picked = camera.viewport_to_world(cam_tf, cursor).ok().and_then(|ray| {
-                    let plane_y = FLOOR_3D_CENTER.y + 2.0;
-                    let dir_y = ray.direction.y;
-                    if dir_y.abs() <= 1e-4 {
-                        return None;
-                    }
-                    let t = (plane_y - ray.origin.y) / dir_y;
-                    (t > 0.0).then(|| nearest_pit(ray.origin + ray.direction * t, 48.0)).flatten()
-                });
-                match picked {
-                    Some(inst) => {
-                        selection.pick(inst);
-                        orbit.focus_pit(inst);
-                    }
-                    // Empty floor (or sky): take the wall board down, keep the camera where it is.
-                    None => selection.click_away(),
+    if mouse_buttons.just_released(MouseButton::Left)
+        && orbit.drag_travel < 6.0
+        && !on_button
+        && let Some(cursor) = window.cursor_position()
+        && !is_on_ui(cursor)
+        && !avatars.consume_click(cursor)
+    {
+        let picked = camera
+            .viewport_to_world(cam_tf, cursor)
+            .ok()
+            .and_then(|ray| {
+                let plane_y = FLOOR_3D_CENTER.y + 2.0;
+                let dir_y = ray.direction.y;
+                if dir_y.abs() <= 1e-4 {
+                    return None;
                 }
+                let t = (plane_y - ray.origin.y) / dir_y;
+                (t > 0.0)
+                    .then(|| nearest_pit(ray.origin + ray.direction * t, 48.0))
+                    .flatten()
+            });
+        match picked {
+            Some(inst) => {
+                selection.pick(inst);
+                orbit.focus_pit(inst);
             }
+            // Empty floor (or sky): take the wall board down, keep the camera where it is.
+            None => selection.click_away(),
         }
     }
 
     // Touch: one finger orbits, two fingers pinch.
     let active_touch_count = touches.iter().count();
     if active_touch_count == 1 {
-        if let Some(touch) = touches.iter().next() {
-            if !is_on_ui(touch.start_position()) {
-                let delta = touch.delta();
-                orbit.yaw -= delta.x * 0.008;
-                orbit.goal_pitch = (orbit.goal_pitch + delta.y * 0.008).clamp(0.10, 1.50);
-                orbit.pitch = orbit.goal_pitch;
-            }
+        if let Some(touch) = touches.iter().next()
+            && !is_on_ui(touch.start_position())
+        {
+            let delta = touch.delta();
+            orbit.yaw -= delta.x * 0.008;
+            orbit.goal_pitch = (orbit.goal_pitch + delta.y * 0.008).clamp(0.10, 1.50);
+            orbit.pitch = orbit.goal_pitch;
         }
     } else if active_touch_count >= 2 {
         let mut iter = touches.iter();

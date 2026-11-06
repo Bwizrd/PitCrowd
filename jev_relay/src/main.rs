@@ -80,10 +80,15 @@ fn load_key() -> Option<String> {
         PathBuf::from(".env"),
     ];
     for path in candidates {
-        let Ok(text) = std::fs::read_to_string(&path) else { continue };
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            continue;
+        };
         for line in text.lines() {
             let line = line.trim();
-            if let Some(rest) = line.strip_prefix("JEV_KEY=").or_else(|| line.strip_prefix("TYPESAFE_API_KEY=")) {
+            if let Some(rest) = line
+                .strip_prefix("JEV_KEY=")
+                .or_else(|| line.strip_prefix("TYPESAFE_API_KEY="))
+            {
                 let v = rest.trim().trim_matches('"').trim_matches('\'').trim();
                 if !v.is_empty() {
                     eprintln!("jev_relay: key loaded from {}", path.display());
@@ -96,7 +101,10 @@ fn load_key() -> Option<String> {
 }
 
 fn unix_ms() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
 }
 
 /// FNV-1a 64 of the observation text: enough to match a replayed observation to its inference.
@@ -113,7 +121,9 @@ fn fnv64(s: &str) -> String {
 /// a stray POST cannot blank the board.
 fn parse_heartbeat(body: &[u8]) -> Result<Value, String> {
     let v: Value = serde_json::from_slice(body).map_err(|e| format!("invalid JSON: {e}"))?;
-    let Value::Object(m) = &v else { return Err("body must be a JSON object".into()) };
+    let Value::Object(m) = &v else {
+        return Err("body must be a JSON object".into());
+    };
     match m.get("traders") {
         Some(Value::Array(_)) => Ok(v),
         Some(_) => Err("`traders` must be an array".into()),
@@ -166,10 +176,10 @@ async fn read_request(stream: &mut TcpStream) -> Result<Request, String> {
     let path = parts.next().unwrap_or("/").to_string();
     let mut content_length = 0usize;
     for line in lines {
-        if let Some((k, v)) = line.split_once(':') {
-            if k.trim().eq_ignore_ascii_case("content-length") {
-                content_length = v.trim().parse().unwrap_or(0);
-            }
+        if let Some((k, v)) = line.split_once(':')
+            && k.trim().eq_ignore_ascii_case("content-length")
+        {
+            content_length = v.trim().parse().unwrap_or(0);
         }
     }
     if content_length > MAX_BODY {
@@ -177,7 +187,10 @@ async fn read_request(stream: &mut TcpStream) -> Result<Request, String> {
     }
     let mut body = vec![0u8; content_length];
     if content_length > 0 {
-        reader.read_exact(&mut body).await.map_err(|e| e.to_string())?;
+        reader
+            .read_exact(&mut body)
+            .await
+            .map_err(|e| e.to_string())?;
     }
     Ok(Request { method, path, body })
 }
@@ -213,7 +226,12 @@ async fn write_response(stream: &mut TcpStream, status: u16, body: &str, extra: 
 impl Relay {
     async fn health(&self) -> String {
         let s = self.stats.lock().await.clone();
-        let desk_alive = self.heartbeat.lock().await.as_ref().is_some_and(|(at, _)| unix_ms().saturating_sub(*at) <= DESK_ALIVE_MS);
+        let desk_alive = self
+            .heartbeat
+            .lock()
+            .await
+            .as_ref()
+            .is_some_and(|(at, _)| unix_ms().saturating_sub(*at) <= DESK_ALIVE_MS);
         json!({
             "ok": true,
             "key_loaded": !self.key.is_empty(),
@@ -238,26 +256,34 @@ impl Relay {
     /// Closed trades from `paper_trades.jsonl` (the `/log/paper_trades` sink) with
     /// `closed_ms >= since_ms`, oldest first, the last `limit` of them. The file is read on
     /// each call: it is a few megabytes at most and this is polled every ten seconds or so.
-    async fn paper_trades(&self, since_ms: i64, limit: usize, source: Option<&str>, trader: Option<&str>) -> String {
+    async fn paper_trades(
+        &self,
+        since_ms: i64,
+        limit: usize,
+        source: Option<&str>,
+        trader: Option<&str>,
+    ) -> String {
         let path = self.cfg.log_path.with_file_name("paper_trades.jsonl");
         let text = tokio::fs::read_to_string(&path).await.unwrap_or_default();
         let mut rows: Vec<Value> = Vec::new();
         let mut lines = 0usize;
         for line in text.lines() {
             lines += 1;
-            let Ok(v) = serde_json::from_str::<Value>(line) else { continue };
+            let Ok(v) = serde_json::from_str::<Value>(line) else {
+                continue;
+            };
             if v.get("closed_ms").and_then(Value::as_i64).unwrap_or(0) < since_ms {
                 continue;
             }
-            if let Some(src) = source {
-                if v.get("source").and_then(Value::as_str).unwrap_or("") != src {
-                    continue;
-                }
+            if let Some(src) = source
+                && v.get("source").and_then(Value::as_str).unwrap_or("") != src
+            {
+                continue;
             }
-            if let Some(name) = trader {
-                if v.get("trader").and_then(Value::as_str).unwrap_or("") != name {
-                    continue;
-                }
+            if let Some(name) = trader
+                && v.get("trader").and_then(Value::as_str).unwrap_or("") != name
+            {
+                continue;
             }
             rows.push(v);
         }
@@ -277,15 +303,28 @@ impl Relay {
     async fn jev(&self, body: &[u8]) -> (u16, String) {
         let mut req: Value = match serde_json::from_slice(body) {
             Ok(Value::Object(m)) => Value::Object(m),
-            Ok(_) => return (400, json!({"error": "body must be a JSON object"}).to_string()),
-            Err(e) => return (400, json!({"error": format!("invalid JSON: {e}")}).to_string()),
+            Ok(_) => {
+                return (
+                    400,
+                    json!({"error": "body must be a JSON object"}).to_string(),
+                );
+            }
+            Err(e) => {
+                return (
+                    400,
+                    json!({"error": format!("invalid JSON: {e}")}).to_string(),
+                );
+            }
         };
         let state = match req.get("state").and_then(Value::as_str) {
             Some(s) if !s.trim().is_empty() => s.to_string(),
             _ => return (400, json!({"error": "missing `state` string"}).to_string()),
         };
         if !req.get("questions").map(Value::is_object).unwrap_or(false) {
-            return (400, json!({"error": "missing `questions` object"}).to_string());
+            return (
+                400,
+                json!({"error": "missing `questions` object"}).to_string(),
+            );
         }
         if req.get("model").is_none() {
             req["model"] = Value::String(self.cfg.model.clone());
@@ -297,13 +336,21 @@ impl Relay {
         // One call at a time, and not before the gap has passed.
         let mut gate = match self.gate.try_lock() {
             Ok(g) => g,
-            Err(_) => return (429, json!({"error": "relay busy: one call at a time"}).to_string()),
+            Err(_) => {
+                return (
+                    429,
+                    json!({"error": "relay busy: one call at a time"}).to_string(),
+                );
+            }
         };
         if let Some(next) = *gate {
             let now = Instant::now();
             if now < next {
                 let wait = (next - now).as_millis() as u64;
-                return (429, json!({"error": "relay rate limit", "retry_after_ms": wait}).to_string());
+                return (
+                    429,
+                    json!({"error": "relay rate limit", "retry_after_ms": wait}).to_string(),
+                );
             }
         }
         *gate = Some(Instant::now() + self.cfg.min_gap);
@@ -328,7 +375,10 @@ impl Relay {
                 let status = r.status().as_u16();
                 (status, r.text().await.unwrap_or_default())
             }
-            Err(e) => (502, json!({"error": format!("upstream request failed: {e}")}).to_string()),
+            Err(e) => (
+                502,
+                json!({"error": format!("upstream request failed: {e}")}).to_string(),
+            ),
         };
         drop(gate);
 
@@ -342,7 +392,10 @@ impl Relay {
                 s.last_error.clear();
             } else {
                 s.failed += 1;
-                s.last_error = format!("HTTP {status}: {}", text.chars().take(160).collect::<String>());
+                s.last_error = format!(
+                    "HTTP {status}: {}",
+                    text.chars().take(160).collect::<String>()
+                );
             }
         }
         eprintln!(
@@ -352,7 +405,8 @@ impl Relay {
             state.len()
         );
 
-        let response: Value = serde_json::from_str(&text).unwrap_or_else(|_| Value::String(text.clone()));
+        let response: Value =
+            serde_json::from_str(&text).unwrap_or_else(|_| Value::String(text.clone()));
         let line = json!({
             "ts": unix_ms(),
             "observation_hash": fnv64(&state),
@@ -372,11 +426,19 @@ impl Relay {
         }
         let mut text = line.to_string();
         text.push('\n');
-        match tokio::fs::OpenOptions::new().create(true).append(true).open(&self.cfg.log_path).await {
+        match tokio::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&self.cfg.log_path)
+            .await
+        {
             Ok(mut f) => {
                 let _ = f.write_all(text.as_bytes()).await;
             }
-            Err(e) => eprintln!("jev_relay: cannot write {}: {e}", self.cfg.log_path.display()),
+            Err(e) => eprintln!(
+                "jev_relay: cannot write {}: {e}",
+                self.cfg.log_path.display()
+            ),
         }
     }
 }
@@ -400,10 +462,21 @@ async fn handle(relay: Arc<Relay>, mut stream: TcpStream) {
         ("POST", "/jev") => {
             let started = Instant::now();
             let (status, body) = relay.jev(&req.body).await;
-            let extra = [("X-Jev-Relay-Latency-Ms", started.elapsed().as_millis().to_string())];
+            let extra = [(
+                "X-Jev-Relay-Latency-Ms",
+                started.elapsed().as_millis().to_string(),
+            )];
             write_response(&mut stream, status, &body, &extra).await;
         }
-        ("GET", "/jev") => write_response(&mut stream, 405, &json!({"error": "POST a System One body"}).to_string(), &[]).await,
+        ("GET", "/jev") => {
+            write_response(
+                &mut stream,
+                405,
+                &json!({"error": "POST a System One body"}).to_string(),
+                &[],
+            )
+            .await
+        }
         ("POST", "/paper/heartbeat") => {
             let (status, body) = relay.paper_heartbeat(&req.body).await;
             write_response(&mut stream, status, &body, &[]).await;
@@ -415,12 +488,21 @@ async fn handle(relay: Arc<Relay>, mut stream: TcpStream) {
         ("GET", "/paper/trades") => {
             // The closed-trade log for the desk page: ?since_ms=<unix ms>&limit=<n>&source=desk
             let query = req.path.split_once('?').map(|x| x.1).unwrap_or("");
-            let q = |k: &str| query.split('&').find_map(|kv| kv.strip_prefix(&format!("{k}=")).map(url_decode));
+            let q = |k: &str| {
+                query
+                    .split('&')
+                    .find_map(|kv| kv.strip_prefix(&format!("{k}=")).map(url_decode))
+            };
             let since_ms: i64 = q("since_ms").and_then(|v| v.parse().ok()).unwrap_or(0);
-            let limit: usize = q("limit").and_then(|v| v.parse().ok()).unwrap_or(4000).clamp(1, 20000);
+            let limit: usize = q("limit")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(4000)
+                .clamp(1, 20000);
             let source = q("source");
             let trader = q("trader");
-            let body = relay.paper_trades(since_ms, limit, source.as_deref(), trader.as_deref()).await;
+            let body = relay
+                .paper_trades(since_ms, limit, source.as_deref(), trader.as_deref())
+                .await;
             write_response(&mut stream, 200, &body, &[]).await;
         }
         ("POST", "/paper/order") => {
@@ -445,18 +527,39 @@ async fn handle(relay: Arc<Relay>, mut stream: TcpStream) {
         }
         ("GET", "/paper/orders") => {
             // ?after=<seq>: the orders queued since then, oldest first.
-            let after: u64 = req.path.split_once("after=").and_then(|x| x.1.split('&').next()).and_then(|v| v.parse().ok()).unwrap_or(0);
+            let after: u64 = req
+                .path
+                .split_once("after=")
+                .and_then(|x| x.1.split('&').next())
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0);
             let q = relay.orders.lock().await;
             let list: Vec<&Value> = q.iter().filter(|o| o.0 > after).map(|o| &o.1).collect();
             let last = q.last().map(|o| o.0).unwrap_or(0);
-            write_response(&mut stream, 200, &json!({"orders": list, "last_seq": last}).to_string(), &[]).await;
+            write_response(
+                &mut stream,
+                200,
+                &json!({"orders": list, "last_seq": last}).to_string(),
+                &[],
+            )
+            .await;
         }
         ("POST", p) if p.starts_with("/log/") => {
             // Append-only JSONL sink for the floor's own records (paper trades, decisions):
             // the browser cannot write files, the relay can. Name is restricted to a safe set.
-            let name: String = p["/log/".len()..].chars().take(40).filter(|c| c.is_ascii_alphanumeric() || *c == '_').collect();
+            let name: String = p["/log/".len()..]
+                .chars()
+                .take(40)
+                .filter(|c| c.is_ascii_alphanumeric() || *c == '_')
+                .collect();
             if name.is_empty() {
-                write_response(&mut stream, 400, &json!({"error": "log name must be [A-Za-z0-9_]"}).to_string(), &[]).await;
+                write_response(
+                    &mut stream,
+                    400,
+                    &json!({"error": "log name must be [A-Za-z0-9_]"}).to_string(),
+                    &[],
+                )
+                .await;
                 return;
             }
             match serde_json::from_slice::<Value>(&req.body) {
@@ -465,17 +568,44 @@ async fn handle(relay: Arc<Relay>, mut stream: TcpStream) {
                     let path = relay.cfg.log_path.with_file_name(format!("{name}.jsonl"));
                     let mut text = Value::Object(m).to_string();
                     text.push('\n');
-                    let ok = match tokio::fs::OpenOptions::new().create(true).append(true).open(&path).await {
+                    let ok = match tokio::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(&path)
+                        .await
+                    {
                         Ok(mut f) => f.write_all(text.as_bytes()).await.is_ok(),
                         Err(_) => false,
                     };
                     let status = if ok { 200 } else { 500 };
-                    write_response(&mut stream, status, &json!({"ok": ok, "log": name}).to_string(), &[]).await;
+                    write_response(
+                        &mut stream,
+                        status,
+                        &json!({"ok": ok, "log": name}).to_string(),
+                        &[],
+                    )
+                    .await;
                 }
-                _ => write_response(&mut stream, 400, &json!({"error": "body must be a JSON object"}).to_string(), &[]).await,
+                _ => {
+                    write_response(
+                        &mut stream,
+                        400,
+                        &json!({"error": "body must be a JSON object"}).to_string(),
+                        &[],
+                    )
+                    .await
+                }
             }
         }
-        _ => write_response(&mut stream, 404, &json!({"error": "not found"}).to_string(), &[]).await,
+        _ => {
+            write_response(
+                &mut stream,
+                404,
+                &json!({"error": "not found"}).to_string(),
+                &[],
+            )
+            .await
+        }
     }
 }
 
@@ -490,8 +620,15 @@ async fn main() {
     });
     let cfg = Config {
         bind: std::env::var("JEV_RELAY_BIND").unwrap_or_else(|_| "0.0.0.0:8099".into()),
-        min_gap: Duration::from_millis(std::env::var("JEV_RELAY_MIN_GAP_MS").ok().and_then(|v| v.parse().ok()).unwrap_or(2000)),
-        log_path: std::env::var("JEV_RELAY_LOG").map(PathBuf::from).unwrap_or_else(|_| manifest_dir().join("log/inferences.jsonl")),
+        min_gap: Duration::from_millis(
+            std::env::var("JEV_RELAY_MIN_GAP_MS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(2000),
+        ),
+        log_path: std::env::var("JEV_RELAY_LOG")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| manifest_dir().join("log/inferences.jsonl")),
         model: std::env::var("JEV_MODEL").unwrap_or_else(|_| "jev-latest".into()),
     };
     let http = reqwest::Client::builder()
@@ -512,7 +649,15 @@ async fn main() {
         cfg.min_gap.as_millis(),
         cfg.log_path.display()
     );
-    let relay = Arc::new(Relay { key, cfg, http, gate: Mutex::new(None), stats: Mutex::new(Stats::default()), heartbeat: Mutex::new(None), orders: Mutex::new(Vec::new()) });
+    let relay = Arc::new(Relay {
+        key,
+        cfg,
+        http,
+        gate: Mutex::new(None),
+        stats: Mutex::new(Stats::default()),
+        heartbeat: Mutex::new(None),
+        orders: Mutex::new(Vec::new()),
+    });
     loop {
         match listener.accept().await {
             Ok((stream, _)) => {
@@ -567,11 +712,26 @@ mod tests {
 
     #[test]
     fn a_heartbeat_needs_a_traders_array() {
-        assert!(parse_heartbeat(br#"{"traders":[{"trader":"Colin","net_r":0.5}],"sent_ms":1}"#).is_ok());
-        assert_eq!(parse_heartbeat(b"[]").unwrap_err(), "body must be a JSON object");
-        assert_eq!(parse_heartbeat(br#"{"sent_ms":1}"#).unwrap_err(), "missing `traders` array");
-        assert_eq!(parse_heartbeat(br#"{"traders":3}"#).unwrap_err(), "`traders` must be an array");
-        assert!(parse_heartbeat(b"{not json").unwrap_err().starts_with("invalid JSON"));
+        assert!(
+            parse_heartbeat(br#"{"traders":[{"trader":"Colin","net_r":0.5}],"sent_ms":1}"#).is_ok()
+        );
+        assert_eq!(
+            parse_heartbeat(b"[]").unwrap_err(),
+            "body must be a JSON object"
+        );
+        assert_eq!(
+            parse_heartbeat(br#"{"sent_ms":1}"#).unwrap_err(),
+            "missing `traders` array"
+        );
+        assert_eq!(
+            parse_heartbeat(br#"{"traders":3}"#).unwrap_err(),
+            "`traders` must be an array"
+        );
+        assert!(
+            parse_heartbeat(b"{not json")
+                .unwrap_err()
+                .starts_with("invalid JSON")
+        );
     }
 
     #[test]
@@ -581,7 +741,10 @@ mod tests {
         assert_eq!(dead["traders"], json!([]));
         assert!(dead["heartbeat_age_ms"].is_null());
 
-        let hb = (10_000u64, json!({"traders": [{"trader": "Grace", "net_r": 1.25}], "jev_mode": "live"}));
+        let hb = (
+            10_000u64,
+            json!({"traders": [{"trader": "Grace", "net_r": 1.25}], "jev_mode": "live"}),
+        );
         let fresh = board_from(Some(&hb), 10_000 + 29_999);
         assert_eq!(fresh["desk_alive"], json!(true));
         assert_eq!(fresh["heartbeat_age_ms"], json!(29_999));
@@ -591,7 +754,11 @@ mod tests {
 
         let stale = board_from(Some(&hb), 10_000 + 30_001);
         assert_eq!(stale["desk_alive"], json!(false), "older than 30 s is dead");
-        assert_eq!(stale["traders"][0]["net_r"], json!(1.25), "the last numbers are still served");
+        assert_eq!(
+            stale["traders"][0]["net_r"],
+            json!(1.25),
+            "the last numbers are still served"
+        );
         // A clock that went backwards never makes a negative age.
         assert_eq!(board_from(Some(&hb), 5)["heartbeat_age_ms"], json!(0));
     }

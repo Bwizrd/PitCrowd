@@ -55,4 +55,3 @@ mod tests {
         assert_eq!(classify(0.799, 0.90), MarketStance::Mixed);
     }
 }
-

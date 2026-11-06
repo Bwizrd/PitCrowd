@@ -23,7 +23,7 @@ use crate::jev::relay_url;
 use crate::levels::tape_symbol;
 use crate::live_feed::LiveFeed;
 use crate::market::Instrument;
-use crate::panels::{spawn_close_button, Panel, PanelId};
+use crate::panels::{Panel, PanelId, spawn_close_button};
 use crate::pit::{format_price_with_commas, instrument_decimals, set_ui_text};
 use crate::ui::Selection;
 
@@ -36,7 +36,10 @@ pub const DEFAULT_TICKET_TRADER: &str = "Paul Leppard";
 
 /// The ticket's trader as the running desk names it, else the default.
 pub fn ticket_trader(board: Option<&crate::desk_feed::DeskBoard>) -> &str {
-    board.and_then(|b| b.ticket_trader.as_deref()).filter(|n| !n.is_empty()).unwrap_or(DEFAULT_TICKET_TRADER)
+    board
+        .and_then(|b| b.ticket_trader.as_deref())
+        .filter(|n| !n.is_empty())
+        .unwrap_or(DEFAULT_TICKET_TRADER)
 }
 
 /// A trader's name from the environment value: trimmed, at most 32 characters, else the
@@ -89,7 +92,14 @@ pub struct Ticket {
 
 impl Default for Ticket {
     fn default() -> Self {
-        Ticket { stop: 1, target: 2, sent: Arc::new(Mutex::new(None)), last_sent: String::new(), name: stored_name(), name_sent: None }
+        Ticket {
+            stop: 1,
+            target: 2,
+            sent: Arc::new(Mutex::new(None)),
+            last_sent: String::new(),
+            name: stored_name(),
+            name_sent: None,
+        }
     }
 }
 
@@ -107,13 +117,19 @@ fn stored_name() -> Option<String> {
     #[cfg(target_arch = "wasm32")]
     {
         let storage = web_sys::window().and_then(|w| w.local_storage().ok().flatten());
-        if let Some(n) = crate::endpoints::page_param("trader").as_deref().and_then(clean_name) {
+        if let Some(n) = crate::endpoints::page_param("trader")
+            .as_deref()
+            .and_then(clean_name)
+        {
             if let Some(s) = &storage {
                 let _ = s.set_item(NAME_KEY, &n);
             }
             return Some(n);
         }
-        storage.and_then(|s| s.get_item(NAME_KEY).ok().flatten()).as_deref().and_then(clean_name)
+        storage
+            .and_then(|s| s.get_item(NAME_KEY).ok().flatten())
+            .as_deref()
+            .and_then(clean_name)
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
@@ -127,9 +143,15 @@ fn open_name_box(current: &str) -> bool {
     #[cfg(target_arch = "wasm32")]
     {
         use wasm_bindgen::{JsCast, JsValue};
-        let Some(w) = web_sys::window() else { return false };
-        let Ok(f) = js_sys::Reflect::get(&w, &JsValue::from_str("__opencryAskName")) else { return false };
-        let Some(f) = f.dyn_ref::<js_sys::Function>() else { return false };
+        let Some(w) = web_sys::window() else {
+            return false;
+        };
+        let Ok(f) = js_sys::Reflect::get(&w, &JsValue::from_str("__opencryAskName")) else {
+            return false;
+        };
+        let Some(f) = f.dyn_ref::<js_sys::Function>() else {
+            return false;
+        };
         f.call1(&JsValue::NULL, &JsValue::from_str(current)).is_ok()
     }
     #[cfg(not(target_arch = "wasm32"))]
@@ -158,25 +180,48 @@ fn take_chosen_name() -> Option<String> {
 }
 
 /// The name the ticket shows: the running desk's, else this browser's, else the author's.
-pub fn shown_trader<'a>(board: Option<&'a crate::desk_feed::DeskBoard>, local: Option<&'a str>) -> &'a str {
-    board.and_then(|b| b.ticket_trader.as_deref()).filter(|n| !n.is_empty()).or(local).unwrap_or(DEFAULT_TICKET_TRADER)
+pub fn shown_trader<'a>(
+    board: Option<&'a crate::desk_feed::DeskBoard>,
+    local: Option<&'a str>,
+) -> &'a str {
+    board
+        .and_then(|b| b.ticket_trader.as_deref())
+        .filter(|n| !n.is_empty())
+        .or(local)
+        .unwrap_or(DEFAULT_TICKET_TRADER)
 }
 
 /// The order body for the relay. Pure, for tests.
-pub fn order_body(action: &str, inst: Instrument, stop_atr: f32, target_r: f32) -> serde_json::Value {
+pub fn order_body(
+    action: &str,
+    inst: Instrument,
+    stop_atr: f32,
+    target_r: f32,
+) -> serde_json::Value {
     serde_json::json!({"action": action, "symbol": tape_symbol(inst), "stop_atr": stop_atr, "target_r": target_r, "from": "ticket", "account": "paper"})
 }
 
 /// Post one body to the relay's order queue; `what` names it in the status line.
 fn post_order(body: serde_json::Value, what: String, sent: Arc<Mutex<Option<String>>>) {
-    let mut req = ehttp::Request::post(format!("{}/paper/order", relay_url()), serde_json::to_vec(&body).unwrap_or_default());
-    req.headers = ehttp::Headers::new(&[("Accept", "application/json"), ("Content-Type", "application/json")]);
+    let mut req = ehttp::Request::post(
+        format!("{}/paper/order", relay_url()),
+        serde_json::to_vec(&body).unwrap_or_default(),
+    );
+    req.headers = ehttp::Headers::new(&[
+        ("Accept", "application/json"),
+        ("Content-Type", "application/json"),
+    ]);
     let rename = body.get("action").and_then(|a| a.as_str()) == Some("name");
     ehttp::fetch(req, move |res| {
         let note = match res {
-            Ok(r) if r.ok && rename => format!("{what}: sent; the desk renames your seat within a second or two"),
+            Ok(r) if r.ok && rename => {
+                format!("{what}: sent; the desk renames your seat within a second or two")
+            }
             Ok(r) if r.ok => {
-                let seq = serde_json::from_slice::<serde_json::Value>(&r.bytes).ok().and_then(|v| v.get("seq").and_then(|s| s.as_u64())).unwrap_or(0);
+                let seq = serde_json::from_slice::<serde_json::Value>(&r.bytes)
+                    .ok()
+                    .and_then(|v| v.get("seq").and_then(|s| s.as_u64()))
+                    .unwrap_or(0);
                 format!("{what} queued as #{seq}; the desk fills it at the next tick")
             }
             Ok(r) => format!("{what}: relay said HTTP {}", r.status),
@@ -188,7 +233,14 @@ fn post_order(body: serde_json::Value, what: String, sent: Arc<Mutex<Option<Stri
     });
 }
 
-fn button(parent: &mut ChildSpawnerCommands, which: TicketButton, label: &str, bg: Color, border: Color, width: f32) {
+fn button(
+    parent: &mut ChildSpawnerCommands,
+    which: TicketButton,
+    label: &str,
+    bg: Color,
+    border: Color,
+    width: f32,
+) {
     parent
         .spawn((
             Button,
@@ -206,7 +258,14 @@ fn button(parent: &mut ChildSpawnerCommands, which: TicketButton, label: &str, b
             BorderColor::all(border),
         ))
         .with_children(|b| {
-            let mut t = b.spawn((Text::new(label), TextFont { font_size: 12.0, ..default() }, TextColor(Color::WHITE)));
+            let mut t = b.spawn((
+                Text::new(label),
+                TextFont {
+                    font_size: 12.0,
+                    ..default()
+                },
+                TextColor(Color::WHITE),
+            ));
             match which {
                 TicketButton::Stop => {
                     t.insert(TicketStopText);
@@ -240,27 +299,123 @@ pub fn setup_ticket_panel(mut commands: Commands) {
         .with_children(|panel| {
             let me = panel.target_entity();
             panel
-                .spawn(Node { flex_direction: FlexDirection::Row, justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Center, width: Val::Percent(100.0), ..default() })
+                .spawn(Node {
+                    flex_direction: FlexDirection::Row,
+                    justify_content: JustifyContent::SpaceBetween,
+                    align_items: AlignItems::Center,
+                    width: Val::Percent(100.0),
+                    ..default()
+                })
                 .with_children(|row| {
-                    row.spawn((TicketTitle, Text::new("TRADE"), TextFont { font_size: 11.0, ..default() }, TextColor(Color::srgb(0.55, 1.0, 0.65)), Node { flex_grow: 1.0, ..default() }));
+                    row.spawn((
+                        TicketTitle,
+                        Text::new("TRADE"),
+                        TextFont {
+                            font_size: 11.0,
+                            ..default()
+                        },
+                        TextColor(Color::srgb(0.55, 1.0, 0.65)),
+                        Node {
+                            flex_grow: 1.0,
+                            ..default()
+                        },
+                    ));
                     spawn_close_button(row, me);
                 });
-            panel.spawn((TicketQuote, Text::new(""), TextFont { font_size: 13.0, ..default() }, TextColor(Color::WHITE)));
-            panel.spawn(Node { flex_direction: FlexDirection::Row, column_gap: Val::Px(6.0), ..default() }).with_children(|row| {
-                button(row, TicketButton::Buy, "BUY", Color::srgba(0.05, 0.40, 0.18, 0.95), Color::srgb(0.30, 0.95, 0.50), 110.0);
-                button(row, TicketButton::Sell, "SELL", Color::srgba(0.45, 0.06, 0.08, 0.95), Color::srgb(1.0, 0.35, 0.35), 110.0);
-                button(row, TicketButton::Close, "CLOSE", Color::srgba(0.12, 0.14, 0.20, 0.95), Color::srgba(0.55, 0.62, 0.75, 0.8), 90.0);
-            });
-            panel.spawn(Node { flex_direction: FlexDirection::Row, column_gap: Val::Px(6.0), ..default() }).with_children(|row| {
-                let (bg, border) = (Color::srgba(0.06, 0.09, 0.14, 0.9), Color::srgba(0.18, 0.28, 0.40, 0.7));
-                button(row, TicketButton::Stop, "", bg, border, 100.0);
-                button(row, TicketButton::Target, "", bg, border, 100.0);
-            });
-            panel.spawn(Node { flex_direction: FlexDirection::Row, column_gap: Val::Px(8.0), align_items: AlignItems::Center, ..default() }).with_children(|row| {
-                row.spawn((TicketNameText, Text::new("Your name:"), TextFont { font_size: 12.0, ..default() }, TextColor(Color::srgb(0.85, 0.90, 0.96))));
-                button(row, TicketButton::Name, "Change name", Color::srgba(0.05, 0.22, 0.12, 0.95), Color::srgb(0.35, 0.85, 0.50), 110.0);
-            });
-            panel.spawn((TicketStatus, Text::new(""), TextFont { font_size: 10.0, ..default() }, TextColor(Color::srgb(0.75, 0.80, 0.88)), Node { max_width: Val::Px(420.0), ..default() }));
+            panel.spawn((
+                TicketQuote,
+                Text::new(""),
+                TextFont {
+                    font_size: 13.0,
+                    ..default()
+                },
+                TextColor(Color::WHITE),
+            ));
+            panel
+                .spawn(Node {
+                    flex_direction: FlexDirection::Row,
+                    column_gap: Val::Px(6.0),
+                    ..default()
+                })
+                .with_children(|row| {
+                    button(
+                        row,
+                        TicketButton::Buy,
+                        "BUY",
+                        Color::srgba(0.05, 0.40, 0.18, 0.95),
+                        Color::srgb(0.30, 0.95, 0.50),
+                        110.0,
+                    );
+                    button(
+                        row,
+                        TicketButton::Sell,
+                        "SELL",
+                        Color::srgba(0.45, 0.06, 0.08, 0.95),
+                        Color::srgb(1.0, 0.35, 0.35),
+                        110.0,
+                    );
+                    button(
+                        row,
+                        TicketButton::Close,
+                        "CLOSE",
+                        Color::srgba(0.12, 0.14, 0.20, 0.95),
+                        Color::srgba(0.55, 0.62, 0.75, 0.8),
+                        90.0,
+                    );
+                });
+            panel
+                .spawn(Node {
+                    flex_direction: FlexDirection::Row,
+                    column_gap: Val::Px(6.0),
+                    ..default()
+                })
+                .with_children(|row| {
+                    let (bg, border) = (
+                        Color::srgba(0.06, 0.09, 0.14, 0.9),
+                        Color::srgba(0.18, 0.28, 0.40, 0.7),
+                    );
+                    button(row, TicketButton::Stop, "", bg, border, 100.0);
+                    button(row, TicketButton::Target, "", bg, border, 100.0);
+                });
+            panel
+                .spawn(Node {
+                    flex_direction: FlexDirection::Row,
+                    column_gap: Val::Px(8.0),
+                    align_items: AlignItems::Center,
+                    ..default()
+                })
+                .with_children(|row| {
+                    row.spawn((
+                        TicketNameText,
+                        Text::new("Your name:"),
+                        TextFont {
+                            font_size: 12.0,
+                            ..default()
+                        },
+                        TextColor(Color::srgb(0.85, 0.90, 0.96)),
+                    ));
+                    button(
+                        row,
+                        TicketButton::Name,
+                        "Change name",
+                        Color::srgba(0.05, 0.22, 0.12, 0.95),
+                        Color::srgb(0.35, 0.85, 0.50),
+                        110.0,
+                    );
+                });
+            panel.spawn((
+                TicketStatus,
+                Text::new(""),
+                TextFont {
+                    font_size: 10.0,
+                    ..default()
+                },
+                TextColor(Color::srgb(0.75, 0.80, 0.88)),
+                Node {
+                    max_width: Val::Px(420.0),
+                    ..default()
+                },
+            ));
         });
 }
 
@@ -277,15 +432,24 @@ pub fn handle_ticket_buttons(
         ticket.name = Some(n.clone());
         ticket.name_sent = Some(n.clone());
         ticket.last_sent = format!("Renaming you to {n}...");
-        post_order(serde_json::json!({"action": "name", "trader": n, "from": "ticket"}), format!("Name {n}"), ticket.sent.clone());
+        post_order(
+            serde_json::json!({"action": "name", "trader": n, "from": "ticket"}),
+            format!("Name {n}"),
+            ticket.sent.clone(),
+        );
     }
     // A name chosen in this browser (or with ?trader=) that the running desk does not have yet:
     // send it once, so a returning user is themselves again without clicking anything.
-    if let (Some(b), Some(n)) = (board, ticket.name.clone()) {
-        if b.ticket_trader.as_deref() != Some(n.as_str()) && ticket.name_sent.as_deref() != Some(n.as_str()) {
-            ticket.name_sent = Some(n.clone());
-            post_order(serde_json::json!({"action": "name", "trader": n, "from": "ticket"}), format!("Name {n}"), ticket.sent.clone());
-        }
+    if let (Some(b), Some(n)) = (board, ticket.name.clone())
+        && b.ticket_trader.as_deref() != Some(n.as_str())
+        && ticket.name_sent.as_deref() != Some(n.as_str())
+    {
+        ticket.name_sent = Some(n.clone());
+        post_order(
+            serde_json::json!({"action": "name", "trader": n, "from": "ticket"}),
+            format!("Name {n}"),
+            ticket.sent.clone(),
+        );
     }
     for (i, which) in buttons.iter() {
         if *i != Interaction::Pressed {
@@ -324,7 +488,11 @@ pub fn handle_ticket_buttons(
             body["trader"] = serde_json::json!(n);
         }
         ticket.last_sent = format!("{} {} sent...", action.to_uppercase(), inst.symbol());
-        post_order(body, format!("{} {}", action.to_uppercase(), inst.symbol()), ticket.sent.clone());
+        post_order(
+            body,
+            format!("{} {}", action.to_uppercase(), inst.symbol()),
+            ticket.sent.clone(),
+        );
     }
 }
 
@@ -357,20 +525,32 @@ pub fn update_ticket_panel(
     let inst = selection.selected_instrument;
     let board = desk.live_board(time.elapsed_secs_f64());
     for mut t in texts.p0().iter_mut() {
-        set_ui_text(&mut t, match inst {
-            Some(i) => format!("TRADE  {}  |  paper", i.symbol()),
-            None => "TRADE  |  pick a pit".to_string(),
-        });
+        set_ui_text(
+            &mut t,
+            match inst {
+                Some(i) => format!("TRADE  {}  |  paper", i.symbol()),
+                None => "TRADE  |  pick a pit".to_string(),
+            },
+        );
     }
     for mut t in texts.p1().iter_mut() {
-        let line = inst.and_then(|i| feed.quote(i).map(|q| (i, q))).map(|(i, q)| {
-            let d = instrument_decimals(i);
-            format!("bid {}   ask {}", format_price_with_commas(q.price, d), format_price_with_commas(q.ask, d))
-        });
+        let line = inst
+            .and_then(|i| feed.quote(i).map(|q| (i, q)))
+            .map(|(i, q)| {
+                let d = instrument_decimals(i);
+                format!(
+                    "bid {}   ask {}",
+                    format_price_with_commas(q.price, d),
+                    format_price_with_commas(q.ask, d)
+                )
+            });
         set_ui_text(&mut t, line.unwrap_or_else(|| "no price yet".into()));
     }
     for mut t in texts.p5().iter_mut() {
-        set_ui_text(&mut t, format!("Your name: {}", shown_trader(board, ticket.name.as_deref())));
+        set_ui_text(
+            &mut t,
+            format!("Your name: {}", shown_trader(board, ticket.name.as_deref())),
+        );
     }
     for mut t in texts.p3().iter_mut() {
         set_ui_text(&mut t, format!("Stop {} ATR", STOPS[ticket.stop]));
@@ -382,13 +562,23 @@ pub fn update_ticket_panel(
     match board {
         None => lines.push("The desk is not running: orders will not be filled.".to_string()),
         Some(b) => {
-            match b.traders.iter().find(|t| t.trader == ticket_trader(Some(b))) {
+            match b
+                .traders
+                .iter()
+                .find(|t| t.trader == ticket_trader(Some(b)))
+            {
                 Some(me) => {
                     match &me.open {
-                        Some(o) => lines.push(format!("OPEN {} {} from {}  stop {}  {:+.2}R", o.side, o.symbol, o.entry, o.stop, o.open_r)),
+                        Some(o) => lines.push(format!(
+                            "OPEN {} {} from {}  stop {}  {:+.2}R",
+                            o.side, o.symbol, o.entry, o.stop, o.open_r
+                        )),
                         None => lines.push("Flat.".into()),
                     }
-                    lines.push(format!("Today: {} trades, {:+.2}R", me.day_trades, me.day_r));
+                    lines.push(format!(
+                        "Today: {} trades, {:+.2}R",
+                        me.day_trades, me.day_r
+                    ));
                 }
                 None => lines.push("Flat.".into()),
             }
@@ -412,7 +602,15 @@ mod tests {
     #[test]
     fn an_order_names_the_pit_by_its_tape_symbol_with_the_ticket_settings() {
         let b = order_body("buy", Instrument::Gold, 1.5, 2.0);
-        assert_eq!((b["action"].as_str(), b["symbol"].as_str(), b["stop_atr"].as_f64(), b["target_r"].as_f64()), (Some("buy"), Some("XAUUSD"), Some(1.5), Some(2.0)));
+        assert_eq!(
+            (
+                b["action"].as_str(),
+                b["symbol"].as_str(),
+                b["stop_atr"].as_f64(),
+                b["target_r"].as_f64()
+            ),
+            (Some("buy"), Some("XAUUSD"), Some(1.5), Some(2.0))
+        );
     }
 
     #[test]
@@ -425,10 +623,17 @@ mod tests {
         assert_eq!(ticket_trader(Some(&b)), "Paul Leppard");
         b.ticket_trader = Some("Ada Lovelace".into());
         assert_eq!(ticket_trader(Some(&b)), "Ada Lovelace");
-        assert_eq!(shown_trader(Some(&b), Some("Grace")), "Ada Lovelace", "the running desk's name wins");
+        assert_eq!(
+            shown_trader(Some(&b), Some("Grace")),
+            "Ada Lovelace",
+            "the running desk's name wins"
+        );
         assert_eq!(shown_trader(None, Some("Grace")), "Grace");
         assert_eq!(shown_trader(None, None), "Paul Leppard");
-        assert_eq!(clean_name("  Grace Hopper  ").as_deref(), Some("Grace Hopper"));
+        assert_eq!(
+            clean_name("  Grace Hopper  ").as_deref(),
+            Some("Grace Hopper")
+        );
         assert_eq!(clean_name("   "), None);
     }
 
@@ -445,6 +650,8 @@ mod tests {
         world.insert_resource(crate::positions::PositionsFeed::default());
         world.run_system_once(update_ticket_panel).unwrap();
         world.run_system_once(handle_ticket_buttons).unwrap();
-        world.run_system_once(crate::positions::update_positions_panel).unwrap();
+        world
+            .run_system_once(crate::positions::update_positions_panel)
+            .unwrap();
     }
 }

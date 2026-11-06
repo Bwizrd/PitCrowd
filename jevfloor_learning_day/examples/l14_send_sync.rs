@@ -1,6 +1,5 @@
 // #### Step 1: Types & Compile-Time Assertions
 
-use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::thread;
 

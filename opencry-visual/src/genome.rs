@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::market::Instrument;
 use crate::paper::{ENTRY_FROM, ENTRY_UNTIL, FLAT_AT, MIN_REWARD_TO_RISK, MIN_STOP_SPREADS};
-use crate::pit_engine::{tick_size, Side};
+use crate::pit_engine::{Side, tick_size};
 
 pub const BAR_MS: i64 = 15 * 60 * 1000;
 /// The ATR every stop is measured in.
@@ -144,7 +144,7 @@ impl Window {
             Window::LondonOpen => (7 * 60, 8 * 60),
             Window::NewYorkOpen => (13 * 60 + 30, 14 * 60 + 30),
         };
-        minute >= a && minute < b && minute >= ENTRY_FROM && minute < ENTRY_UNTIL
+        minute >= a && minute < b && (ENTRY_FROM..ENTRY_UNTIL).contains(&minute)
     }
 }
 
@@ -217,7 +217,11 @@ impl Genome {
                 Signal::EdgeLab { key, tf } => (key.as_str(), *tf),
                 _ => ("?", 0),
             };
-            let bars = if tf >= 1440 { "daily".to_string() } else { format!("{}h", tf / 60) };
+            let bars = if tf >= 1440 {
+                "daily".to_string()
+            } else {
+                format!("{}h", tf / 60)
+            };
             return format!(
                 "holder: edge-lab strategy {key} on {bars} bars, its own entries and exits, held overnight; 1 R = {} ATR of those bars, safety stop {HOLD_SAFETY_R} R; {}",
                 self.exit.stop_atr,
@@ -229,7 +233,11 @@ impl Genome {
                 "adapter ({}): picks one of {} tactics every morning by {}; now: {}",
                 if a == Adapt::Jev { "Jev" } else { "code" },
                 self.tactics.len(),
-                if a == Adapt::Jev { "asking Jev" } else { "their last 20 days" },
+                if a == Adapt::Jev {
+                    "asking Jev"
+                } else {
+                    "their last 20 days"
+                },
                 self.rule_text()
             );
         }
@@ -262,12 +270,23 @@ impl Genome {
             .filters
             .iter()
             .map(|f| match f {
-                Filter::Trend { n, with } => format!("{} the {n}-bar trend", if *with { "with" } else { "against" }),
-                Filter::Vol { high } => format!("{} volatility", if *high { "high" } else { "low" }),
-                Filter::Day { with } => format!("{} the day's move", if *with { "with" } else { "against" }),
+                Filter::Trend { n, with } => format!(
+                    "{} the {n}-bar trend",
+                    if *with { "with" } else { "against" }
+                ),
+                Filter::Vol { high } => {
+                    format!("{} volatility", if *high { "high" } else { "low" })
+                }
+                Filter::Day { with } => {
+                    format!("{} the day's move", if *with { "with" } else { "against" })
+                }
             })
             .collect();
-        let filt = if filters.is_empty() { String::new() } else { format!(", {}", filters.join(", ")) };
+        let filt = if filters.is_empty() {
+            String::new()
+        } else {
+            format!(", {}", filters.join(", "))
+        };
         format!(
             "15m {mode} {sig}{filt}, {:?} hours; stop {} ATR, target {} R, out after {} bars; {}",
             self.window,
@@ -280,7 +299,9 @@ impl Genome {
 }
 
 pub fn instrument_of(symbol: &str) -> Option<Instrument> {
-    Instrument::ALL.into_iter().find(|i| i.symbol().replace('/', "") == symbol)
+    Instrument::ALL
+        .into_iter()
+        .find(|i| i.symbol().replace('/', "") == symbol)
 }
 
 /// Typical live spread in ticks (median of the desk's fills, 23-24 Oct 2026); the backtest's
@@ -321,8 +342,12 @@ fn week_of(ms: i64) -> i64 {
 /// reason to take the trade, so the twin is the genome minus the entries Jev doubts.
 pub fn jev_question(mode: Mode) -> &'static str {
     match mode {
-        Mode::Follow => "Is the move this trade joins strong and clean, likely to carry on for the next few bars rather than tiring or reversing?",
-        Mode::Fade => "Is the move this trade fades tiring and likely to turn: stretched, slowing, or already being rejected?",
+        Mode::Follow => {
+            "Is the move this trade joins strong and clean, likely to carry on for the next few bars rather than tiring or reversing?"
+        }
+        Mode::Fade => {
+            "Is the move this trade fades tiring and likely to turn: stretched, slowing, or already being rejected?"
+        }
     }
 }
 
@@ -340,19 +365,37 @@ pub fn jev_state(bars: &[Bar], side: Side) -> String {
     let rows: Vec<String> = bars[from..]
         .iter()
         .enumerate()
-        .map(|(i, b)| format!("{:>2}  {:.2}  {:.2}  {:.2}  {:.2}", i + 1, b.o * k, b.h * k, b.l * k, b.c * k))
+        .map(|(i, b)| {
+            format!(
+                "{:>2}  {:.2}  {:.2}  {:.2}  {:.2}",
+                i + 1,
+                b.o * k,
+                b.h * k,
+                b.l * k,
+                b.c * k
+            )
+        })
         .collect();
     let hour = minute_of_day(bars[n - 1].t + BAR_MS) / 60;
     format!(
         "A trade on a 15-minute chart, decided at the close of the last bar ({hour:02}:00 UTC hour).\nTrade: {}.\nPrices are rebased so the last close is 1000.00.\nBars, oldest first: number, open, high, low, close\n{}",
-        if side == Side::Buy { "BUY (betting price goes up)" } else { "SELL (betting price goes down)" },
+        if side == Side::Buy {
+            "BUY (betting price goes up)"
+        } else {
+            "SELL (betting price goes down)"
+        },
         rows.join("\n")
     )
 }
 
 /// The twin of a genome: same rule, id and name with "-J", and the question set.
 pub fn twin_of(g: &Genome) -> Genome {
-    Genome { id: format!("{}-J", g.id), name: format!("{}-J", g.name), jev: Some(jev_question(g.mode).to_string()), ..g.clone() }
+    Genome {
+        id: format!("{}-J", g.id),
+        name: format!("{}-J", g.name),
+        jev: Some(jev_question(g.mode).to_string()),
+        ..g.clone()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -394,7 +437,13 @@ pub fn register(g: &Genome) -> u16 {
         return i as u16;
     }
     let leak = |s: String| -> &'static str { Box::leak(s.into_boxed_str()) };
-    seats.push(Seat { genome: Some(g.clone()), id: leak(g.id.clone()), name: leak(g.name.clone()), creed: leak(g.describe()), tag: tag_of(g) });
+    seats.push(Seat {
+        genome: Some(g.clone()),
+        id: leak(g.id.clone()),
+        name: leak(g.name.clone()),
+        creed: leak(g.describe()),
+        tag: tag_of(g),
+    });
     (seats.len() - 1) as u16
 }
 
@@ -402,9 +451,15 @@ pub fn register(g: &Genome) -> u16 {
 /// Returns false if the seat is not an adapter or the tactic is out of range.
 pub fn set_tactic(i: u16, k: usize) -> bool {
     let mut seats = SEATS.write().unwrap_or_else(|e| e.into_inner());
-    let Some(seat) = seats.get_mut(i as usize) else { return false };
-    let Some(g) = seat.genome.as_mut() else { return false };
-    let Some(t) = g.tactics.get(k).cloned() else { return false };
+    let Some(seat) = seats.get_mut(i as usize) else {
+        return false;
+    };
+    let Some(g) = seat.genome.as_mut() else {
+        return false;
+    };
+    let Some(t) = g.tactics.get(k).cloned() else {
+        return false;
+    };
     g.signal = t.signal;
     g.mode = t.mode;
     g.filters = t.filters;
@@ -417,7 +472,14 @@ pub fn set_tactic(i: u16, k: usize) -> bool {
 
 /// Which of its tactics an adapter is using now, by its rule fields.
 pub fn tactic_in_use(g: &Genome) -> Option<usize> {
-    g.tactics.iter().position(|t| t.signal == g.signal && t.mode == g.mode && t.filters == g.filters && t.window == g.window && t.exit == g.exit && t.symbols == g.symbols)
+    g.tactics.iter().position(|t| {
+        t.signal == g.signal
+            && t.mode == g.mode
+            && t.filters == g.filters
+            && t.window == g.window
+            && t.exit == g.exit
+            && t.symbols == g.symbols
+    })
 }
 
 /// Register a genome the page knows only by id, name and description (from the desk's
@@ -440,44 +502,82 @@ pub fn register_display(id: &str, name: &str, creed: &str, tag: Option<&str>) ->
         Some("manual") => "manual",
         _ => "genome",
     };
-    seats.push(Seat { genome: None, id: leak(id), name: leak(name), creed: leak(if creed.is_empty() { "A genome from the evolving pit." } else { creed }), tag });
+    seats.push(Seat {
+        genome: None,
+        id: leak(id),
+        name: leak(name),
+        creed: leak(if creed.is_empty() {
+            "A genome from the evolving pit."
+        } else {
+            creed
+        }),
+        tag,
+    });
     (seats.len() - 1) as u16
 }
 
 /// The seat of a registered genome, by its trader name.
 pub fn seat_by_name(name: &str) -> Option<u16> {
-    SEATS.read().unwrap_or_else(|e| e.into_inner()).iter().position(|s| s.name == name).map(|i| i as u16)
+    SEATS
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .iter()
+        .position(|s| s.name == name)
+        .map(|i| i as u16)
 }
 
 pub fn seat(i: u16) -> Option<Seat> {
-    SEATS.read().unwrap_or_else(|e| e.into_inner()).get(i as usize).cloned()
+    SEATS
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(i as usize)
+        .cloned()
 }
 
 /// Give a seat a new display name (the trade ticket's trader, when its user renames it). The id,
 /// and so every logged trade, stays the same.
 pub fn rename(i: u16, name: &str) {
     let mut seats = SEATS.write().unwrap_or_else(|e| e.into_inner());
-    if let Some(seat) = seats.get_mut(i as usize) {
-        if seat.name != name {
-            seat.name = Box::leak(name.to_string().into_boxed_str());
-        }
+    if let Some(seat) = seats.get_mut(i as usize)
+        && seat.name != name
+    {
+        seat.name = Box::leak(name.to_string().into_boxed_str());
     }
 }
 
 pub fn seat_name(i: u16) -> &'static str {
-    SEATS.read().unwrap_or_else(|e| e.into_inner()).get(i as usize).map(|s| s.name).unwrap_or("genome")
+    SEATS
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(i as usize)
+        .map(|s| s.name)
+        .unwrap_or("genome")
 }
 
 pub fn seat_id(i: u16) -> Option<&'static str> {
-    SEATS.read().unwrap_or_else(|e| e.into_inner()).get(i as usize).map(|s| s.id)
+    SEATS
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(i as usize)
+        .map(|s| s.id)
 }
 
 pub fn seat_tag(i: u16) -> &'static str {
-    SEATS.read().unwrap_or_else(|e| e.into_inner()).get(i as usize).map(|s| s.tag).unwrap_or("genome")
+    SEATS
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(i as usize)
+        .map(|s| s.tag)
+        .unwrap_or("genome")
 }
 
 pub fn seat_creed(i: u16) -> &'static str {
-    SEATS.read().unwrap_or_else(|e| e.into_inner()).get(i as usize).map(|s| s.creed).unwrap_or("A genome from the evolving pit.")
+    SEATS
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(i as usize)
+        .map(|s| s.creed)
+        .unwrap_or("A genome from the evolving pit.")
 }
 
 /// A colour of its own for each genome, from its id: golden-angle hues, never grey.
@@ -523,7 +623,23 @@ pub struct Features {
 
 impl Features {
     pub fn new(bars: Vec<Bar>) -> Self {
-        Features { bars, sma: HashMap::new(), atr: HashMap::new(), rsi: HashMap::new(), hh: HashMap::new(), ll: HashMap::new(), orb: HashMap::new(), runs: None, prev_day: None, prev_week: None, asia: None, drive: HashMap::new(), day_open: None, entries: HashMap::new(), spreads: None }
+        Features {
+            bars,
+            sma: HashMap::new(),
+            atr: HashMap::new(),
+            rsi: HashMap::new(),
+            hh: HashMap::new(),
+            ll: HashMap::new(),
+            orb: HashMap::new(),
+            runs: None,
+            prev_day: None,
+            prev_week: None,
+            asia: None,
+            drive: HashMap::new(),
+            day_open: None,
+            entries: HashMap::new(),
+            spreads: None,
+        }
     }
 
     fn sma(&mut self, n: usize) -> &Vec<f64> {
@@ -551,7 +667,13 @@ impl Features {
             let tr: Vec<f64> = (0..bars.len())
                 .map(|i| {
                     let b = bars[i];
-                    if i == 0 { b.h - b.l } else { (b.h - b.l).max((b.h - bars[i - 1].c).abs()).max((b.l - bars[i - 1].c).abs()) }
+                    if i == 0 {
+                        b.h - b.l
+                    } else {
+                        (b.h - b.l)
+                            .max((b.h - bars[i - 1].c).abs())
+                            .max((b.l - bars[i - 1].c).abs())
+                    }
                 })
                 .collect();
             let mut out = vec![f64::NAN; bars.len()];
@@ -586,7 +708,11 @@ impl Features {
                     dn = (dn * (n as f64 - 1.0) + w) / n as f64;
                 }
                 if i >= n {
-                    out[i] = if dn == 0.0 { 100.0 } else { 100.0 - 100.0 / (1.0 + up / dn) };
+                    out[i] = if dn == 0.0 {
+                        100.0
+                    } else {
+                        100.0 - 100.0 / (1.0 + up / dn)
+                    };
                 }
             }
             out
@@ -596,12 +722,16 @@ impl Features {
     /// Highest high of the `n` bars before this one.
     fn hh(&mut self, n: usize) -> &Vec<f64> {
         let bars = &self.bars;
-        self.hh.entry(n).or_insert_with(|| rolling(bars, n, |b| b.h, f64::max))
+        self.hh
+            .entry(n)
+            .or_insert_with(|| rolling(bars, n, |b| b.h, f64::max))
     }
 
     fn ll(&mut self, n: usize) -> &Vec<f64> {
         let bars = &self.bars;
-        self.ll.entry(n).or_insert_with(|| rolling(bars, n, |b| b.l, f64::min))
+        self.ll
+            .entry(n)
+            .or_insert_with(|| rolling(bars, n, |b| b.l, f64::min))
     }
 
     /// +1 / -1 on the first close above / below the opening box of London or New York, built
@@ -619,7 +749,9 @@ impl Features {
                         box_ = Some((day, open, b.h, b.l, 1, false));
                     }
                 }
-                let Some((d, open, hi, lo, k, fired)) = box_ else { continue };
+                let Some((d, open, hi, lo, k, fired)) = box_ else {
+                    continue;
+                };
                 if d != day || start >= open + 6 * 60 {
                     box_ = None;
                     continue;
@@ -771,10 +903,11 @@ impl Features {
                 if m == 7 * 60 || m == 13 * 60 + 30 {
                     open = Some((d, m, b.o));
                 }
-                if let Some((od, om, px)) = open {
-                    if od == d && m == om + (k as i64 - 1) * 15 {
-                        out[i] = b.c - px;
-                    }
+                if let Some((od, om, px)) = open
+                    && od == d
+                    && m == om + (k as i64 - 1) * 15
+                {
+                    out[i] = b.c - px;
                 }
             }
             out
@@ -873,7 +1006,10 @@ pub fn evaluate(g: &Genome, f: &mut Features, i: usize) -> Option<(Side, f64, St
             if z.abs() <= *k {
                 return None;
             }
-            (up(z > 0.0), format!("close {z:+.1} ATR from the {n}-bar mean"))
+            (
+                up(z > 0.0),
+                format!("close {z:+.1} ATR from the {n}-bar mean"),
+            )
         }
         Signal::Rsi { n, lo } => {
             let r = f.rsi(*n)[i];
@@ -893,34 +1029,73 @@ pub fn evaluate(g: &Genome, f: &mut Features, i: usize) -> Option<(Side, f64, St
             if r.unsigned_abs() as usize != *k {
                 return None;
             }
-            (up(r > 0), format!("{k} closes in a row {}", if r > 0 { "higher" } else { "lower" }))
+            (
+                up(r > 0),
+                format!(
+                    "{k} closes in a row {}",
+                    if r > 0 { "higher" } else { "lower" }
+                ),
+            )
         }
         Signal::Orb { m } => {
             let d = f.orb(*m)[i];
             if d == 0 {
                 return None;
             }
-            (d, format!("first close {} the {}-minute opening range", if d > 0 { "above" } else { "below" }, m * 15))
+            (
+                d,
+                format!(
+                    "first close {} the {}-minute opening range",
+                    if d > 0 { "above" } else { "below" },
+                    m * 15
+                ),
+            )
         }
         Signal::PrevDay => {
             let (follow, fade) = f.prev_day();
-            let d = if g.mode == Mode::Follow { follow[i] } else { fade[i] };
+            let d = if g.mode == Mode::Follow {
+                follow[i]
+            } else {
+                fade[i]
+            };
             if d == 0 {
                 return None;
             }
-            let what = if g.mode == Mode::Follow { "closed beyond" } else { "swept and closed back inside" };
-            (d, format!("{what} yesterday's {}", if d > 0 { "high" } else { "low" }))
+            let what = if g.mode == Mode::Follow {
+                "closed beyond"
+            } else {
+                "swept and closed back inside"
+            };
+            (
+                d,
+                format!("{what} yesterday's {}", if d > 0 { "high" } else { "low" }),
+            )
         }
         Signal::PrevWeek | Signal::Asia => {
             let weekly = g.signal == Signal::PrevWeek;
             let (follow, fade) = if weekly { f.prev_week() } else { f.asia() };
-            let d = if g.mode == Mode::Follow { follow[i] } else { fade[i] };
+            let d = if g.mode == Mode::Follow {
+                follow[i]
+            } else {
+                fade[i]
+            };
             if d == 0 {
                 return None;
             }
-            let what = if g.mode == Mode::Follow { "closed beyond" } else { "swept and closed back inside" };
-            let level = if weekly { "last week's" } else { "the Asian range's" };
-            (d, format!("{what} {level} {}", if d > 0 { "high" } else { "low" }))
+            let what = if g.mode == Mode::Follow {
+                "closed beyond"
+            } else {
+                "swept and closed back inside"
+            };
+            let level = if weekly {
+                "last week's"
+            } else {
+                "the Asian range's"
+            };
+            (
+                d,
+                format!("{what} {level} {}", if d > 0 { "high" } else { "low" }),
+            )
         }
         Signal::Cross { fast, slow } => {
             if i == 0 {
@@ -935,7 +1110,13 @@ pub fn evaluate(g: &Genome, f: &mut Features, i: usize) -> Option<(Side, f64, St
             if was == is {
                 return None;
             }
-            (up(is), format!("{fast}-bar average crossed {} the {slow}-bar", if is { "above" } else { "below" }))
+            (
+                up(is),
+                format!(
+                    "{fast}-bar average crossed {} the {slow}-bar",
+                    if is { "above" } else { "below" }
+                ),
+            )
         }
         Signal::Squeeze { k } => {
             if *k < 2 || i < *k {
@@ -961,9 +1142,21 @@ pub fn evaluate(g: &Genome, f: &mut Features, i: usize) -> Option<(Side, f64, St
             }
             let (lower, upper) = (b.o.min(b.c) - b.l, b.h - b.o.max(b.c));
             if lower >= w * range && b.c >= b.l + range * 2.0 / 3.0 {
-                (1, format!("rejected the low, wick {:.0}% of the bar", lower / range * 100.0))
+                (
+                    1,
+                    format!(
+                        "rejected the low, wick {:.0}% of the bar",
+                        lower / range * 100.0
+                    ),
+                )
             } else if upper >= w * range && b.c <= b.l + range / 3.0 {
-                (-1, format!("rejected the high, wick {:.0}% of the bar", upper / range * 100.0))
+                (
+                    -1,
+                    format!(
+                        "rejected the high, wick {:.0}% of the bar",
+                        upper / range * 100.0
+                    ),
+                )
             } else {
                 return None;
             }
@@ -980,22 +1173,46 @@ pub fn evaluate(g: &Genome, f: &mut Features, i: usize) -> Option<(Side, f64, St
             if b.o.min(b.c) > p.o.min(p.c) || b.o.max(b.c) < p.o.max(p.c) {
                 return None;
             }
-            (up(body > 0.0), format!("{} engulfing bar", if body > 0.0 { "bullish" } else { "bearish" }))
+            (
+                up(body > 0.0),
+                format!(
+                    "{} engulfing bar",
+                    if body > 0.0 { "bullish" } else { "bearish" }
+                ),
+            )
         }
         Signal::EdgeLab { .. } => {
             let id = g.signal.edge_lab_id().unwrap_or_default();
-            let d = f.entries.get(&id).and_then(|m| m.get(&i)).copied().unwrap_or(0);
+            let d = f
+                .entries
+                .get(&id)
+                .and_then(|m| m.get(&i))
+                .copied()
+                .unwrap_or(0);
             if d == 0 {
                 return None;
             }
-            (d, format!("edge-lab {id} turned {}", if d > 0 { "long" } else { "short" }))
+            (
+                d,
+                format!(
+                    "edge-lab {id} turned {}",
+                    if d > 0 { "long" } else { "short" }
+                ),
+            )
         }
         Signal::Drive { k, x } => {
             let mv = f.drive(*k)[i];
             if !mv.is_finite() || mv.abs() < x * atr {
                 return None;
             }
-            (up(mv > 0.0), format!("{:+.1} ATR from the session open after {} minutes", mv / atr, k * 15))
+            (
+                up(mv > 0.0),
+                format!(
+                    "{:+.1} ATR from the session open after {} minutes",
+                    mv / atr,
+                    k * 15
+                ),
+            )
         }
     };
     // A faded PrevDay (PrevWeek, Asia) already picked the sweep bar; its trade is against the take-out.
@@ -1027,8 +1244,16 @@ pub fn evaluate(g: &Genome, f: &mut Features, i: usize) -> Option<(Side, f64, St
         }
     }
     let side = if dir > 0 { Side::Buy } else { Side::Sell };
-    let mode = if g.mode == Mode::Fade { "fade" } else { "follow" };
-    Some((side, g.exit.stop_atr * atr, format!("{} {mode}: {why}", g.name)))
+    let mode = if g.mode == Mode::Fade {
+        "fade"
+    } else {
+        "follow"
+    };
+    Some((
+        side,
+        g.exit.stop_atr * atr,
+        format!("{} {mode}: {why}", g.name),
+    ))
 }
 
 /// The stop distance in price after the desk's spread floor, and the target distance.
@@ -1058,8 +1283,17 @@ pub fn backtest(g: &Genome, data: &mut HashMap<String, Features>) -> Vec<BtTrade
 
 /// `backtest` with every fill, in and out, `slip_ticks` ticks worse than the desk's price: the
 /// cost sensitivity the audit asks for. The stop and target are still triggered by the bars.
-pub fn backtest_slipped(g: &Genome, data: &mut HashMap<String, Features>, slip_ticks: f64) -> Vec<BtTrade> {
-    let syms: Vec<String> = g.symbols.iter().filter(|s| data.contains_key(*s) && instrument_of(s).is_some()).cloned().collect();
+pub fn backtest_slipped(
+    g: &Genome,
+    data: &mut HashMap<String, Features>,
+    slip_ticks: f64,
+) -> Vec<BtTrade> {
+    let syms: Vec<String> = g
+        .symbols
+        .iter()
+        .filter(|s| data.contains_key(*s) && instrument_of(s).is_some())
+        .cloned()
+        .collect();
     // Every bar close of every symbol in time order.
     let mut events: Vec<(i64, usize, usize)> = Vec::new();
     for (k, s) in syms.iter().enumerate() {
@@ -1077,35 +1311,65 @@ pub fn backtest_slipped(g: &Genome, data: &mut HashMap<String, Features>, slip_t
         let s = &syms[k];
         let inst = instrument_of(s).unwrap();
         let f = data.get_mut(s).unwrap();
-        let Some((side, stop, _)) = evaluate(g, f, i) else { continue };
-        let Some(next) = f.bars.get(i + 1).copied() else { continue };
+        let Some((side, stop, _)) = evaluate(g, f, i) else {
+            continue;
+        };
+        let Some(next) = f.bars.get(i + 1).copied() else {
+            continue;
+        };
         if next.t != f.bars[i].t + BAR_MS {
             continue; // the next bar is after a gap (a close, a weekend): no fill to price
         }
         let tick = tick_size(inst) as f64;
         let typical = typical_spread_ticks(inst) * tick;
-        let spread_at = |j: usize| f.spreads.as_ref().and_then(|v| v.get(j).copied()).filter(|x| x.is_finite() && *x > 0.0).unwrap_or(typical);
+        let spread_at = |j: usize| {
+            f.spreads
+                .as_ref()
+                .and_then(|v| v.get(j).copied())
+                .filter(|x| x.is_finite() && *x > 0.0)
+                .unwrap_or(typical)
+        };
         let spr = spread_at(i + 1);
         let (d, reach) = stop_and_target(g, stop, spr, tick);
         let buy = side == Side::Buy;
         let entry = if buy { next.o + spr } else { next.o };
-        let (stop_px, target_px) = if buy { (entry - d, entry + reach) } else { (entry + d, entry - reach) };
+        let (stop_px, target_px) = if buy {
+            (entry - d, entry + reach)
+        } else {
+            (entry + d, entry - reach)
+        };
         let mut out: Option<(f64, &'static str, i64)> = None;
         let last = (i + g.exit.max_bars).min(f.bars.len() - 1);
         for j in i + 1..=last {
             let b = f.bars[j];
             let spr = spread_at(j);
             // Desk prices: a long exits at the bid (the bar), a short at the ask (bar + spread).
-            let (lo, hi, open, close) = if buy { (b.l, b.h, b.o, b.c) } else { (b.l + spr, b.h + spr, b.o + spr, b.c + spr) };
+            let (lo, hi, open, close) = if buy {
+                (b.l, b.h, b.o, b.c)
+            } else {
+                (b.l + spr, b.h + spr, b.o + spr, b.c + spr)
+            };
             let stopped = if buy { lo <= stop_px } else { hi >= stop_px };
             if stopped {
-                let px = if buy { open.min(stop_px) } else { open.max(stop_px) };
+                let px = if buy {
+                    open.min(stop_px)
+                } else {
+                    open.max(stop_px)
+                };
                 out = Some((px, "stop", b.t));
                 break;
             }
-            let hit = if buy { hi >= target_px } else { lo <= target_px };
+            let hit = if buy {
+                hi >= target_px
+            } else {
+                lo <= target_px
+            };
             if hit {
-                let px = if buy { open.max(target_px) } else { open.min(target_px) };
+                let px = if buy {
+                    open.max(target_px)
+                } else {
+                    open.min(target_px)
+                };
                 out = Some((px, "target", b.t));
                 break;
             }
@@ -1122,8 +1386,18 @@ pub fn backtest_slipped(g: &Genome, data: &mut HashMap<String, Features>, slip_t
         let Some((px, why, at)) = out else { continue };
         // Slippage moves the fills, never the levels the desk set from its quote.
         let slip = slip_ticks * tick;
-        let pnl = if buy { (px - slip) - (entry + slip) } else { (entry - slip) - (px + slip) };
-        trades.push(BtTrade { t: next.t, symbol: s.clone(), side: if buy { "long" } else { "short" }, r: pnl / d, exit: why });
+        let pnl = if buy {
+            (px - slip) - (entry + slip)
+        } else {
+            (entry - slip) - (px + slip)
+        };
+        trades.push(BtTrade {
+            t: next.t,
+            symbol: s.clone(),
+            side: if buy { "long" } else { "short" },
+            r: pnl / d,
+            exit: why,
+        });
         free_after = at; // flat by the close of the exit bar, so it decides again there, as the desk does
     }
     trades
@@ -1137,7 +1411,13 @@ mod tests {
         closes
             .iter()
             .enumerate()
-            .map(|(i, &c)| Bar { t: start_ms + i as i64 * BAR_MS, o: c, h: c + 0.0005, l: c - 0.0005, c })
+            .map(|(i, &c)| Bar {
+                t: start_ms + i as i64 * BAR_MS,
+                o: c,
+                h: c + 0.0005,
+                l: c - 0.0005,
+                c,
+            })
             .collect()
     }
 
@@ -1149,7 +1429,11 @@ mod tests {
             mode,
             filters: vec![],
             window: Window::All,
-            exit: Exit { stop_atr: 1.0, target_r: 1.0, max_bars: 4 },
+            exit: Exit {
+                stop_atr: 1.0,
+                target_r: 1.0,
+                max_bars: 4,
+            },
             symbols: vec!["EURUSD".into()],
             jev: None,
             parent: None,
@@ -1165,13 +1449,21 @@ mod tests {
         let g = genome(Signal::Run { k: 3 }, Mode::Follow);
         let v = serde_json::to_value(&g).unwrap();
         for k in ["floor", "holds", "tactics", "adapt"] {
-            assert!(v.get(k).is_none(), "{k} must not appear on an ordinary genome: {v}");
+            assert!(
+                v.get(k).is_none(),
+                "{k} must not appear on an ordinary genome: {v}"
+            );
         }
         assert_eq!(tag_of(&g), "genome");
         let h: Genome = serde_json::from_value(serde_json::json!({"id": "h", "name": "H", "signal": {"kind": "edge_lab", "key": "yt_k", "tf": 1440},
             "mode": "follow", "window": "all", "exit": {"stop_atr": 2.0, "target_r": 1.0, "max_bars": 0}, "symbols": ["US500"], "holds": true})).unwrap();
         assert_eq!(tag_of(&h), "holder");
-        assert!(h.describe().starts_with("holder: edge-lab strategy yt_k on daily bars"), "{}", h.describe());
+        assert!(
+            h.describe()
+                .starts_with("holder: edge-lab strategy yt_k on daily bars"),
+            "{}",
+            h.describe()
+        );
     }
 
     #[test]
@@ -1185,16 +1477,25 @@ mod tests {
     #[test]
     fn a_run_fires_once_and_a_fader_takes_the_other_side() {
         // 08:00 UTC on a weekday, inside every window.
-        let start = 1_792_800_000_000 - 1_792_800_000_000 % 86_400_000 + 8 * 3_600_000;
+        let start = 1_792_800_000_000 + 8 * 3_600_000;
         let mut closes: Vec<f64> = vec![1.1; 20];
         closes.extend([1.101, 1.102, 1.103, 1.104]);
         let mut f = Features::new(bars(&closes, start));
         let follow = genome(Signal::Run { k: 3 }, Mode::Follow);
         let fade = genome(Signal::Run { k: 3 }, Mode::Fade);
         let n = closes.len();
-        assert_eq!(evaluate(&follow, &mut f, n - 2).map(|e| e.0), Some(Side::Buy));
-        assert_eq!(evaluate(&fade, &mut f, n - 2).map(|e| e.0), Some(Side::Sell));
-        assert!(evaluate(&follow, &mut f, n - 1).is_none(), "a run of four is not the third close");
+        assert_eq!(
+            evaluate(&follow, &mut f, n - 2).map(|e| e.0),
+            Some(Side::Buy)
+        );
+        assert_eq!(
+            evaluate(&fade, &mut f, n - 2).map(|e| e.0),
+            Some(Side::Sell)
+        );
+        assert!(
+            evaluate(&follow, &mut f, n - 1).is_none(),
+            "a run of four is not the third close"
+        );
     }
 
     #[test]
@@ -1202,7 +1503,10 @@ mod tests {
         let mut g = genome(Signal::PrevDay, Mode::Follow);
         g.exit.target_r = 0.5;
         let (d, reach) = stop_and_target(&g, 0.00001, 0.00005, 0.0001);
-        assert!((d - MIN_STOP_SPREADS as f64 * 0.0001).abs() < 1e-12, "spread floored at a tick, then 20 spreads");
+        assert!(
+            (d - MIN_STOP_SPREADS as f64 * 0.0001).abs() < 1e-12,
+            "spread floored at a tick, then 20 spreads"
+        );
         assert!((reach - d).abs() < 1e-12);
     }
 
@@ -1213,16 +1517,33 @@ mod tests {
         assert_eq!((t.id.as_str(), t.name.as_str()), ("g-J", "Test-J"));
         assert_eq!(t.jev.as_deref(), Some(jev_question(Mode::Fade)));
         assert_eq!(t.signal, g.signal);
-        let start = 1_792_800_000_000 - 1_792_800_000_000 % 86_400_000 + 8 * 3_600_000;
+        let start = 1_792_800_000_000 + 8 * 3_600_000;
         let b = bars(&vec![1.1234; 30], start);
         let st = jev_state(&b, Side::Sell);
         assert!(st.contains("SELL") && st.contains("1000.00"), "{st}");
-        assert_eq!(st.lines().filter(|l| l.trim_start().starts_with(char::is_numeric)).count(), JEV_BARS);
-        assert!(!st.contains("1.12") && !st.contains("EUR"), "no real prices, no symbol: {st}");
+        assert_eq!(
+            st.lines()
+                .filter(|l| l.trim_start().starts_with(char::is_numeric))
+                .count(),
+            JEV_BARS
+        );
+        assert!(
+            !st.contains("1.12") && !st.contains("EUR"),
+            "no real prices, no symbol: {st}"
+        );
     }
 
     fn ohlc(rows: &[(f64, f64, f64, f64)], start_ms: i64) -> Vec<Bar> {
-        rows.iter().enumerate().map(|(i, &(o, h, l, c))| Bar { t: start_ms + i as i64 * BAR_MS, o, h, l, c }).collect()
+        rows.iter()
+            .enumerate()
+            .map(|(i, &(o, h, l, c))| Bar {
+                t: start_ms + i as i64 * BAR_MS,
+                o,
+                h,
+                l,
+                c,
+            })
+            .collect()
     }
 
     /// Midnight UTC of a Wednesday (2026-10-21).
@@ -1230,7 +1551,15 @@ mod tests {
 
     #[test]
     fn the_new_kinds_round_trip_through_json() {
-        for sig in [Signal::PrevWeek, Signal::Asia, Signal::Cross { fast: 20, slow: 50 }, Signal::Squeeze { k: 6 }, Signal::Wick { w: 0.6 }, Signal::Engulf, Signal::Drive { k: 2, x: 1.0 }] {
+        for sig in [
+            Signal::PrevWeek,
+            Signal::Asia,
+            Signal::Cross { fast: 20, slow: 50 },
+            Signal::Squeeze { k: 6 },
+            Signal::Wick { w: 0.6 },
+            Signal::Engulf,
+            Signal::Drive { k: 2, x: 1.0 },
+        ] {
             let mut g = genome(sig, Mode::Follow);
             g.filters.push(Filter::Day { with: false });
             let s = serde_json::to_string(&g).unwrap();
@@ -1243,8 +1572,16 @@ mod tests {
     fn weeks_start_on_sunday() {
         assert_eq!(WED % 86_400_000, 0);
         let sun = WED - 3 * 86_400_000 + 22 * 3_600_000;
-        assert_eq!(week_of(sun), week_of(WED), "Sunday evening is the week it opens");
-        assert_ne!(week_of(sun - 86_400_000), week_of(WED), "Saturday is the week before");
+        assert_eq!(
+            week_of(sun),
+            week_of(WED),
+            "Sunday evening is the week it opens"
+        );
+        assert_ne!(
+            week_of(sun - 86_400_000),
+            week_of(WED),
+            "Saturday is the week before"
+        );
     }
 
     #[test]
@@ -1261,7 +1598,10 @@ mod tests {
         assert!(evaluate(&follow, &mut f, 28).is_none());
         assert_eq!(evaluate(&follow, &mut f, 29).map(|e| e.0), Some(Side::Buy));
         assert!(evaluate(&follow, &mut f, 30).is_none(), "once per day");
-        assert!(evaluate(&follow, &mut f, 27).is_none(), "nothing inside the Asian hours");
+        assert!(
+            evaluate(&follow, &mut f, 27).is_none(),
+            "nothing inside the Asian hours"
+        );
     }
 
     #[test]
@@ -1285,7 +1625,10 @@ mod tests {
         let mut f = Features::new(ohlc(&rows, start));
         let sq = genome(Signal::Squeeze { k: 6 }, Mode::Follow);
         assert_eq!(evaluate(&sq, &mut f, 21).map(|e| e.0), Some(Side::Buy));
-        assert!(evaluate(&sq, &mut f, 20).is_none(), "the narrow bar itself breaks nothing");
+        assert!(
+            evaluate(&sq, &mut f, 20).is_none(),
+            "the narrow bar itself breaks nothing"
+        );
 
         // A long lower wick closing high: buyers rejected the low.
         let mut rows = vec![(1.1, 1.102, 1.098, 1.1); 20];
@@ -1293,7 +1636,10 @@ mod tests {
         let mut f = Features::new(ohlc(&rows, start));
         let wk = genome(Signal::Wick { w: 0.6 }, Mode::Follow);
         assert_eq!(evaluate(&wk, &mut f, 20).map(|e| e.0), Some(Side::Buy));
-        assert_eq!(evaluate(&genome(Signal::Wick { w: 0.6 }, Mode::Fade), &mut f, 20).map(|e| e.0), Some(Side::Sell));
+        assert_eq!(
+            evaluate(&genome(Signal::Wick { w: 0.6 }, Mode::Fade), &mut f, 20).map(|e| e.0),
+            Some(Side::Sell)
+        );
 
         // A red bar swallowed by a green one.
         let mut rows = vec![(1.1, 1.102, 1.098, 1.1); 20];
@@ -1315,10 +1661,17 @@ mod tests {
         let mut f = Features::new(ohlc(&rows, start));
         let dr = genome(Signal::Drive { k: 2, x: 1.0 }, Mode::Follow);
         assert_eq!(evaluate(&dr, &mut f, 21).map(|e| e.0), Some(Side::Sell));
-        assert!(evaluate(&dr, &mut f, 20).is_none(), "the first bar is not the second");
+        assert!(
+            evaluate(&dr, &mut f, 20).is_none(),
+            "the first bar is not the second"
+        );
         let mut with_day = dr.clone();
         with_day.filters.push(Filter::Day { with: true });
-        assert_eq!(evaluate(&with_day, &mut f, 21).map(|e| e.0), Some(Side::Sell), "down on the day, selling with it");
+        assert_eq!(
+            evaluate(&with_day, &mut f, 21).map(|e| e.0),
+            Some(Side::Sell),
+            "down on the day, selling with it"
+        );
         let mut against = dr.clone();
         against.filters.push(Filter::Day { with: false });
         assert!(evaluate(&against, &mut f, 21).is_none());
@@ -1328,17 +1681,42 @@ mod tests {
     fn an_edge_lab_genome_enters_only_where_its_entries_say() {
         let start = WED + 8 * 3_600_000;
         let mut f = Features::new(bars(&vec![1.1; 30], start));
-        let g = genome(Signal::EdgeLab { key: "yt_x".into(), tf: 60 }, Mode::Fade);
-        assert!(evaluate(&g, &mut f, 20).is_none(), "no entries handed in: nothing");
+        let g = genome(
+            Signal::EdgeLab {
+                key: "yt_x".into(),
+                tf: 60,
+            },
+            Mode::Fade,
+        );
+        assert!(
+            evaluate(&g, &mut f, 20).is_none(),
+            "no entries handed in: nothing"
+        );
         f.set_entries("yt_x@15", HashMap::from([(20, 1i8)]));
-        assert!(evaluate(&g, &mut f, 20).is_none(), "another timeframe's entries are not this one's");
+        assert!(
+            evaluate(&g, &mut f, 20).is_none(),
+            "another timeframe's entries are not this one's"
+        );
         f.set_entries("yt_x@60", HashMap::from([(20, 1i8)]));
-        assert_eq!(evaluate(&g, &mut f, 20).map(|e| e.0), Some(Side::Sell), "a fader sells the long entry");
+        assert_eq!(
+            evaluate(&g, &mut f, 20).map(|e| e.0),
+            Some(Side::Sell),
+            "a fader sells the long entry"
+        );
         assert!(evaluate(&g, &mut f, 21).is_none());
         let s = serde_json::to_string(&g).unwrap();
-        assert!(s.contains("\"kind\":\"edge_lab\"") && s.contains("\"key\":\"yt_x\"") && s.contains("\"tf\":60"), "{s}");
+        assert!(
+            s.contains("\"kind\":\"edge_lab\"")
+                && s.contains("\"key\":\"yt_x\"")
+                && s.contains("\"tf\":60"),
+            "{s}"
+        );
         let old: Genome = serde_json::from_str(&s.replace(",\"tf\":60", "")).unwrap();
-        assert_eq!(old.signal.edge_lab_id().as_deref(), Some("yt_x@15"), "genomes tried before tf existed ran on 15m bars");
+        assert_eq!(
+            old.signal.edge_lab_id().as_deref(),
+            Some("yt_x@15"),
+            "genomes tried before tf existed ran on 15m bars"
+        );
     }
 
     #[test]

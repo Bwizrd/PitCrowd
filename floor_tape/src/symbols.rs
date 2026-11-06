@@ -24,20 +24,105 @@ pub struct Spec {
 }
 
 pub const SYMBOLS: [Spec; 9] = [
-    Spec { name: "XAUUSD", id: 241, anchor: 3900.0, daily_vol: 0.015, spread: 0.30, digits: 2, tick_rate: 3.0, always_busy: false },
-    Spec { name: "XAGUSD", id: 238, anchor: 48.0, daily_vol: 0.025, spread: 0.030, digits: 3, tick_rate: 2.4, always_busy: false },
-    Spec { name: "NAS100", id: 205, anchor: 26000.0, daily_vol: 0.012, spread: 1.5, digits: 1, tick_rate: 3.2, always_busy: false },
-    Spec { name: "US500", id: 220, anchor: 7000.0, daily_vol: 0.009, spread: 0.5, digits: 1, tick_rate: 1.8, always_busy: false },
-    Spec { name: "EURUSD", id: 185, anchor: 1.12, daily_vol: 0.004, spread: 0.00008, digits: 5, tick_rate: 1.5, always_busy: false },
-    Spec { name: "GBPUSD", id: 199, anchor: 1.33, daily_vol: 0.0045, spread: 0.00012, digits: 5, tick_rate: 1.5, always_busy: false },
-    Spec { name: "BTCUSD", id: 160, anchor: 100000.0, daily_vol: 0.025, spread: 2.0, digits: 1, tick_rate: 2.5, always_busy: true },
-    Spec { name: "US30", id: 219, anchor: 48000.0, daily_vol: 0.009, spread: 2.5, digits: 1, tick_rate: 2.3, always_busy: false },
-    Spec { name: "UK100", id: 217, anchor: 9800.0, daily_vol: 0.009, spread: 1.0, digits: 1, tick_rate: 1.5, always_busy: false },
+    Spec {
+        name: "XAUUSD",
+        id: 241,
+        anchor: 3900.0,
+        daily_vol: 0.015,
+        spread: 0.30,
+        digits: 2,
+        tick_rate: 3.0,
+        always_busy: false,
+    },
+    Spec {
+        name: "XAGUSD",
+        id: 238,
+        anchor: 48.0,
+        daily_vol: 0.025,
+        spread: 0.030,
+        digits: 3,
+        tick_rate: 2.4,
+        always_busy: false,
+    },
+    Spec {
+        name: "NAS100",
+        id: 205,
+        anchor: 26000.0,
+        daily_vol: 0.012,
+        spread: 1.5,
+        digits: 1,
+        tick_rate: 3.2,
+        always_busy: false,
+    },
+    Spec {
+        name: "US500",
+        id: 220,
+        anchor: 7000.0,
+        daily_vol: 0.009,
+        spread: 0.5,
+        digits: 1,
+        tick_rate: 1.8,
+        always_busy: false,
+    },
+    Spec {
+        name: "EURUSD",
+        id: 185,
+        anchor: 1.12,
+        daily_vol: 0.004,
+        spread: 0.00008,
+        digits: 5,
+        tick_rate: 1.5,
+        always_busy: false,
+    },
+    Spec {
+        name: "GBPUSD",
+        id: 199,
+        anchor: 1.33,
+        daily_vol: 0.0045,
+        spread: 0.00012,
+        digits: 5,
+        tick_rate: 1.5,
+        always_busy: false,
+    },
+    Spec {
+        name: "BTCUSD",
+        id: 160,
+        anchor: 100000.0,
+        daily_vol: 0.025,
+        spread: 2.0,
+        digits: 1,
+        tick_rate: 2.5,
+        always_busy: true,
+    },
+    Spec {
+        name: "US30",
+        id: 219,
+        anchor: 48000.0,
+        daily_vol: 0.009,
+        spread: 2.5,
+        digits: 1,
+        tick_rate: 2.3,
+        always_busy: false,
+    },
+    Spec {
+        name: "UK100",
+        id: 217,
+        anchor: 9800.0,
+        daily_vol: 0.009,
+        spread: 1.0,
+        digits: 1,
+        tick_rate: 1.5,
+        always_busy: false,
+    },
 ];
 
 /// Look a symbol up by name, forgiving case and a slash (`EUR/USD`, `eurusd`).
 pub fn by_name(name: &str) -> Option<usize> {
-    let n: String = name.chars().filter(|c| *c != '/').collect::<String>().to_uppercase();
+    let n: String = name
+        .chars()
+        .filter(|c| *c != '/')
+        .collect::<String>()
+        .to_uppercase();
     SYMBOLS.iter().position(|s| s.name == n)
 }
 

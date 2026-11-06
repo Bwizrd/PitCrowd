@@ -67,15 +67,15 @@ impl Instrument {
     /// Base accent color for the pit border and label
     pub fn accent_color(&self) -> Color {
         match self {
-            Self::Gold => Color::srgb(0.95, 0.77, 0.20),      // Gold amber
-            Self::Silver => Color::srgb(0.85, 0.90, 0.95),    // Crisp silver white
-            Self::GbpUsd => Color::srgb(0.25, 0.60, 0.90),    // British blue
-            Self::EurUsd => Color::srgb(0.30, 0.75, 0.75),    // Euro cyan
-            Self::Uk100 => Color::srgb(0.80, 0.25, 0.35),     // FTSE claret
-            Self::Sp500 => Color::srgb(0.90, 0.45, 0.25),     // Index orange
-            Self::Nasdaq => Color::srgb(0.85, 0.30, 0.50),    // Tech magenta
-            Self::Us30 => Color::srgb(0.35, 0.55, 0.90),      // Dow blue
-            Self::Bitcoin => Color::srgb(0.98, 0.58, 0.15),   // Bitcoin orange
+            Self::Gold => Color::srgb(0.95, 0.77, 0.20), // Gold amber
+            Self::Silver => Color::srgb(0.85, 0.90, 0.95), // Crisp silver white
+            Self::GbpUsd => Color::srgb(0.25, 0.60, 0.90), // British blue
+            Self::EurUsd => Color::srgb(0.30, 0.75, 0.75), // Euro cyan
+            Self::Uk100 => Color::srgb(0.80, 0.25, 0.35), // FTSE claret
+            Self::Sp500 => Color::srgb(0.90, 0.45, 0.25), // Index orange
+            Self::Nasdaq => Color::srgb(0.85, 0.30, 0.50), // Tech magenta
+            Self::Us30 => Color::srgb(0.35, 0.55, 0.90), // Dow blue
+            Self::Bitcoin => Color::srgb(0.98, 0.58, 0.15), // Bitcoin orange
         }
     }
 
@@ -120,7 +120,12 @@ pub enum District {
 }
 
 impl District {
-    pub const ALL: [District; 4] = [District::Metals, District::Equities, District::Forex, District::Crypto];
+    pub const ALL: [District; 4] = [
+        District::Metals,
+        District::Equities,
+        District::Forex,
+        District::Crypto,
+    ];
 
     pub fn label(&self) -> &'static str {
         match self {
@@ -152,7 +157,9 @@ impl District {
 
     /// The pits in this district, in floor order.
     pub fn pits(&self) -> impl Iterator<Item = Instrument> + '_ {
-        Instrument::ALL.into_iter().filter(move |i| i.district() == *self)
+        Instrument::ALL
+            .into_iter()
+            .filter(move |i| i.district() == *self)
     }
 }
 
@@ -187,11 +194,11 @@ impl Firm {
 
     pub fn color(&self) -> Color {
         match self {
-            Self::Atlas => Color::srgb(0.20, 0.60, 0.95),     // Blue coats
-            Self::Redwood => Color::srgb(0.90, 0.25, 0.25),   // Red coats
+            Self::Atlas => Color::srgb(0.20, 0.60, 0.95), // Blue coats
+            Self::Redwood => Color::srgb(0.90, 0.25, 0.25), // Red coats
             Self::Northstar => Color::srgb(0.95, 0.85, 0.25), // Yellow coats
-            Self::Apex => Color::srgb(0.25, 0.85, 0.50),      // Green coats
-            Self::Horizon => Color::srgb(0.75, 0.35, 0.90),   // Purple coats
+            Self::Apex => Color::srgb(0.25, 0.85, 0.50),  // Green coats
+            Self::Horizon => Color::srgb(0.75, 0.35, 0.90), // Purple coats
         }
     }
 }
@@ -322,8 +329,10 @@ mod tests {
 
     #[test]
     fn test_sim_smooth_interpolation() {
-        let mut sim = MarketActivitySim::default();
-        sim.scenario_active = false; // Disable scripted updates for pure math test
+        let mut sim = MarketActivitySim {
+            scenario_active: false, // Disable scripted updates for pure math test
+            ..Default::default()
+        };
         sim.activities[Instrument::Gold as usize] = 0.20;
         sim.set_target(Instrument::Gold, 0.80);
 

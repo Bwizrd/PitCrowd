@@ -11,14 +11,12 @@
 //! Architecture:
 //! Market Events (Channel) -> RollingBuffer (capacity 3, oldest evicted) -> Slice View (&[f64]) -> Deterministic Features -> System One Interpretation (Interpreter Trait / Mock) -> Schema Validation -> Freshness Gate & Policy Engine (Strategy Trait) -> Multi-Scenario CLI Runner -> Deterministic Offline Replay -> Configurable Policy Thresholds (Unscripted Experimentation)
 
-
 use serde::Deserialize;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
 use std::thread;
 use std::time::Duration;
-
 
 /// Discrete market event carrying symbol and price
 #[derive(Debug, Clone, PartialEq)]
@@ -37,7 +35,10 @@ pub struct RollingBuffer {
 impl RollingBuffer {
     /// Create a new empty rolling buffer with fixed capacity
     pub fn new(capacity: usize) -> Self {
-        assert!(capacity > 0, "RollingBuffer capacity must be greater than zero");
+        assert!(
+            capacity > 0,
+            "RollingBuffer capacity must be greater than zero"
+        );
         Self {
             capacity,
             prices: Vec::with_capacity(capacity),
@@ -93,10 +94,7 @@ pub fn calculate_features(prices: &[f64]) -> Option<Features> {
     let last = *prices.last().unwrap();
     let delta = last - first;
 
-    let positive_changes = prices
-        .windows(2)
-        .filter(|w| w[1] > w[0])
-        .count();
+    let positive_changes = prices.windows(2).filter(|w| w[1] > w[0]).count();
 
     Some(Features {
         delta,
@@ -149,12 +147,9 @@ pub struct CTraderResponse {
 
 /// Pure function: parse JSON string returned by cTrader REST bridge into a vector of close prices.
 /// Extracts the most recent `bars_count` candle close prices.
-pub fn parse_ctrader_response(
-    json_str: &str,
-    bars_count: usize,
-) -> Result<Vec<f64>, BridgeError> {
-    let body: CTraderResponse = serde_json::from_str(json_str)
-        .map_err(|e| BridgeError::MalformedJson(e.to_string()))?;
+pub fn parse_ctrader_response(json_str: &str, bars_count: usize) -> Result<Vec<f64>, BridgeError> {
+    let body: CTraderResponse =
+        serde_json::from_str(json_str).map_err(|e| BridgeError::MalformedJson(e.to_string()))?;
 
     if let Some(err) = body.error {
         return Err(BridgeError::BridgeReportedError(err));
@@ -461,15 +456,15 @@ impl Interpreter for MockInterpreter {
 
 /// Load TypeSafe AI API key from environment variables or .env files
 pub fn load_typesafe_api_key() -> Option<String> {
-    if let Ok(key) = std::env::var("TYPESAFE_API_KEY") {
-        if !key.trim().is_empty() {
-            return Some(key.trim().to_string());
-        }
+    if let Ok(key) = std::env::var("TYPESAFE_API_KEY")
+        && !key.trim().is_empty()
+    {
+        return Some(key.trim().to_string());
     }
-    if let Ok(key) = std::env::var("JEV_KEY") {
-        if !key.trim().is_empty() {
-            return Some(key.trim().to_string());
-        }
+    if let Ok(key) = std::env::var("JEV_KEY")
+        && !key.trim().is_empty()
+    {
+        return Some(key.trim().to_string());
     }
     for path in &[".env", "jevfloor_learning_day/.env", "../.env"] {
         if let Ok(content) = std::fs::read_to_string(path) {
@@ -499,7 +494,9 @@ pub fn parse_jev_response(
         .map_err(|e| InferenceError::ValidationFailed(format!("Malformed Jev JSON: {e}")))?;
 
     if let Some(err_msg) = val.get("error").and_then(|e| e.as_str()) {
-        return Err(InferenceError::ValidationFailed(format!("Jev API error: {err_msg}")));
+        return Err(InferenceError::ValidationFailed(format!(
+            "Jev API error: {err_msg}"
+        )));
     }
 
     let model = val
@@ -557,7 +554,10 @@ pub fn build_jev_payload(
         .collect::<Vec<_>>()
         .join(" -> ");
     let delta_desc = match features {
-        Some(f) => format!("delta={:+.3}, positive_changes={}", f.delta, f.positive_changes),
+        Some(f) => format!(
+            "delta={:+.3}, positive_changes={}",
+            f.delta, f.positive_changes
+        ),
         None => "insufficient price history".to_string(),
     };
     let state = format!("Market SILVER: prices [{}], {}", prices_str, delta_desc);
@@ -633,7 +633,10 @@ impl Interpreter for RealJevInterpreter {
     ) -> Result<(Envelope, String), InferenceError> {
         let payload = build_jev_payload(&self.model, prices, features);
 
-        println!(">>> JEV INFERENCE: REAL (TypeSafe System One API: {})", self.endpoint_url);
+        println!(
+            ">>> JEV INFERENCE: REAL (TypeSafe System One API: {})",
+            self.endpoint_url
+        );
         println!(">>> REQUEST SENT:");
         println!("    Endpoint: {}", self.endpoint_url);
         println!("    Model: {}", self.model);
@@ -818,7 +821,10 @@ pub fn decide_behaviour_with_thresholds(
 
     // 3. Schema & snapshot correlation validation
     if let Err(err) = validate_envelope(env, snapshot.id) {
-        return (VisualBehaviour::Hesitate, format!("Validation error: {err}"));
+        return (
+            VisualBehaviour::Hesitate,
+            format!("Validation error: {err}"),
+        );
     }
 
     // 4. Feature availability check
@@ -1200,14 +1206,11 @@ pub fn run_pipeline_with_options<I: Interpreter>(
     let prices = buffer.as_slice().to_vec();
     let features = calculate_features(&prices);
 
-    let (interpretation, model_version) = match interpreter.interpret_market(
-        &config.snapshot,
-        &prices,
-        features.as_ref(),
-    ) {
-        Ok((env, model)) => (Ok(env), Some(model)),
-        Err(err) => (Err(err), None),
-    };
+    let (interpretation, model_version) =
+        match interpreter.interpret_market(&config.snapshot, &prices, features.as_ref()) {
+            Ok((env, model)) => (Ok(env), Some(model)),
+            Err(err) => (Err(err), None),
+        };
 
     let strategy = DeterministicStrategy;
     let (visual, decision, reason) = strategy.evaluate(
@@ -1222,7 +1225,7 @@ pub fn run_pipeline_with_options<I: Interpreter>(
     let is_fresh = check_freshness(&config.snapshot, config.now_ms, config.max_age_ms).is_ok();
     let is_schema_valid = interpretation
         .as_ref()
-        .map_or(false, |env| validate_envelope(env, config.snapshot.id).is_ok());
+        .is_ok_and(|env| validate_envelope(env, config.snapshot.id).is_ok());
     let valid = is_fresh && is_schema_valid;
 
     let source = if interpreter.is_real() {
@@ -1258,10 +1261,7 @@ pub fn run_pipeline_with_interpreter<I: Interpreter>(
 }
 
 /// Execute the capstone pipeline using MockInterpreter with configured fixture
-pub fn run_pipeline(
-    config: &ScenarioConfig,
-    is_live: bool,
-) -> Result<ScenarioResult, BridgeError> {
+pub fn run_pipeline(config: &ScenarioConfig, is_live: bool) -> Result<ScenarioResult, BridgeError> {
     let interpreter = MockInterpreter::new(config.interpretation_result.clone());
     run_pipeline_with_interpreter(config, &interpreter, is_live)
 }
@@ -1315,7 +1315,9 @@ pub fn parse_cli_args(args: &[String]) -> Result<CliArgs, String> {
             } else if mode == "mock" {
                 cli.is_real_jev = false;
             } else {
-                return Err(format!("Unknown --jev mode '{mode}'. Use 'real' or 'mock'."));
+                return Err(format!(
+                    "Unknown --jev mode '{mode}'. Use 'real' or 'mock'."
+                ));
             }
             i += 2;
         } else if arg == "--timeframe" {
@@ -1379,11 +1381,7 @@ pub struct ReplayRecord {
 
 impl ReplayRecord {
     /// Create a ReplayRecord from a pipeline scenario execution
-    pub fn from_result(
-        result: &ScenarioResult,
-        now_ms: u64,
-        policy_version: u32,
-    ) -> Self {
+    pub fn from_result(result: &ScenarioResult, now_ms: u64, policy_version: u32) -> Self {
         let (schema_v, payload) = match &result.interpretation {
             Ok(env) => (env.schema_version, Some(env.interpretation.clone())),
             Err(_) => (CURRENT_SCHEMA_VERSION, None),
@@ -1414,10 +1412,16 @@ impl std::fmt::Display for ReplayError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ReplayError::UnsupportedPolicyVersion(v) => {
-                write!(f, "Unsupported policy version: {v} (expected {CURRENT_POLICY_VERSION})")
+                write!(
+                    f,
+                    "Unsupported policy version: {v} (expected {CURRENT_POLICY_VERSION})"
+                )
             }
             ReplayError::UnsupportedSchemaVersion(v) => {
-                write!(f, "Unsupported schema version: {v} (expected {CURRENT_SCHEMA_VERSION})")
+                write!(
+                    f,
+                    "Unsupported schema version: {v} (expected {CURRENT_SCHEMA_VERSION})"
+                )
             }
         }
     }
@@ -1464,7 +1468,9 @@ fn main() {
         Ok(res) => res,
         Err(err) => {
             eprintln!("\n[ERROR] {err}");
-            eprintln!("Usage: cargo run --example capstone -- [SCENARIO] [--live] [--jev real|mock] [--timeframe TF] [--pair ID]");
+            eprintln!(
+                "Usage: cargo run --example capstone -- [SCENARIO] [--live] [--jev real|mock] [--timeframe TF] [--pair ID]"
+            );
             eprintln!("Available scenarios: strong, mixed, uncertain, stale, error, empty\n");
             std::process::exit(1);
         }
@@ -1472,13 +1478,22 @@ fn main() {
 
     println!("====================================================");
     println!("  JevFloor Capstone: Parts 1–7 — Unified Pipeline   ");
-    println!("  Mode: {:<9} | Channel -> Buffer -> Jev -> Strategy", cli.scenario.as_str().to_uppercase());
+    println!(
+        "  Mode: {:<9} | Channel -> Buffer -> Jev -> Strategy",
+        cli.scenario.as_str().to_uppercase()
+    );
     println!("====================================================\n");
 
     if cli.is_live {
-        println!(">>> INGESTION: LIVE cTrader Bridge (pair {}, timeframe {})", cli.pair_id, cli.timeframe);
+        println!(
+            ">>> INGESTION: LIVE cTrader Bridge (pair {}, timeframe {})",
+            cli.pair_id, cli.timeframe
+        );
     } else {
-        println!(">>> INGESTION: SYNTHETIC (Scenario '{}')", cli.scenario.as_str());
+        println!(
+            ">>> INGESTION: SYNTHETIC (Scenario '{}')",
+            cli.scenario.as_str()
+        );
         println!("    (Pass --live to query local cTrader/Influx bridge)");
     }
 
@@ -1487,13 +1502,23 @@ fn main() {
         let api_key = match load_typesafe_api_key() {
             Some(key) => key,
             None => {
-                eprintln!("\n[FATAL] Real Jev mode requested (--jev real), but no TYPESAFE_API_KEY or JEV_KEY found!");
-                eprintln!("FAIL-FAST: Real Jev mode will NEVER silently fall back to mock fixtures.");
+                eprintln!(
+                    "\n[FATAL] Real Jev mode requested (--jev real), but no TYPESAFE_API_KEY or JEV_KEY found!"
+                );
+                eprintln!(
+                    "FAIL-FAST: Real Jev mode will NEVER silently fall back to mock fixtures."
+                );
                 std::process::exit(1);
             }
         };
         let interpreter = RealJevInterpreter::new(api_key);
-        let res = match run_pipeline_with_options(&config, &interpreter, cli.is_live, &cli.timeframe, cli.pair_id) {
+        let res = match run_pipeline_with_options(
+            &config,
+            &interpreter,
+            cli.is_live,
+            &cli.timeframe,
+            cli.pair_id,
+        ) {
             Ok(r) => r,
             Err(err) => {
                 eprintln!("\n[FATAL] Ingestion failed: {err}");
@@ -1546,12 +1571,24 @@ fn main() {
     let calls_during_replay = test_interpreter.call_count() - calls_before;
 
     assert_eq!(replay1, replay2, "Replay outputs must be identical");
-    assert_eq!(calls_during_replay, 0, "Provider call count during replay must be strictly 0");
+    assert_eq!(
+        calls_during_replay, 0,
+        "Provider call count during replay must be strictly 0"
+    );
 
-    println!("Replay 1 result: visual={:<8} decision={:<11} (reason: {})", replay1.0, replay1.1, replay1.2);
-    println!("Replay 2 result: visual={:<8} decision={:<11} (reason: {})", replay2.0, replay2.1, replay2.2);
+    println!(
+        "Replay 1 result: visual={:<8} decision={:<11} (reason: {})",
+        replay1.0, replay1.1, replay1.2
+    );
+    println!(
+        "Replay 2 result: visual={:<8} decision={:<11} (reason: {})",
+        replay2.0, replay2.1, replay2.2
+    );
     println!("Replay verification: replay1 == replay2 (DETERMINISTIC)");
-    println!("Provider calls:  {} (strictly 0 calls made during replay)", calls_during_replay);
+    println!(
+        "Provider calls:  {} (strictly 0 calls made during replay)",
+        calls_during_replay
+    );
 
     println!("\n----------------------------------------------------");
     println!("   Part 7: Curriculum Exit & Threshold Tuning       ");
@@ -1573,7 +1610,10 @@ fn main() {
     );
     println!("All curriculum exit criteria and acceptance tests verified successfully!");
 
-    println!("\nCapstone pipeline (Parts 1–7) executed successfully for '{}'!", cli.scenario.as_str());
+    println!(
+        "\nCapstone pipeline (Parts 1–7) executed successfully for '{}'!",
+        cli.scenario.as_str()
+    );
 }
 
 #[cfg(test)]
@@ -1733,7 +1773,9 @@ mod tests {
         let result = parse_ctrader_response(json, 3);
         assert_eq!(
             result,
-            Err(BridgeError::BridgeReportedError("Pair not found".to_string()))
+            Err(BridgeError::BridgeReportedError(
+                "Pair not found".to_string()
+            ))
         );
     }
 
@@ -1977,7 +2019,10 @@ mod tests {
                 confidence: 0.90,
             },
         };
-        assert_eq!(validate_envelope(&env, 7), Err(InferenceError::InvalidSchema));
+        assert_eq!(
+            validate_envelope(&env, 7),
+            Err(InferenceError::InvalidSchema)
+        );
     }
 
     #[test]
@@ -2112,13 +2157,7 @@ mod tests {
             },
         };
 
-        let (visual, reason) = decide_behaviour(
-            Some(&features),
-            Ok(&env),
-            &snapshot,
-            1100,
-            200,
-        );
+        let (visual, reason) = decide_behaviour(Some(&features), Ok(&env), &snapshot, 1100, 200);
         assert_eq!(visual, VisualBehaviour::Run);
         assert!(reason.contains("Strong trend and high activity"));
         assert_eq!(DisplayDecision::from(visual), DisplayDecision::Investigate);
@@ -2144,13 +2183,7 @@ mod tests {
             },
         };
 
-        let (visual, reason) = decide_behaviour(
-            Some(&features),
-            Ok(&env),
-            &snapshot,
-            1100,
-            200,
-        );
+        let (visual, reason) = decide_behaviour(Some(&features), Ok(&env), &snapshot, 1100, 200);
         assert_eq!(visual, VisualBehaviour::Walk);
         assert!(reason.contains("Positive delta with moderate probability"));
         assert_eq!(DisplayDecision::from(visual), DisplayDecision::Observe);
@@ -2176,13 +2209,7 @@ mod tests {
             },
         };
 
-        let (visual, reason) = decide_behaviour(
-            Some(&features),
-            Ok(&env),
-            &snapshot,
-            1100,
-            200,
-        );
+        let (visual, reason) = decide_behaviour(Some(&features), Ok(&env), &snapshot, 1100, 200);
         assert_eq!(visual, VisualBehaviour::Hesitate);
         assert!(reason.contains("Low confidence"));
         assert_eq!(DisplayDecision::from(visual), DisplayDecision::Wait);
@@ -2209,13 +2236,7 @@ mod tests {
         };
 
         // Exactly 200ms age (1200 - 1000 = 200) -> accepted as fresh
-        let (visual, _) = decide_behaviour(
-            Some(&features),
-            Ok(&env),
-            &snapshot,
-            1200,
-            200,
-        );
+        let (visual, _) = decide_behaviour(Some(&features), Ok(&env), &snapshot, 1200, 200);
         assert_eq!(visual, VisualBehaviour::Run);
     }
 
@@ -2240,13 +2261,7 @@ mod tests {
         };
 
         // 201ms age (1201 - 1000 = 201) -> rejected as stale
-        let (visual, reason) = decide_behaviour(
-            Some(&features),
-            Ok(&env),
-            &snapshot,
-            1201,
-            200,
-        );
+        let (visual, reason) = decide_behaviour(Some(&features), Ok(&env), &snapshot, 1201, 200);
         assert_eq!(visual, VisualBehaviour::Hesitate);
         assert!(reason.contains("Stale observation"));
     }
@@ -2306,23 +2321,13 @@ mod tests {
             },
         };
 
-        let (visual1, reason1) = decide_behaviour(
-            Some(&flat_features),
-            Ok(&env),
-            &snapshot,
-            1100,
-            200,
-        );
+        let (visual1, reason1) =
+            decide_behaviour(Some(&flat_features), Ok(&env), &snapshot, 1100, 200);
         assert_eq!(visual1, VisualBehaviour::Hesitate);
         assert!(reason1.contains("Non-positive price delta"));
 
-        let (visual2, reason2) = decide_behaviour(
-            Some(&neg_features),
-            Ok(&env),
-            &snapshot,
-            1100,
-            200,
-        );
+        let (visual2, reason2) =
+            decide_behaviour(Some(&neg_features), Ok(&env), &snapshot, 1100, 200);
         assert_eq!(visual2, VisualBehaviour::Hesitate);
         assert!(reason2.contains("Non-positive price delta"));
     }
@@ -2343,13 +2348,7 @@ mod tests {
             },
         };
 
-        let (visual, reason) = decide_behaviour(
-            None,
-            Ok(&env),
-            &snapshot,
-            1100,
-            200,
-        );
+        let (visual, reason) = decide_behaviour(None, Ok(&env), &snapshot, 1100, 200);
         assert_eq!(visual, VisualBehaviour::Hesitate);
         assert!(reason.contains("Insufficient price history for features"));
     }
@@ -2376,26 +2375,16 @@ mod tests {
         };
 
         // Strong evaluation
-        let (visual, decision, reason) = strategy.evaluate(
-            Some(&features),
-            Ok(&env),
-            &snapshot,
-            1100,
-            200,
-        );
+        let (visual, decision, reason) =
+            strategy.evaluate(Some(&features), Ok(&env), &snapshot, 1100, 200);
         assert_eq!(visual, VisualBehaviour::Run);
         assert_eq!(decision, DisplayDecision::Investigate);
         assert!(reason.contains("Strong trend and high activity"));
 
         // Error evaluation
         let err = InferenceError::ProviderUnavailable;
-        let (visual_err, decision_err, reason_err) = strategy.evaluate(
-            Some(&features),
-            Err(&err),
-            &snapshot,
-            1100,
-            200,
-        );
+        let (visual_err, decision_err, reason_err) =
+            strategy.evaluate(Some(&features), Err(&err), &snapshot, 1100, 200);
         assert_eq!(visual_err, VisualBehaviour::Hesitate);
         assert_eq!(decision_err, DisplayDecision::Wait);
         assert!(reason_err.contains("Inference error"));
@@ -2409,7 +2398,10 @@ mod tests {
     fn test_scenario_mode_parsing() {
         assert_eq!("strong".parse::<ScenarioMode>(), Ok(ScenarioMode::Strong));
         assert_eq!("mixed".parse::<ScenarioMode>(), Ok(ScenarioMode::Mixed));
-        assert_eq!("uncertain".parse::<ScenarioMode>(), Ok(ScenarioMode::Uncertain));
+        assert_eq!(
+            "uncertain".parse::<ScenarioMode>(),
+            Ok(ScenarioMode::Uncertain)
+        );
         assert_eq!("stale".parse::<ScenarioMode>(), Ok(ScenarioMode::Stale));
         assert_eq!("error".parse::<ScenarioMode>(), Ok(ScenarioMode::Error));
         assert_eq!("empty".parse::<ScenarioMode>(), Ok(ScenarioMode::Empty));
@@ -2430,10 +2422,7 @@ mod tests {
             parse_args(&["--live".to_string(), "stale".to_string()]),
             Ok((ScenarioMode::Stale, true))
         );
-        assert_eq!(
-            parse_args(&[]),
-            Ok((ScenarioMode::Strong, false))
-        );
+        assert_eq!(parse_args(&[]), Ok((ScenarioMode::Strong, false)));
     }
 
     #[test]
@@ -2462,7 +2451,10 @@ mod tests {
         assert!(res.valid);
         assert_eq!(res.decision, DisplayDecision::Observe);
         assert_eq!(res.visual, VisualBehaviour::Walk);
-        assert!(res.reason.contains("Positive delta with moderate probability"));
+        assert!(
+            res.reason
+                .contains("Positive delta with moderate probability")
+        );
     }
 
     #[test]
@@ -2540,8 +2532,10 @@ mod tests {
         };
 
         let initial_calls = interpreter.call_count();
-        let replay1 = evaluate_replay(&record, CURRENT_POLICY_VERSION, 200).expect("Replay 1 should succeed");
-        let replay2 = evaluate_replay(&record, CURRENT_POLICY_VERSION, 200).expect("Replay 2 should succeed");
+        let replay1 =
+            evaluate_replay(&record, CURRENT_POLICY_VERSION, 200).expect("Replay 1 should succeed");
+        let replay2 =
+            evaluate_replay(&record, CURRENT_POLICY_VERSION, 200).expect("Replay 2 should succeed");
         let final_calls = interpreter.call_count();
 
         // 1. Identical outputs
@@ -2576,7 +2570,8 @@ mod tests {
             policy_version: 1,
         };
 
-        let res = evaluate_replay(&record, CURRENT_POLICY_VERSION, 200).expect("Stale evaluation succeeds with Hesitate");
+        let res = evaluate_replay(&record, CURRENT_POLICY_VERSION, 200)
+            .expect("Stale evaluation succeeds with Hesitate");
         assert_eq!(res.0, VisualBehaviour::Hesitate);
         assert_eq!(res.1, DisplayDecision::Wait);
         assert!(res.2.contains("Stale observation"));
@@ -2653,7 +2648,8 @@ mod tests {
             policy_version: 1,
         };
 
-        let res = evaluate_replay(&record, CURRENT_POLICY_VERSION, 200).expect("Should evaluate to Hesitate");
+        let res = evaluate_replay(&record, CURRENT_POLICY_VERSION, 200)
+            .expect("Should evaluate to Hesitate");
         assert_eq!(res.0, VisualBehaviour::Hesitate);
         assert_eq!(res.1, DisplayDecision::Wait);
         assert!(res.2.contains("Insufficient price history"));
@@ -2677,7 +2673,8 @@ mod tests {
             policy_version: 1,
         };
 
-        let res = evaluate_replay(&record, CURRENT_POLICY_VERSION, 200).expect("Should evaluate to Hesitate");
+        let res = evaluate_replay(&record, CURRENT_POLICY_VERSION, 200)
+            .expect("Should evaluate to Hesitate");
         assert_eq!(res.0, VisualBehaviour::Hesitate);
         assert_eq!(res.1, DisplayDecision::Wait);
         assert!(res.2.contains("Inference error"));
@@ -2829,13 +2826,8 @@ mod tests {
             ..PolicyThresholds::default()
         });
 
-        let (visual, decision, reason) = strategy.evaluate(
-            Some(&features),
-            Ok(&env),
-            &snapshot,
-            1100,
-            200,
-        );
+        let (visual, decision, reason) =
+            strategy.evaluate(Some(&features), Ok(&env), &snapshot, 1100, 200);
         assert_eq!(visual, VisualBehaviour::Run);
         assert_eq!(decision, DisplayDecision::Investigate);
         assert!(reason.contains("Strong trend and high activity"));
@@ -2962,7 +2954,3 @@ mod tests {
         assert!(parse_cli_args(&args3).is_err());
     }
 }
-
-
-
-

@@ -18,7 +18,7 @@ use crate::market::Instrument;
 use crate::pit::{format_price_with_commas, instrument_decimals, set_ui_text};
 use crate::pit_3d::pit_3d_origin;
 use crate::pit_engine::tick_size;
-use crate::tape_chart::{candle_layout, chart_source, TapeHistory, BOARD_BARS};
+use crate::tape_chart::{BOARD_BARS, TapeHistory, candle_layout, chart_source};
 use crate::ui::Selection;
 
 /// Board size and placement differ by view: behind the crowd when a pit is focused, high
@@ -32,8 +32,18 @@ pub struct BoardPlacement {
     pub y: f32,
 }
 
-pub const FOCUS_PLACEMENT: BoardPlacement = BoardPlacement { w: 62.0, h: 20.0, back: 52.0, y: 15.0 };
-pub const MARKET_PLACEMENT: BoardPlacement = BoardPlacement { w: 110.0, h: 38.0, back: 0.0, y: 58.0 };
+pub const FOCUS_PLACEMENT: BoardPlacement = BoardPlacement {
+    w: 62.0,
+    h: 20.0,
+    back: 52.0,
+    y: 15.0,
+};
+pub const MARKET_PLACEMENT: BoardPlacement = BoardPlacement {
+    w: 110.0,
+    h: 38.0,
+    back: 0.0,
+    y: 58.0,
+};
 const DEAL_NODES: usize = 160;
 
 /// How a label hangs off the board's projected corner(s), in logical viewport px.
@@ -58,7 +68,12 @@ pub struct LabelBox {
 /// Where an anchored label's node goes on a viewport `viewport_w` px wide.
 pub fn label_box(anchor: LabelAnchor, viewport_w: f32, line_h: f32) -> LabelBox {
     match anchor {
-        LabelAnchor::EndsAt { at, gap } => LabelBox { left: None, right: Some(viewport_w - at.x + gap), width: None, top: at.y - line_h * 0.5 },
+        LabelAnchor::EndsAt { at, gap } => LabelBox {
+            left: None,
+            right: Some(viewport_w - at.x + gap),
+            width: None,
+            top: at.y - line_h * 0.5,
+        },
         LabelAnchor::CentredBetween(a, b) => LabelBox {
             left: Some(a.x.min(b.x)),
             right: None,
@@ -133,11 +148,19 @@ pub enum WallLabel {
 
 impl WallLabel {
     fn font(self) -> f32 {
-        if self == Self::Symbol { SYMBOL_FONT } else { LABEL_FONT }
+        if self == Self::Symbol {
+            SYMBOL_FONT
+        } else {
+            LABEL_FONT
+        }
     }
 
     fn line_h(self) -> f32 {
-        if self == Self::Symbol { SYMBOL_LINE_H } else { LABEL_LINE_H }
+        if self == Self::Symbol {
+            SYMBOL_LINE_H
+        } else {
+            LABEL_LINE_H
+        }
     }
 
     fn centred(self) -> bool {
@@ -198,25 +221,69 @@ pub fn setup_wall_board(
     commands
         .spawn((WallBoard, Transform::IDENTITY, Visibility::Hidden))
         .with_children(|b| {
-            b.spawn((WallPart::Backing, Mesh3d(cube.clone()), MeshMaterial3d(backing), Transform::IDENTITY));
-            b.spawn((WallPart::Rail(true), Mesh3d(cube.clone()), MeshMaterial3d(frame.clone()), Transform::IDENTITY));
-            b.spawn((WallPart::Rail(false), Mesh3d(cube.clone()), MeshMaterial3d(frame), Transform::IDENTITY));
+            b.spawn((
+                WallPart::Backing,
+                Mesh3d(cube.clone()),
+                MeshMaterial3d(backing),
+                Transform::IDENTITY,
+            ));
+            b.spawn((
+                WallPart::Rail(true),
+                Mesh3d(cube.clone()),
+                MeshMaterial3d(frame.clone()),
+                Transform::IDENTITY,
+            ));
+            b.spawn((
+                WallPart::Rail(false),
+                Mesh3d(cube.clone()),
+                MeshMaterial3d(frame),
+                Transform::IDENTITY,
+            ));
             for i in 0..BOARD_BARS {
-                b.spawn((WallPart::Wick(i), Mesh3d(cube.clone()), MeshMaterial3d(mats.up.clone()), Transform::IDENTITY, Visibility::Hidden));
-                b.spawn((WallPart::Body(i), Mesh3d(cube.clone()), MeshMaterial3d(mats.up.clone()), Transform::IDENTITY, Visibility::Hidden));
+                b.spawn((
+                    WallPart::Wick(i),
+                    Mesh3d(cube.clone()),
+                    MeshMaterial3d(mats.up.clone()),
+                    Transform::IDENTITY,
+                    Visibility::Hidden,
+                ));
+                b.spawn((
+                    WallPart::Body(i),
+                    Mesh3d(cube.clone()),
+                    MeshMaterial3d(mats.up.clone()),
+                    Transform::IDENTITY,
+                    Visibility::Hidden,
+                ));
             }
             for i in 0..DEAL_NODES {
-                b.spawn((WallPart::Deal(i), Mesh3d(cube.clone()), MeshMaterial3d(mats.buy.clone()), Transform::IDENTITY, Visibility::Hidden));
+                b.spawn((
+                    WallPart::Deal(i),
+                    Mesh3d(cube.clone()),
+                    MeshMaterial3d(mats.buy.clone()),
+                    Transform::IDENTITY,
+                    Visibility::Hidden,
+                ));
             }
             for i in 0..crate::levels::LEVEL_NODES {
-                b.spawn((WallPart::Level(i), Mesh3d(cube.clone()), MeshMaterial3d(mats.level_flat.clone()), Transform::IDENTITY, Visibility::Hidden));
+                b.spawn((
+                    WallPart::Level(i),
+                    Mesh3d(cube.clone()),
+                    MeshMaterial3d(mats.level_flat.clone()),
+                    Transform::IDENTITY,
+                    Visibility::Hidden,
+                ));
             }
         });
     commands.insert_resource(mats);
 
     // Each label is a positioned box with the text inside, so the box can be anchored by its
     // right edge (prices) or centred (title) without knowing how wide the text is.
-    for which in [WallLabel::Hi, WallLabel::Lo, WallLabel::Title, WallLabel::Symbol] {
+    for which in [
+        WallLabel::Hi,
+        WallLabel::Lo,
+        WallLabel::Title,
+        WallLabel::Symbol,
+    ] {
         commands
             .spawn((
                 which,
@@ -225,7 +292,11 @@ pub fn setup_wall_board(
                     display: Display::None,
                     height: Val::Px(which.line_h()),
                     align_items: AlignItems::Center,
-                    justify_content: if which.centred() { JustifyContent::Center } else { JustifyContent::FlexEnd },
+                    justify_content: if which.centred() {
+                        JustifyContent::Center
+                    } else {
+                        JustifyContent::FlexEnd
+                    },
                     ..default()
                 },
                 GlobalZIndex(3),
@@ -233,10 +304,16 @@ pub fn setup_wall_board(
             .with_children(|b| {
                 b.spawn((
                     Text::new(""),
-                    TextFont { font_size: which.font(), ..default() },
+                    TextFont {
+                        font_size: which.font(),
+                        ..default()
+                    },
                     TextLayout::new_with_linebreak(LineBreak::NoWrap),
                     TextColor(Color::srgb(0.85, 0.80, 0.60)),
-                    Node { flex_shrink: 0.0, ..default() },
+                    Node {
+                        flex_shrink: 0.0,
+                        ..default()
+                    },
                 ));
             });
     }
@@ -254,14 +331,39 @@ pub fn update_wall_board(
     history: Res<TapeHistory>,
     mats: Res<WallMaterials>,
     levels: Res<crate::levels::LevelStore>,
-    camera: Query<(&Camera, &Transform, &OrbitCamera), (With<PitCamera3d>, Without<WallBoard>, Without<WallPart>)>,
+    camera: Query<
+        (&Camera, &Transform, &OrbitCamera),
+        (With<PitCamera3d>, Without<WallBoard>, Without<WallPart>),
+    >,
     mut board: Query<(&mut Transform, &mut Visibility), (With<WallBoard>, Without<WallPart>)>,
-    mut parts: Query<(&WallPart, &mut Transform, &mut Visibility, &mut MeshMaterial3d<StandardMaterial>), Without<WallBoard>>,
+    mut parts: Query<
+        (
+            &WallPart,
+            &mut Transform,
+            &mut Visibility,
+            &mut MeshMaterial3d<StandardMaterial>,
+        ),
+        Without<WallBoard>,
+    >,
     mut labels: Query<(&WallLabel, &mut Node, &Children)>,
     mut label_texts: Query<(&mut Text, &mut TextColor)>,
-    mut drawn: Local<Option<(Instrument, u64, u64, crate::live_feed::FeedMode, crate::candles::Timeframe, BoardPlacement, bool, u64, bool)>>,
+    mut drawn: Local<
+        Option<(
+            Instrument,
+            u64,
+            u64,
+            crate::live_feed::FeedMode,
+            crate::candles::Timeframe,
+            BoardPlacement,
+            bool,
+            u64,
+            bool,
+        )>,
+    >,
 ) {
-    let Ok((mut board_tf, mut board_vis)) = board.single_mut() else { return };
+    let Ok((mut board_tf, mut board_vis)) = board.single_mut() else {
+        return;
+    };
     let now = time.elapsed_secs_f64();
     let shown = view_mode.is_3d() && settings.wall_board && !selection.wall_board_dismissed;
     let Some(inst) = selection.selected_instrument.filter(|_| shown) else {
@@ -271,12 +373,18 @@ pub fn update_wall_board(
         }
         return;
     };
-    let Ok((cam, cam_local, orbit)) = camera.single() else { return };
+    let Ok((cam, cam_local, orbit)) = camera.single() else {
+        return;
+    };
     // The camera is a root entity, so this frame's `Transform` is what the scene renders
     // with (this system runs after the orbit); the propagated `GlobalTransform` is last frame's.
     let cam_tf = GlobalTransform::from(*cam_local);
 
-    let place = if orbit.market_view { MARKET_PLACEMENT } else { FOCUS_PLACEMENT };
+    let place = if orbit.market_view {
+        MARKET_PLACEMENT
+    } else {
+        FOCUS_PLACEMENT
+    };
     *board_tf = board_transform(pit_3d_origin(inst), cam_tf.translation(), place);
     *board_vis = Visibility::Inherited;
     let (bw, bh) = (place.w, place.h);
@@ -285,11 +393,36 @@ pub fn update_wall_board(
     let tf = settings.timeframe;
     let series = store.series(inst, tf, mode);
     let tape = history.tape(inst);
-    let key = (inst, series.revision, tape.revision, mode, tf, place, settings.deal_markers, levels.revision, settings.levels);
-    let marks = if settings.deal_markers { tape.marks() } else { Vec::new() };
+    let key = (
+        inst,
+        series.revision,
+        tape.revision,
+        mode,
+        tf,
+        place,
+        settings.deal_markers,
+        levels.revision,
+        settings.levels,
+    );
+    let marks = if settings.deal_markers {
+        tape.marks()
+    } else {
+        Vec::new()
+    };
     let all_bars = series.shown();
-    let layout = candle_layout(&all_bars, &marks, tf.millis(), bw, bh, tick_size(inst) * 6.0, BOARD_BARS);
-    let shown_bars: Vec<crate::candles::Candle> = layout.as_ref().map(|l| all_bars[all_bars.len() - l.candles.len()..].to_vec()).unwrap_or_default();
+    let layout = candle_layout(
+        &all_bars,
+        &marks,
+        tf.millis(),
+        bw,
+        bh,
+        tick_size(inst) * 6.0,
+        BOARD_BARS,
+    );
+    let shown_bars: Vec<crate::candles::Candle> = layout
+        .as_ref()
+        .map(|l| all_bars[all_bars.len() - l.candles.len()..].to_vec())
+        .unwrap_or_default();
     // Half a slot per body leaves a gap as wide as the candle; wicks are a hairline.
     let slot = bw / BOARD_BARS as f32;
     let (body_w, wick_w) = (slot * 0.5, (slot * 0.12).max(0.08));
@@ -300,13 +433,18 @@ pub fn update_wall_board(
         for (part, mut tf_, mut vis, mut mat) in parts.iter_mut() {
             match *part {
                 WallPart::Backing => {
-                    *tf_ = Transform::from_xyz(0.0, 0.0, -0.8).with_scale(Vec3::new(bw + 3.0, bh + 3.0, 0.4));
+                    *tf_ = Transform::from_xyz(0.0, 0.0, -0.8).with_scale(Vec3::new(
+                        bw + 3.0,
+                        bh + 3.0,
+                        0.4,
+                    ));
                     *vis = Visibility::Inherited;
                     continue;
                 }
                 WallPart::Rail(top) => {
                     let y = if top { half.y + 1.5 } else { -half.y - 1.5 };
-                    *tf_ = Transform::from_xyz(0.0, y, -0.4).with_scale(Vec3::new(bw + 3.0, 0.4, 0.5));
+                    *tf_ =
+                        Transform::from_xyz(0.0, y, -0.4).with_scale(Vec3::new(bw + 3.0, 0.4, 0.5));
                     *vis = Visibility::Inherited;
                     continue;
                 }
@@ -315,34 +453,63 @@ pub fn update_wall_board(
             let drawn_part = match (*part, layout.as_ref()) {
                 (WallPart::Wick(i), Some(l)) => l.candles.get(i).map(|c| {
                     let h = (c.wick_hi - c.wick_lo).max(0.2);
-                    (Vec3::new(c.x - half.x, c.wick_lo + h * 0.5 - half.y, 0.0), Vec3::new(wick_w, h, 0.3), if c.up { &mats.up } else { &mats.down })
+                    (
+                        Vec3::new(c.x - half.x, c.wick_lo + h * 0.5 - half.y, 0.0),
+                        Vec3::new(wick_w, h, 0.3),
+                        if c.up { &mats.up } else { &mats.down },
+                    )
                 }),
                 (WallPart::Body(i), Some(l)) => l.candles.get(i).map(|c| {
                     let h = (c.body_hi - c.body_lo).max(0.25);
-                    (Vec3::new(c.x - half.x, c.body_lo + h * 0.5 - half.y, 0.15), Vec3::new(body_w, h, 0.6), if c.up { &mats.up } else { &mats.down })
+                    (
+                        Vec3::new(c.x - half.x, c.body_lo + h * 0.5 - half.y, 0.15),
+                        Vec3::new(body_w, h, 0.6),
+                        if c.up { &mats.up } else { &mats.down },
+                    )
                 }),
                 (WallPart::Deal(i), Some(l)) => l.prints.get(i).map(|&(x, y, side)| {
-                    (Vec3::new(x - half.x, y - half.y, 0.9), Vec3::splat((slot * 0.6).clamp(0.4, 1.0)), if side.is_buy() { &mats.buy } else { &mats.sell })
+                    (
+                        Vec3::new(x - half.x, y - half.y, 0.9),
+                        Vec3::splat((slot * 0.6).clamp(0.4, 1.0)),
+                        if side.is_buy() { &mats.buy } else { &mats.sell },
+                    )
                 }),
-                (WallPart::Level(i), Some(l)) => levels.for_pit(inst).get(i).filter(|_| settings.levels).filter(|lv| lv.hi >= l.lo && lv.lo <= l.hi).map(|lv| {
-                    let span = (l.hi - l.lo).max(1e-6);
-                    let y_of = |p: f32| (crate::tape_chart::PAD_PX + (p - l.lo) / span * (bh - 2.0 * crate::tape_chart::PAD_PX)).clamp(0.0, bh);
-                    let (y0, y1) = (y_of(lv.lo), y_of(lv.hi));
-                    let x0 = crate::levels::level_start_x(lv, &shown_bars, &l.candles, slot);
-                    // A cluster taller than a sixth of the board falls back to the translucent
-                    // material so it never walls off the candles.
-                    let tall = (y1 - y0) > bh / 6.0;
-                    let m = match (lv.kind.is_oanda() && !tall, lv.kind.bias()) {
-                        (true, 1) => &mats.oanda_long,
-                        (true, _) => &mats.oanda_short,
-                        (false, 1) => &mats.level_bull,
-                        (false, -1) => &mats.level_bear,
-                        _ => &mats.level_flat,
-                    };
-                    // OANDA clusters sit in front of the candles and never thinner than a wick.
-                    let (z, min_h, depth) = if lv.kind.is_oanda() && !tall { (0.5, bh * 0.012, 0.3) } else { (-0.3, 0.12, 0.15) };
-                    (Vec3::new((x0 + bw) * 0.5 - half.x, (y0 + y1) * 0.5 - half.y, z), Vec3::new((bw - x0).max(0.2), (y1 - y0).max(min_h), depth), m)
-                }),
+                (WallPart::Level(i), Some(l)) => levels
+                    .for_pit(inst)
+                    .get(i)
+                    .filter(|_| settings.levels)
+                    .filter(|lv| lv.hi >= l.lo && lv.lo <= l.hi)
+                    .map(|lv| {
+                        let span = (l.hi - l.lo).max(1e-6);
+                        let y_of = |p: f32| {
+                            (crate::tape_chart::PAD_PX
+                                + (p - l.lo) / span * (bh - 2.0 * crate::tape_chart::PAD_PX))
+                                .clamp(0.0, bh)
+                        };
+                        let (y0, y1) = (y_of(lv.lo), y_of(lv.hi));
+                        let x0 = crate::levels::level_start_x(lv, &shown_bars, &l.candles, slot);
+                        // A cluster taller than a sixth of the board falls back to the translucent
+                        // material so it never walls off the candles.
+                        let tall = (y1 - y0) > bh / 6.0;
+                        let m = match (lv.kind.is_oanda() && !tall, lv.kind.bias()) {
+                            (true, 1) => &mats.oanda_long,
+                            (true, _) => &mats.oanda_short,
+                            (false, 1) => &mats.level_bull,
+                            (false, -1) => &mats.level_bear,
+                            _ => &mats.level_flat,
+                        };
+                        // OANDA clusters sit in front of the candles and never thinner than a wick.
+                        let (z, min_h, depth) = if lv.kind.is_oanda() && !tall {
+                            (0.5, bh * 0.012, 0.3)
+                        } else {
+                            (-0.3, 0.12, 0.15)
+                        };
+                        (
+                            Vec3::new((x0 + bw) * 0.5 - half.x, (y0 + y1) * 0.5 - half.y, z),
+                            Vec3::new((bw - x0).max(0.2), (y1 - y0).max(min_h), depth),
+                            m,
+                        )
+                    }),
                 _ => None,
             };
             match drawn_part {
@@ -362,7 +529,10 @@ pub fn update_wall_board(
     // bottom left corners, the title is centred under the bottom edge.
     let decimals = instrument_decimals(inst);
     let viewport_w = cam.logical_viewport_size().map(|s| s.x).unwrap_or(1280.0);
-    let project = |local: Vec3| cam.world_to_viewport(&cam_tf, board_tf.transform_point(local)).ok();
+    let project = |local: Vec3| {
+        cam.world_to_viewport(&cam_tf, board_tf.transform_point(local))
+            .ok()
+    };
     let title_y = -bh * 0.5 - 3.5;
     // The symbol caption sits a little above the top edge; the gap grows with the board so it
     // clears the high-price label in both placements.
@@ -372,14 +542,32 @@ pub fn update_wall_board(
         let placed = match (which, layout.as_ref()) {
             (WallLabel::Symbol, _) => project(Vec3::new(-bw * 0.5, symbol_y, 0.0))
                 .zip(project(Vec3::new(bw * 0.5, symbol_y, 0.0)))
-                .map(|(a, b)| (LabelAnchor::CentredBetween(a, b), format!("{}   {}", inst.symbol(), inst.name()))),
-            (WallLabel::Hi, Some(l)) => project(Vec3::new(-bw * 0.5, bh * 0.5, 0.0))
-                .map(|at| (LabelAnchor::EndsAt { at, gap: LABEL_GAP }, format_price_with_commas(l.hi as f64, decimals))),
-            (WallLabel::Lo, Some(l)) => project(Vec3::new(-bw * 0.5, -bh * 0.5, 0.0))
-                .map(|at| (LabelAnchor::EndsAt { at, gap: LABEL_GAP }, format_price_with_commas(l.lo as f64, decimals))),
+                .map(|(a, b)| {
+                    (
+                        LabelAnchor::CentredBetween(a, b),
+                        format!("{}   {}", inst.symbol(), inst.name()),
+                    )
+                }),
+            (WallLabel::Hi, Some(l)) => project(Vec3::new(-bw * 0.5, bh * 0.5, 0.0)).map(|at| {
+                (
+                    LabelAnchor::EndsAt { at, gap: LABEL_GAP },
+                    format_price_with_commas(l.hi as f64, decimals),
+                )
+            }),
+            (WallLabel::Lo, Some(l)) => project(Vec3::new(-bw * 0.5, -bh * 0.5, 0.0)).map(|at| {
+                (
+                    LabelAnchor::EndsAt { at, gap: LABEL_GAP },
+                    format_price_with_commas(l.lo as f64, decimals),
+                )
+            }),
             (WallLabel::Title, _) => project(Vec3::new(-bw * 0.5, title_y, 0.0))
                 .zip(project(Vec3::new(bw * 0.5, title_y, 0.0)))
-                .map(|(a, b)| (LabelAnchor::CentredBetween(a, b), format!("{}  {}  {source}  |  B hides", inst.name(), tf.label()))),
+                .map(|(a, b)| {
+                    (
+                        LabelAnchor::CentredBetween(a, b),
+                        format!("{}  {}  {source}  |  B hides", inst.name(), tf.label()),
+                    )
+                }),
             (_, None) => None,
         };
         match placed {
@@ -391,7 +579,9 @@ pub fn update_wall_board(
                     b.top = b.top.max(SYMBOL_MIN_TOP);
                 }
                 place_label(&mut node, b);
-                if let Some((mut text, mut colour)) = children.first().and_then(|c| label_texts.get_mut(*c).ok()) {
+                if let Some((mut text, mut colour)) =
+                    children.first().and_then(|c| label_texts.get_mut(*c).ok())
+                {
                     set_ui_text(&mut text, value);
                     if *which == WallLabel::Symbol && colour.0 != symbol_colour {
                         colour.0 = symbol_colour;
@@ -413,13 +603,28 @@ mod tests {
 
     #[test]
     fn price_labels_end_before_their_corner_and_the_title_is_centred_under_the_board() {
-        let b = label_box(LabelAnchor::EndsAt { at: Vec2::new(300.0, 100.0), gap: 5.0 }, 1280.0, 14.0);
-        assert_eq!(b.right, Some(1280.0 - 300.0 + 5.0), "measured from the right edge, so text width is irrelevant");
+        let b = label_box(
+            LabelAnchor::EndsAt {
+                at: Vec2::new(300.0, 100.0),
+                gap: 5.0,
+            },
+            1280.0,
+            14.0,
+        );
+        assert_eq!(
+            b.right,
+            Some(1280.0 - 300.0 + 5.0),
+            "measured from the right edge, so text width is irrelevant"
+        );
         assert_eq!(b.left, None);
         assert_eq!(b.width, None);
         assert!((b.top - 93.0).abs() < 1e-6, "centred on the corner's y");
 
-        let t = label_box(LabelAnchor::CentredBetween(Vec2::new(400.0, 310.0), Vec2::new(200.0, 300.0)), 1280.0, 14.0);
+        let t = label_box(
+            LabelAnchor::CentredBetween(Vec2::new(400.0, 310.0), Vec2::new(200.0, 300.0)),
+            1280.0,
+            14.0,
+        );
         assert_eq!(t.left, Some(200.0), "corner order does not matter");
         assert_eq!(t.width, Some(200.0));
         assert_eq!(t.right, None);
@@ -434,14 +639,21 @@ mod tests {
                 for yaw_deg in [0.0f32, 45.0, 135.0, 200.0, 300.0] {
                     let (p, y) = (pitch_deg.to_radians(), yaw_deg.to_radians());
                     let r = 96.0;
-                    let cam = origin + Vec3::new(r * p.cos() * y.sin(), r * p.sin(), r * p.cos() * y.cos());
+                    let cam = origin
+                        + Vec3::new(r * p.cos() * y.sin(), r * p.sin(), r * p.cos() * y.cos());
                     let tf = board_transform(origin, cam, place);
                     let to_cam = (cam - tf.translation).normalize();
-                    assert!(tf.forward().dot(to_cam) < -0.99, "local +Z faces the camera at pitch {pitch_deg} yaw {yaw_deg}");
+                    assert!(
+                        tf.forward().dot(to_cam) < -0.99,
+                        "local +Z faces the camera at pitch {pitch_deg} yaw {yaw_deg}"
+                    );
                     let hi = tf.transform_point(Vec3::new(-place.w * 0.5, place.h * 0.5, 0.0));
                     let lo = tf.transform_point(Vec3::new(-place.w * 0.5, -place.h * 0.5, 0.0));
                     assert!(hi.y > lo.y, "the high corner is above the low one");
-                    let (bl, br) = (tf.transform_point(Vec3::new(-place.w * 0.5, 0.0, 0.0)), tf.transform_point(Vec3::new(place.w * 0.5, 0.0, 0.0)));
+                    let (bl, br) = (
+                        tf.transform_point(Vec3::new(-place.w * 0.5, 0.0, 0.0)),
+                        tf.transform_point(Vec3::new(place.w * 0.5, 0.0, 0.0)),
+                    );
                     assert!((bl.y - br.y).abs() < 1e-3, "the board does not roll");
                     assert!((tf.translation.y - place.y).abs() < 1e-4);
                 }

@@ -26,9 +26,9 @@ use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 
 use crate::market::Instrument;
-use crate::panels::{spawn_close_button, Panel, PanelId};
+use crate::panels::{Panel, PanelId, spawn_close_button};
 use crate::pit::set_ui_text;
-use crate::pit_3d::{pit_3d_origin, BOWL_RIM_RADIUS};
+use crate::pit_3d::{BOWL_RIM_RADIUS, pit_3d_origin};
 
 pub const KRAKEN_WS: &str = crate::endpoints::KRAKEN_WS;
 
@@ -131,7 +131,10 @@ impl OrderBook {
     }
 
     pub fn best_bid(&self) -> Option<(f64, f64)> {
-        self.bids.iter().next_back().map(|(k, q)| (price_of(*k), *q))
+        self.bids
+            .iter()
+            .next_back()
+            .map(|(k, q)| (price_of(*k), *q))
     }
 
     pub fn best_ask(&self) -> Option<(f64, f64)> {
@@ -166,7 +169,8 @@ impl OrderBook {
     pub fn by_bucket(&self, width: f64) -> BTreeMap<i64, f64> {
         let mut out = BTreeMap::new();
         for (k, q) in self.bids.iter().chain(self.asks.iter()) {
-            *out.entry((price_of(*k) / width).floor() as i64).or_insert(0.0) += q;
+            *out.entry((price_of(*k) / width).floor() as i64)
+                .or_insert(0.0) += q;
         }
         out
     }
@@ -187,7 +191,13 @@ pub fn classify(change: f64, traded: f64) -> Option<BookEventKind> {
 /// The heatmap's colour for a resting size, as a share `x` (0..1) of the scale: black, deep
 /// blue, cyan, yellow, white.
 pub fn heat_rgb(x: f32) -> [u8; 3] {
-    let stops: [(f32, [f32; 3]); 5] = [(0.0, [8.0, 10.0, 18.0]), (0.25, [20.0, 40.0, 140.0]), (0.5, [20.0, 170.0, 200.0]), (0.8, [250.0, 220.0, 40.0]), (1.0, [255.0, 255.0, 255.0])];
+    let stops: [(f32, [f32; 3]); 5] = [
+        (0.0, [8.0, 10.0, 18.0]),
+        (0.25, [20.0, 40.0, 140.0]),
+        (0.5, [20.0, 170.0, 200.0]),
+        (0.8, [250.0, 220.0, 40.0]),
+        (1.0, [255.0, 255.0, 255.0]),
+    ];
     let x = x.clamp(0.0, 1.0);
     for w in stops.windows(2) {
         let ((a, ca), (b, cb)) = (w[0], w[1]);
@@ -280,15 +290,25 @@ impl DepthFeed {
     /// Size printed at this price in the last `secs` seconds.
     fn traded_at(&self, price: f64, now: f64, secs: f64) -> f64 {
         let k = key(price);
-        self.prints.iter().rev().take_while(|p| now - p.at <= secs).filter(|p| key(p.price) == k).map(|p| p.qty).sum()
+        self.prints
+            .iter()
+            .rev()
+            .take_while(|p| now - p.at <= secs)
+            .filter(|p| key(p.price) == k)
+            .map(|p| p.qty)
+            .sum()
     }
 
     /// One message from Kraken. Public so tests can feed recorded messages.
     pub fn handle(&mut self, text: &str, now: f64) {
-        let Ok(v) = serde_json::from_str::<serde_json::Value>(text) else { return };
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(text) else {
+            return;
+        };
         let channel = v.get("channel").and_then(|c| c.as_str()).unwrap_or("");
         let kind = v.get("type").and_then(|c| c.as_str()).unwrap_or("");
-        let Some(data) = v.get("data").and_then(|d| d.as_array()) else { return };
+        let Some(data) = v.get("data").and_then(|d| d.as_array()) else {
+            return;
+        };
         match channel {
             "book" => {
                 if kind == "snapshot" {
@@ -298,23 +318,45 @@ impl DepthFeed {
                 }
                 for d in data {
                     for (field, bid) in [("bids", true), ("asks", false)] {
-                        for lvl in d.get(field).and_then(|x| x.as_array()).into_iter().flatten() {
-                            let (Some(p), Some(q)) = (lvl.get("price").and_then(|x| x.as_f64()), lvl.get("qty").and_then(|x| x.as_f64())) else { continue };
+                        for lvl in d
+                            .get(field)
+                            .and_then(|x| x.as_array())
+                            .into_iter()
+                            .flatten()
+                        {
+                            let (Some(p), Some(q)) = (
+                                lvl.get("price").and_then(|x| x.as_f64()),
+                                lvl.get("qty").and_then(|x| x.as_f64()),
+                            ) else {
+                                continue;
+                            };
                             let change = self.book.set(bid, p, q);
-                            if kind == "update" {
-                                if let Some(k) = classify(change, self.traded_at(p, now, 2.0)) {
-                                    let q = change.abs();
-                                    match self.events.back_mut().filter(|e| e.kind == k && e.bid == bid && (e.qty - q).abs() <= 0.01 * q && now - e.at < 5.0) {
-                                        Some(e) => {
-                                            e.repeats += 1;
-                                            e.price = p;
-                                            e.at = now;
-                                        }
-                                        None => self.events.push_back(BookEvent { kind: k, bid, price: p, qty: q, at: now, repeats: 0 }),
+                            if kind == "update"
+                                && let Some(k) = classify(change, self.traded_at(p, now, 2.0))
+                            {
+                                let q = change.abs();
+                                match self.events.back_mut().filter(|e| {
+                                    e.kind == k
+                                        && e.bid == bid
+                                        && (e.qty - q).abs() <= 0.01 * q
+                                        && now - e.at < 5.0
+                                }) {
+                                    Some(e) => {
+                                        e.repeats += 1;
+                                        e.price = p;
+                                        e.at = now;
                                     }
-                                    if self.events.len() > 40 {
-                                        self.events.pop_front();
-                                    }
+                                    None => self.events.push_back(BookEvent {
+                                        kind: k,
+                                        bid,
+                                        price: p,
+                                        qty: q,
+                                        at: now,
+                                        repeats: 0,
+                                    }),
+                                }
+                                if self.events.len() > 40 {
+                                    self.events.pop_front();
                                 }
                             }
                         }
@@ -325,8 +367,18 @@ impl DepthFeed {
             }
             "trade" => {
                 for d in data {
-                    let (Some(p), Some(q)) = (d.get("price").and_then(|x| x.as_f64()), d.get("qty").and_then(|x| x.as_f64())) else { continue };
-                    let pr = Print { at: now, price: p, qty: q, buy: d.get("side").and_then(|s| s.as_str()) == Some("buy") };
+                    let (Some(p), Some(q)) = (
+                        d.get("price").and_then(|x| x.as_f64()),
+                        d.get("qty").and_then(|x| x.as_f64()),
+                    ) else {
+                        continue;
+                    };
+                    let pr = Print {
+                        at: now,
+                        price: p,
+                        qty: q,
+                        buy: d.get("side").and_then(|s| s.as_str()) == Some("buy"),
+                    };
                     self.prints.push_back(pr);
                     self.pending_prints.push(pr);
                 }
@@ -345,12 +397,22 @@ impl DepthFeed {
         }
         self.next_column_at = now + 1.0;
         if now - self.rate_mark.0 >= 5.0 {
-            self.updates_per_sec = (self.updates - self.rate_mark.1) as f64 / (now - self.rate_mark.0).max(1e-6);
+            self.updates_per_sec =
+                (self.updates - self.rate_mark.1) as f64 / (now - self.rate_mark.0).max(1e-6);
             self.rate_mark = (now, self.updates);
         }
         let Some(mid) = self.book.mid() else { return };
-        let cells = self.book.by_bucket(HEAT_BUCKET).into_iter().map(|(k, q)| (k, q as f32)).collect();
-        self.heat.push_back(HeatColumn { cells, mid, prints: std::mem::take(&mut self.pending_prints) });
+        let cells = self
+            .book
+            .by_bucket(HEAT_BUCKET)
+            .into_iter()
+            .map(|(k, q)| (k, q as f32))
+            .collect();
+        self.heat.push_back(HeatColumn {
+            cells,
+            mid,
+            prints: std::mem::take(&mut self.pending_prints),
+        });
         while self.heat.len() > HEAT_W {
             self.heat.pop_front();
         }
@@ -390,17 +452,23 @@ pub fn poll_depth_feed(time: Res<Time>, mut feed: ResMut<DepthFeed>) {
                 match ev {
                     ewebsock::WsEvent::Opened => {
                         for channel in ["book", "trade"] {
-                            let mut params = serde_json::json!({"channel": channel, "symbol": [SYMBOL]});
+                            let mut params =
+                                serde_json::json!({"channel": channel, "symbol": [SYMBOL]});
                             if channel == "book" {
                                 params["depth"] = DEPTH.into();
                             }
-                            tx.send(ewebsock::WsMessage::Text(serde_json::json!({"method": "subscribe", "params": params}).to_string()));
+                            tx.send(ewebsock::WsMessage::Text(
+                                serde_json::json!({"method": "subscribe", "params": params})
+                                    .to_string(),
+                            ));
                         }
                     }
                     ewebsock::WsEvent::Message(ewebsock::WsMessage::Text(t)) => texts.push(t),
                     ewebsock::WsEvent::Message(_) => {}
                     ewebsock::WsEvent::Error(e) => dropped = Some(format!("{source}: {e}")),
-                    ewebsock::WsEvent::Closed => dropped = Some(format!("{source} closed the connection")),
+                    ewebsock::WsEvent::Closed => {
+                        dropped = Some(format!("{source} closed the connection"))
+                    }
                 }
             }
         }
@@ -438,7 +506,11 @@ pub struct DepthTexture(pub Handle<Image>);
 
 pub fn setup_depth_panel(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
     let image = Image::new_fill(
-        Extent3d { width: HEAT_W as u32, height: HEAT_H as u32, depth_or_array_layers: 1 },
+        Extent3d {
+            width: HEAT_W as u32,
+            height: HEAT_H as u32,
+            depth_or_array_layers: 1,
+        },
         TextureDimension::D2,
         &[8, 10, 18, 255],
         TextureFormat::Rgba8UnormSrgb,
@@ -465,14 +537,49 @@ pub fn setup_depth_panel(mut commands: Commands, mut images: ResMut<Assets<Image
         .with_children(|panel| {
             let me = panel.target_entity();
             panel
-                .spawn(Node { flex_direction: FlexDirection::Row, justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::FlexStart, width: Val::Percent(100.0), ..default() })
+                .spawn(Node {
+                    flex_direction: FlexDirection::Row,
+                    justify_content: JustifyContent::SpaceBetween,
+                    align_items: AlignItems::FlexStart,
+                    width: Val::Percent(100.0),
+                    ..default()
+                })
                 .with_children(|row| {
-                    row.spawn((DepthHeader, Text::new("LEVEL 2  |  BTC/USD order book"), TextFont { font_size: 10.5, ..default() }, TextColor(Color::srgb(0.55, 0.85, 1.0)), Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: Val::Px(0.0), ..default() }));
+                    row.spawn((
+                        DepthHeader,
+                        Text::new("LEVEL 2  |  BTC/USD order book"),
+                        TextFont {
+                            font_size: 10.5,
+                            ..default()
+                        },
+                        TextColor(Color::srgb(0.55, 0.85, 1.0)),
+                        Node {
+                            flex_grow: 1.0,
+                            flex_shrink: 1.0,
+                            min_width: Val::Px(0.0),
+                            ..default()
+                        },
+                    ));
                     spawn_close_button(row, me);
                 });
             // Heatmap: price up, time along (newest at the right).
-            panel.spawn((ImageNode::new(handle), Node { width: Val::Percent(100.0), height: Val::Px(200.0), ..default() }));
-            panel.spawn((DepthEvents, Text::new(""), TextFont { font_size: 9.5, ..default() }, TextColor(Color::srgb(0.75, 0.80, 0.88))));
+            panel.spawn((
+                ImageNode::new(handle),
+                Node {
+                    width: Val::Percent(100.0),
+                    height: Val::Px(200.0),
+                    ..default()
+                },
+            ));
+            panel.spawn((
+                DepthEvents,
+                Text::new(""),
+                TextFont {
+                    font_size: 9.5,
+                    ..default()
+                },
+                TextColor(Color::srgb(0.75, 0.80, 0.88)),
+            ));
         });
 }
 
@@ -486,9 +593,20 @@ pub fn draw_heatmap(heat: &VecDeque<HeatColumn>, buf: &mut [u8]) {
     let centre = (last.mid / HEAT_BUCKET).floor() as i64;
     let top = centre + HEAT_H as i64 / 2;
     // A robust scale: the 98th percentile of the visible cells.
-    let mut vals: Vec<f32> = heat.iter().flat_map(|c| c.cells.range(top - HEAT_H as i64 + 1..=top).map(|(_, q)| *q)).collect();
+    let mut vals: Vec<f32> = heat
+        .iter()
+        .flat_map(|c| {
+            c.cells
+                .range(top - HEAT_H as i64 + 1..=top)
+                .map(|(_, q)| *q)
+        })
+        .collect();
     vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    let scale = vals.get(((vals.len() as f32) * 0.98) as usize).copied().unwrap_or(1.0).max(1e-6);
+    let scale = vals
+        .get(((vals.len() as f32) * 0.98) as usize)
+        .copied()
+        .unwrap_or(1.0)
+        .max(1e-6);
     let x0 = HEAT_W - heat.len();
     let mut put = |x: usize, y: usize, rgb: [u8; 3]| {
         if x < HEAT_W && y < HEAT_H {
@@ -538,12 +656,11 @@ pub fn update_depth_panel(
         return;
     }
     *next = now + 1.0;
-    if let Some(tex) = tex {
-        if let Some(img) = images.get_mut(&tex.0) {
-            if let Some(data) = img.data.as_mut() {
-                draw_heatmap(&feed.heat, data);
-            }
-        }
+    if let Some(tex) = tex
+        && let Some(img) = images.get_mut(&tex.0)
+        && let Some(data) = img.data.as_mut()
+    {
+        draw_heatmap(&feed.heat, data);
     }
     let b = &feed.book;
     let line = match (b.best_bid(), b.best_ask()) {
@@ -555,7 +672,10 @@ pub fn update_depth_panel(
             b.bids.len() + b.asks.len(),
             feed.updates_per_sec
         ),
-        _ => format!("LEVEL 2  |  BTC/USD order book, {}  |  {}", feed.source, feed.status),
+        _ => format!(
+            "LEVEL 2  |  BTC/USD order book, {}  |  {}",
+            feed.source, feed.status
+        ),
     };
     for mut t in header.iter_mut() {
         set_ui_text(&mut t, line.clone());
@@ -569,11 +689,19 @@ pub fn update_depth_panel(
             format!(
                 "{:>4.0}s ago  {} {:.2} BTC {} at {:.1}{}",
                 now - e.at,
-                if e.kind == BookEventKind::Added { "ADDED " } else { "PULLED" },
+                if e.kind == BookEventKind::Added {
+                    "ADDED "
+                } else {
+                    "PULLED"
+                },
                 e.qty,
                 if e.bid { "bid" } else { "offer" },
                 e.price,
-                if e.repeats > 0 { format!("  (x{}, re-posted)", e.repeats + 1) } else { String::new() }
+                if e.repeats > 0 {
+                    format!("  (x{}, re-posted)", e.repeats + 1)
+                } else {
+                    String::new()
+                }
             )
         })
         .collect();
@@ -609,13 +737,28 @@ pub fn bar_xz(bid: bool, k: usize) -> Vec2 {
     let r = BOWL_RIM_RADIUS + 2.2;
     let step = 2.7f32.to_radians();
     let a0 = -std::f32::consts::FRAC_PI_2; // the pulpit is due north (-z)
-    let a = if bid { a0 - 0.22 - step * k as f32 } else { a0 + 0.22 + step * k as f32 };
+    let a = if bid {
+        a0 - 0.22 - step * k as f32
+    } else {
+        a0 + 0.22 + step * k as f32
+    };
     Vec2::new(a.cos() * r, a.sin() * r)
 }
 
-pub fn setup_depth_walls(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
+pub fn setup_depth_walls(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
     let mesh = meshes.add(Cuboid::new(1.6, 1.0, 1.6));
-    let mat = |c: Color, glow: f32, materials: &mut Assets<StandardMaterial>| materials.add(StandardMaterial { base_color: c, emissive: LinearRgba::from(c) * glow, perceptual_roughness: 0.4, ..default() });
+    let mat = |c: Color, glow: f32, materials: &mut Assets<StandardMaterial>| {
+        materials.add(StandardMaterial {
+            base_color: c,
+            emissive: LinearRgba::from(c) * glow,
+            perceptual_roughness: 0.4,
+            ..default()
+        })
+    };
     let m = DepthBarMaterials {
         bid: mat(Color::srgb(0.15, 0.85, 0.40), 0.8, &mut materials),
         ask: mat(Color::srgb(0.95, 0.25, 0.25), 0.8, &mut materials),
@@ -630,7 +773,8 @@ pub fn setup_depth_walls(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>
                 DepthBar { bid, k },
                 Mesh3d(mesh.clone()),
                 MeshMaterial3d(if bid { m.bid.clone() } else { m.ask.clone() }),
-                Transform::from_translation(o + Vec3::new(p.x, 0.05, p.y)).with_scale(Vec3::new(1.0, 0.1, 1.0)),
+                Transform::from_translation(o + Vec3::new(p.x, 0.05, p.y))
+                    .with_scale(Vec3::new(1.0, 0.1, 1.0)),
             ));
         }
     }
@@ -640,7 +784,12 @@ pub fn setup_depth_walls(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>
 /// Bar heights for one side: the square root of the size (so a wall does not flatten the
 /// rest), scaled so the biggest bucket on either side is `WALL_MAX_H`. Pure.
 pub fn bar_heights(bids: &[f64], asks: &[f64]) -> (Vec<f32>, Vec<f32>) {
-    let max = bids.iter().chain(asks).fold(0.0f64, |a, b| a.max(*b)).sqrt().max(1e-9);
+    let max = bids
+        .iter()
+        .chain(asks)
+        .fold(0.0f64, |a, b| a.max(*b))
+        .sqrt()
+        .max(1e-9);
     let h = |q: &f64| ((q.sqrt() / max) as f32 * WALL_MAX_H).max(0.1);
     (bids.iter().map(h).collect(), asks.iter().map(h).collect())
 }
@@ -650,7 +799,11 @@ pub fn update_depth_walls(
     time: Res<Time>,
     feed: Res<DepthFeed>,
     mats: Option<Res<DepthBarMaterials>>,
-    mut bars: Query<(&DepthBar, &mut Transform, &mut MeshMaterial3d<StandardMaterial>)>,
+    mut bars: Query<(
+        &DepthBar,
+        &mut Transform,
+        &mut MeshMaterial3d<StandardMaterial>,
+    )>,
 ) {
     let Some(mats) = mats else { return };
     let Some(mid) = feed.book.mid() else { return };
@@ -665,12 +818,17 @@ pub fn update_depth_walls(
         tf.scale.y = h;
         tf.translation.y = base_y + h * 0.5;
         // A recent event in this bar's bucket flashes it.
-        let flash = feed.events.iter().rev().take_while(|e| now - e.at < 0.8).find(|e| {
-            e.bid == bar.bid && {
-                let d = if e.bid { mid - e.price } else { e.price - mid };
-                d >= 0.0 && (d / WALL_BUCKET).floor() as usize == bar.k
-            }
-        });
+        let flash = feed
+            .events
+            .iter()
+            .rev()
+            .take_while(|e| now - e.at < 0.8)
+            .find(|e| {
+                e.bid == bar.bid && {
+                    let d = if e.bid { mid - e.price } else { e.price - mid };
+                    d >= 0.0 && (d / WALL_BUCKET).floor() as usize == bar.k
+                }
+            });
         let want_mat = match flash.map(|e| e.kind) {
             Some(BookEventKind::Added) => &mats.added,
             Some(BookEventKind::Pulled) => &mats.pulled,
@@ -698,7 +856,11 @@ mod tests {
         assert_eq!(f.book.best_ask(), Some((77304.6, 1.1)));
         assert!((f.book.mid().unwrap() - 77304.55).abs() < 1e-9);
         f.handle(r#"{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":77304.5,"qty":0}],"asks":[]}]}"#, 1.0);
-        assert_eq!(f.book.best_bid(), Some((77290.0, 6.0)), "qty 0 removes the level");
+        assert_eq!(
+            f.book.best_bid(),
+            Some((77290.0, 6.0)),
+            "qty 0 removes the level"
+        );
     }
 
     #[test]
@@ -706,20 +868,39 @@ mod tests {
         let mut f = DepthFeed::default();
         f.handle(SNAP, 0.0);
         f.handle(r#"{"channel":"book","type":"update","data":[{"bids":[{"price":77280.0,"qty":5.5}],"asks":[]}]}"#, 1.0);
-        assert_eq!(f.events.back().map(|e| (e.kind, e.bid, e.qty)), Some((BookEventKind::Added, true, 5.5)));
+        assert_eq!(
+            f.events.back().map(|e| (e.kind, e.bid, e.qty)),
+            Some((BookEventKind::Added, true, 5.5))
+        );
         f.handle(r#"{"channel":"book","type":"update","data":[{"bids":[{"price":77290.0,"qty":0}],"asks":[]}]}"#, 2.0);
-        assert_eq!(f.events.back().map(|e| e.kind), Some(BookEventKind::Pulled), "6 BTC gone with no trade: pulled");
+        assert_eq!(
+            f.events.back().map(|e| e.kind),
+            Some(BookEventKind::Pulled),
+            "6 BTC gone with no trade: pulled"
+        );
         // The same 5.5 BTC bid re-posted a level lower, twice: one event, counted.
         f.handle(r#"{"channel":"book","type":"update","data":[{"bids":[{"price":77270.0,"qty":5.5}],"asks":[]}]}"#, 2.5);
         f.handle(r#"{"channel":"book","type":"update","data":[{"bids":[{"price":77260.0,"qty":5.5}],"asks":[]}]}"#, 3.0);
         let n_before = f.events.len();
         f.handle(r#"{"channel":"book","type":"update","data":[{"bids":[{"price":77250.0,"qty":5.5}],"asks":[]}]}"#, 3.2);
-        assert_eq!((f.events.len(), f.events.back().unwrap().repeats, f.events.back().unwrap().price), (n_before, 2, 77250.0), "folded into one");
+        assert_eq!(
+            (
+                f.events.len(),
+                f.events.back().unwrap().repeats,
+                f.events.back().unwrap().price
+            ),
+            (n_before, 2, 77250.0),
+            "folded into one"
+        );
         // The 2 BTC offer at 77330 trades away: not a pull.
         f.handle(r#"{"channel":"trade","type":"update","data":[{"symbol":"BTC/USD","side":"buy","price":77330.0,"qty":2.0}]}"#, 3.0);
         let n = f.events.len();
         f.handle(r#"{"channel":"book","type":"update","data":[{"bids":[],"asks":[{"price":77330.0,"qty":0}]}]}"#, 3.1);
-        assert_eq!(f.events.len(), n, "traded, not pulled (and under the size anyway)");
+        assert_eq!(
+            f.events.len(),
+            n,
+            "traded, not pulled (and under the size anyway)"
+        );
         assert_eq!(classify(-6.0, 6.0), None);
         assert_eq!(classify(-6.0, 0.0), Some(BookEventKind::Pulled));
         assert_eq!(classify(-4.0, 0.0), None, "under the size");
@@ -731,7 +912,11 @@ mod tests {
         f.handle(SNAP, 0.0);
         let mid = f.book.mid().unwrap();
         let (b, a) = f.book.buckets(mid, 10.0, 5);
-        assert_eq!((b[0], b[1]), (0.2, 6.0), "77304.5 in the first $10 below, 77290 in the second");
+        assert_eq!(
+            (b[0], b[1]),
+            (0.2, 6.0),
+            "77304.5 in the first $10 below, 77290 in the second"
+        );
         assert_eq!((a[0], a[2]), (1.1, 2.0));
         let (hb, ha) = bar_heights(&b, &a);
         assert!((hb[1] - WALL_MAX_H).abs() < 1e-4 && ha[0] < hb[1] && hb[3] == 0.1);
@@ -748,10 +933,22 @@ mod tests {
         let at = |x: usize, y: usize| &buf[(y * HEAT_W + x) * 4..(y * HEAT_W + x) * 4 + 3];
         let top = (77304.55f64 / HEAT_BUCKET).floor() as i64 + HEAT_H as i64 / 2;
         let mid_y = (top - (77304.55f64 / HEAT_BUCKET).floor() as i64) as usize;
-        assert_eq!(at(HEAT_W - 1, mid_y), &[255, 255, 255], "the mid line, newest column at the right");
+        assert_eq!(
+            at(HEAT_W - 1, mid_y),
+            &[255, 255, 255],
+            "the mid line, newest column at the right"
+        );
         let sell_y = (top - (77290.0f64 / HEAT_BUCKET).floor() as i64) as usize;
-        assert_eq!(at(HEAT_W - 1, sell_y), &[255, 70, 70], "a sell print in red");
-        assert_eq!(at(HEAT_W - 1, sell_y + 1), &[255, 70, 70], "a big print is three pixels tall");
+        assert_eq!(
+            at(HEAT_W - 1, sell_y),
+            &[255, 70, 70],
+            "a sell print in red"
+        );
+        assert_eq!(
+            at(HEAT_W - 1, sell_y + 1),
+            &[255, 70, 70],
+            "a big print is three pixels tall"
+        );
         assert_eq!(at(0, 0), &[8, 10, 18], "empty history is dark");
         assert_eq!(heat_rgb(0.0), [8, 10, 18]);
         assert_eq!(heat_rgb(1.0), [255, 255, 255]);
@@ -772,9 +969,18 @@ mod tests {
     fn the_walls_start_beside_the_pulpit_and_spread_round_the_rim() {
         let near_bid = bar_xz(true, 0);
         let near_ask = bar_xz(false, 0);
-        assert!(near_bid.x < 0.0 && near_ask.x > 0.0, "bids left of the pulpit, asks right");
-        assert!(near_bid.y < 0.0 && near_ask.y < 0.0, "both on the pulpit's (north) side");
-        assert!((bar_xz(true, 29).length() - near_bid.length()).abs() < 1e-3, "all on one arc");
+        assert!(
+            near_bid.x < 0.0 && near_ask.x > 0.0,
+            "bids left of the pulpit, asks right"
+        );
+        assert!(
+            near_bid.y < 0.0 && near_ask.y < 0.0,
+            "both on the pulpit's (north) side"
+        );
+        assert!(
+            (bar_xz(true, 29).length() - near_bid.length()).abs() < 1e-3,
+            "all on one arc"
+        );
         assert!(bar_xz(true, 29).x < near_bid.x, "further out round the rim");
     }
 }

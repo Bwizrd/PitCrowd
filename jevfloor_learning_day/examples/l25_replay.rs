@@ -67,13 +67,14 @@ fn evaluate_replay(
         return Ok(VisualBehaviour::Hesitate);
     }
 
-    if let Some(ref interp) = record.interpretation {
-        if record.features.delta > 0 && interp.confidence >= 0.60 {
-            if interp.p_persistent >= 0.80 && interp.p_active >= 0.80 {
-                return Ok(VisualBehaviour::Run);
-            } else {
-                return Ok(VisualBehaviour::Walk);
-            }
+    if let Some(ref interp) = record.interpretation
+        && record.features.delta > 0
+        && interp.confidence >= 0.60
+    {
+        if interp.p_persistent >= 0.80 && interp.p_active >= 0.80 {
+            return Ok(VisualBehaviour::Run);
+        } else {
+            return Ok(VisualBehaviour::Walk);
         }
     }
 

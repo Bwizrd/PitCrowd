@@ -10,7 +10,7 @@ fn main() {
     let mut copy = price;
     println!("{}", price);
     println!("{}", copy);
-    copy = copy + 1;
+    copy += 1;
     println!("Original: {}, Copy: {}", price, copy);
 
     let symbol = "SILVER".to_string();

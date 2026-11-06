@@ -47,17 +47,17 @@ mod replay {
     use std::path::PathBuf;
     use std::time::{Duration, Instant};
 
-    use opencry_visual::candles::{parse_iso_ms, wall_clock_ms, Candle, CandleStore, Timeframe};
+    use opencry_visual::candles::{Candle, CandleStore, Timeframe, parse_iso_ms, wall_clock_ms};
     use opencry_visual::jev::{
-        interpret, relay_url, system_one_request, system_one_result, DeterministicModel, JevDesk, JevResponse, MarketInterpretation,
-        ModelError, ReadSource,
+        DeterministicModel, JevDesk, JevResponse, MarketInterpretation, ModelError, ReadSource,
+        interpret, relay_url, system_one_request, system_one_result,
     };
-    use opencry_visual::levels::{tape_symbol, LevelStore};
+    use opencry_visual::levels::{LevelStore, tape_symbol};
     use opencry_visual::live_feed::{FeedMode, LiveFeed, PitFeedStatus, TapeDepth, TapeTick};
     use opencry_visual::market::Instrument;
-    use opencry_visual::paper::{Archetype, PaperBook, Trade, View, READ_FRESH_SECS, VIEW_BARS};
+    use opencry_visual::paper::{Archetype, PaperBook, READ_FRESH_SECS, Trade, VIEW_BARS, View};
     use opencry_visual::pit_engine::tick_size;
-    use opencry_visual::report::{parse_jsonl, Report, ReportTrade, Session};
+    use opencry_visual::report::{Report, ReportTrade, Session, parse_jsonl};
     use opencry_visual::tape_chart::BOARD_BARS;
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -91,7 +91,9 @@ mod replay {
 
     fn arg(name: &str) -> Option<String> {
         let args: Vec<String> = std::env::args().collect();
-        args.iter().position(|a| a == name).and_then(|i| args.get(i + 1).cloned())
+        args.iter()
+            .position(|a| a == name)
+            .and_then(|i| args.get(i + 1).cloned())
     }
 
     fn flag(name: &str) -> bool {
@@ -118,7 +120,11 @@ mod replay {
             let from = arg("--from").ok_or("need --from <RFC3339> or --last <6h>")?;
             let to = arg("--to").unwrap_or_else(|| "now".into());
             let from_ms = parse_iso_ms(&from).ok_or(format!("bad --from {from}"))?;
-            let to_ms = if to == "now" { now } else { parse_iso_ms(&to).ok_or(format!("bad --to {to}"))? };
+            let to_ms = if to == "now" {
+                now
+            } else {
+                parse_iso_ms(&to).ok_or(format!("bad --to {to}"))?
+            };
             (from_ms, to_ms)
         };
         if to_ms <= from_ms {
@@ -130,7 +136,11 @@ mod replay {
                 .split(',')
                 .map(|s| {
                     let want = s.trim().to_uppercase().replace('/', "");
-                    Instrument::ALL.iter().copied().find(|i| tape_symbol(*i) == want).ok_or(format!("unknown symbol {s}"))
+                    Instrument::ALL
+                        .iter()
+                        .copied()
+                        .find(|i| tape_symbol(*i) == want)
+                        .ok_or(format!("unknown symbol {s}"))
                 })
                 .collect::<Result<Vec<_>, _>>()?,
         };
@@ -141,19 +151,43 @@ mod replay {
             "live" => JevMode::Live,
             other => return Err(format!("--jev {other}: none | rule | recorded | live")),
         };
-        let jev_every = arg("--jev-every").and_then(|v| v.parse().ok()).unwrap_or(60.0f64).max(10.0);
-        let stamp = format!("{}_{}", fmt_ms(from_ms).replace([':', '-'], ""), fmt_ms(to_ms).replace([':', '-'], ""));
-        let out = arg("--out").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("replay_out").join(stamp));
+        let jev_every = arg("--jev-every")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(60.0f64)
+            .max(10.0);
+        let stamp = format!(
+            "{}_{}",
+            fmt_ms(from_ms).replace([':', '-'], ""),
+            fmt_ms(to_ms).replace([':', '-'], "")
+        );
+        let out = arg("--out").map(PathBuf::from).unwrap_or_else(|| {
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("replay_out")
+                .join(stamp)
+        });
         let inferences = arg("--inferences")
             .map(PathBuf::from)
             .or_else(|| find_up("jev_relay/log/inferences.jsonl"))
-            .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../jev_relay/log/inferences.jsonl"));
+            .unwrap_or_else(|| {
+                PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../jev_relay/log/inferences.jsonl")
+            });
         let seed = arg("--seed").and_then(|v| v.parse().ok()).unwrap_or(42);
         let sessions = match arg("--sessions") {
             Some(list) => Session::parse_list(&list)?,
             None => Vec::new(),
         };
-        Ok(Args { from_ms, to_ms, symbols, jev, jev_every, out, inferences, seed, no_depth: flag("--no-depth"), sessions })
+        Ok(Args {
+            from_ms,
+            to_ms,
+            symbols,
+            jev,
+            jev_every,
+            out,
+            inferences,
+            seed,
+            no_depth: flag("--no-depth"),
+            sessions,
+        })
     }
 
     /// First ancestor of this crate (itself included) where `rel` exists. A git worktree under
@@ -174,23 +208,43 @@ mod replay {
 
     /// Read one KEY=value from the repo-root `.env` (or `OPENCRY_ENV_FILE`) without printing anything.
     fn dotenv_value(key: &str) -> Option<String> {
-        let path = std::env::var("OPENCRY_ENV_FILE").map(PathBuf::from).ok().or_else(|| find_up(".env"))?;
+        let path = std::env::var("OPENCRY_ENV_FILE")
+            .map(PathBuf::from)
+            .ok()
+            .or_else(|| find_up(".env"))?;
         let text = fs::read_to_string(path).ok()?;
-        text.lines().find_map(|l| l.trim().strip_prefix(&format!("{key}=")).map(|v| v.trim().trim_matches(|c| c == '"' || c == '\'').to_string()))
+        text.lines().find_map(|l| {
+            l.trim()
+                .strip_prefix(&format!("{key}="))
+                .map(|v| v.trim().trim_matches(|c| c == '"' || c == '\'').to_string())
+        })
     }
 
     fn influx_config() -> Result<Influx, String> {
-        let get = |a: &str, b: &str| std::env::var(a).ok().filter(|v| !v.is_empty()).or_else(|| dotenv_value(b));
+        let get = |a: &str, b: &str| {
+            std::env::var(a)
+                .ok()
+                .filter(|v| !v.is_empty())
+                .or_else(|| dotenv_value(b))
+        };
         Ok(Influx {
-            url: get("INFLUX_URL", "INFLUXDB_URL").unwrap_or_else(|| "http://localhost:8086".into()),
-            token: get("INFLUX_TOKEN", "INFLUXDB_TOKEN2").ok_or("no InfluxDB token: set INFLUX_TOKEN or INFLUXDB_TOKEN2 in .env (OPENCRY_ENV_FILE)")?,
-            org: get("INFLUX_ORG", "INFLUXDB_ORG").ok_or("no InfluxDB org: set INFLUX_ORG or INFLUXDB_ORG in .env (OPENCRY_ENV_FILE)")?,
+            url: get("INFLUX_URL", "INFLUXDB_URL")
+                .unwrap_or_else(|| "http://localhost:8086".into()),
+            token: get("INFLUX_TOKEN", "INFLUXDB_TOKEN2").ok_or(
+                "no InfluxDB token: set INFLUX_TOKEN or INFLUXDB_TOKEN2 in .env (OPENCRY_ENV_FILE)",
+            )?,
+            org: get("INFLUX_ORG", "INFLUXDB_ORG").ok_or(
+                "no InfluxDB org: set INFLUX_ORG or INFLUXDB_ORG in .env (OPENCRY_ENV_FILE)",
+            )?,
             bucket: std::env::var("INFLUX_TICK_BUCKET").unwrap_or_else(|_| "tick_data".into()),
         })
     }
 
     fn flux(cfg: &Influx, query: &str) -> Result<String, String> {
-        let mut req = ehttp::Request::post(format!("{}/api/v2/query?org={}", cfg.url, cfg.org), query.as_bytes().to_vec());
+        let mut req = ehttp::Request::post(
+            format!("{}/api/v2/query?org={}", cfg.url, cfg.org),
+            query.as_bytes().to_vec(),
+        );
         req.headers = ehttp::Headers::new(&[
             ("Authorization", &format!("Token {}", cfg.token)),
             ("Content-Type", "application/vnd.flux"),
@@ -198,7 +252,15 @@ mod replay {
         ]);
         let res = ehttp::fetch_blocking(&req).map_err(|e| format!("influx: {e}"))?;
         if !res.ok {
-            return Err(format!("influx HTTP {}: {}", res.status, res.text().unwrap_or("").chars().take(200).collect::<String>()));
+            return Err(format!(
+                "influx HTTP {}: {}",
+                res.status,
+                res.text()
+                    .unwrap_or("")
+                    .chars()
+                    .take(200)
+                    .collect::<String>()
+            ));
         }
         Ok(res.text().unwrap_or("").to_string())
     }
@@ -221,7 +283,11 @@ mod replay {
                 header = cells.iter().map(|c| c.to_string()).collect();
                 continue;
             }
-            let row: HashMap<String, String> = header.iter().cloned().zip(cells.iter().map(|c| c.to_string())).collect();
+            let row: HashMap<String, String> = header
+                .iter()
+                .cloned()
+                .zip(cells.iter().map(|c| c.to_string()))
+                .collect();
             rows.push(row);
         }
         rows
@@ -256,16 +322,28 @@ mod replay {
         let d = doy - (153 * mp + 2) / 5 + 1;
         let m = if mp < 10 { mp + 3 } else { mp - 9 };
         let y = if m <= 2 { y + 1 } else { y };
-        format!("{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z", day / 3600, (day % 3600) / 60, day % 60)
+        format!(
+            "{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z",
+            day / 3600,
+            (day % 3600) / 60,
+            day % 60
+        )
     }
 
+    // Short-lived and sorted by time; boxing the big variant buys nothing.
+    #[allow(clippy::large_enum_variant)]
     enum Event {
         Tick(Instrument, TapeTick),
         Depth(Instrument, TapeDepth),
         Read(Instrument, MarketInterpretation),
     }
 
-    fn load_ticks(cfg: &Influx, inst: Instrument, from_ms: i64, to_ms: i64) -> Result<Vec<(i64, Event)>, String> {
+    fn load_ticks(
+        cfg: &Influx,
+        inst: Instrument,
+        from_ms: i64,
+        to_ms: i64,
+    ) -> Result<Vec<(i64, Event)>, String> {
         let sym = tape_symbol(inst);
         let q = format!(
             r#"from(bucket:"{}") |> range(start: time(v: {}), stop: time(v: {})) |> filter(fn:(r) => r._measurement == "tick" and r.symbol == "{sym}") |> pivot(rowKey:["_time"], columnKey:["_field"], valueColumn:"_value") |> keep(columns:["_time","bid","ask"]) |> sort(columns:["_time"])"#,
@@ -277,13 +355,37 @@ mod replay {
         let rows = parse_csv(&flux(cfg, &q)?);
         let mut out = Vec::with_capacity(rows.len());
         for r in rows {
-            let (Some(t), Some(bid), Some(ask)) = (r.get("_time").and_then(|v| time_ms(v)), r.get("bid").and_then(|v| v.parse::<f64>().ok()), r.get("ask").and_then(|v| v.parse::<f64>().ok())) else { continue };
-            out.push((t, Event::Tick(inst, TapeTick { symbol_id: id, symbol: sym.clone(), t, bid, ask, spread: ask - bid })));
+            let (Some(t), Some(bid), Some(ask)) = (
+                r.get("_time").and_then(|v| time_ms(v)),
+                r.get("bid").and_then(|v| v.parse::<f64>().ok()),
+                r.get("ask").and_then(|v| v.parse::<f64>().ok()),
+            ) else {
+                continue;
+            };
+            out.push((
+                t,
+                Event::Tick(
+                    inst,
+                    TapeTick {
+                        symbol_id: id,
+                        symbol: sym.clone(),
+                        t,
+                        bid,
+                        ask,
+                        spread: ask - bid,
+                    },
+                ),
+            ));
         }
         Ok(out)
     }
 
-    fn load_depth(cfg: &Influx, inst: Instrument, from_ms: i64, to_ms: i64) -> Result<Vec<(i64, Event)>, String> {
+    fn load_depth(
+        cfg: &Influx,
+        inst: Instrument,
+        from_ms: i64,
+        to_ms: i64,
+    ) -> Result<Vec<(i64, Event)>, String> {
         let sym = tape_symbol(inst);
         let q = format!(
             r#"from(bucket:"{}") |> range(start: time(v: {}), stop: time(v: {})) |> filter(fn:(r) => r._measurement == "depth" and r.symbol == "{sym}") |> pivot(rowKey:["_time"], columnKey:["_field"], valueColumn:"_value") |> sort(columns:["_time"])"#,
@@ -295,7 +397,9 @@ mod replay {
         let rows = parse_csv(&flux(cfg, &q)?);
         let mut out = Vec::with_capacity(rows.len());
         for r in rows {
-            let Some(t) = r.get("_time").and_then(|v| time_ms(v)) else { continue };
+            let Some(t) = r.get("_time").and_then(|v| time_ms(v)) else {
+                continue;
+            };
             let side = |p: &str| -> Vec<(f32, f32)> {
                 (1..=5)
                     .filter_map(|i| {
@@ -305,29 +409,66 @@ mod replay {
                     })
                     .collect()
             };
-            out.push((t, Event::Depth(inst, TapeDepth { symbol_id: id, t, bids: side("bid"), asks: side("ask") })));
+            out.push((
+                t,
+                Event::Depth(
+                    inst,
+                    TapeDepth {
+                        symbol_id: id,
+                        t,
+                        bids: side("bid"),
+                        asks: side("ask"),
+                    },
+                ),
+            ));
         }
         Ok(out)
     }
 
     /// Recorded inferences: the relay logs `{ts, request.state, response}`; the state's first
     /// line names the instrument.
-    fn load_recorded(path: &PathBuf, symbols: &[Instrument], from_ms: i64, to_ms: i64) -> Result<Vec<(i64, Event)>, String> {
-        let text = fs::read_to_string(path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+    fn load_recorded(
+        path: &PathBuf,
+        symbols: &[Instrument],
+        from_ms: i64,
+        to_ms: i64,
+    ) -> Result<Vec<(i64, Event)>, String> {
+        let text =
+            fs::read_to_string(path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
         let mut out = Vec::new();
         for line in text.lines() {
-            let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else { continue };
-            let Some(ts) = v.get("ts").and_then(|t| t.as_i64()) else { continue };
+            let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
+                continue;
+            };
+            let Some(ts) = v.get("ts").and_then(|t| t.as_i64()) else {
+                continue;
+            };
             if ts < from_ms || ts > to_ms {
                 continue;
             }
-            let Some(state) = v.pointer("/request/state").and_then(|s| s.as_str()) else { continue };
-            let Some(first) = state.lines().next() else { continue };
-            let Some(sym) = first.split('(').nth(1).and_then(|s| s.split(')').next()) else { continue };
-            let Some(inst) = symbols.iter().copied().find(|i| i.symbol() == sym) else { continue };
-            let Some(resp) = v.get("response") else { continue };
-            let Ok(parsed) = serde_json::from_value::<JevResponse>(resp.clone()) else { continue };
-            let hash = v.get("observation_hash").and_then(|h| h.as_str()).unwrap_or("").to_string();
+            let Some(state) = v.pointer("/request/state").and_then(|s| s.as_str()) else {
+                continue;
+            };
+            let Some(first) = state.lines().next() else {
+                continue;
+            };
+            let Some(sym) = first.split('(').nth(1).and_then(|s| s.split(')').next()) else {
+                continue;
+            };
+            let Some(inst) = symbols.iter().copied().find(|i| i.symbol() == sym) else {
+                continue;
+            };
+            let Some(resp) = v.get("response") else {
+                continue;
+            };
+            let Ok(parsed) = serde_json::from_value::<JevResponse>(resp.clone()) else {
+                continue;
+            };
+            let hash = v
+                .get("observation_hash")
+                .and_then(|h| h.as_str())
+                .unwrap_or("")
+                .to_string();
             let latency = v.get("latency_ms").and_then(|l| l.as_u64()).unwrap_or(0);
             if let Ok(read) = interpret(&parsed, &hash, latency, ReadSource::Jev) {
                 out.push((ts, Event::Read(inst, read)));
@@ -360,8 +501,18 @@ mod replay {
             .traders
             .iter()
             .map(|t| {
-                let wins: Vec<f32> = t.trades.iter().map(|x| x.pnl_r).filter(|p| *p > 0.0).collect();
-                let losses: Vec<f32> = t.trades.iter().map(|x| x.pnl_r).filter(|p| *p <= 0.0).collect();
+                let wins: Vec<f32> = t
+                    .trades
+                    .iter()
+                    .map(|x| x.pnl_r)
+                    .filter(|p| *p > 0.0)
+                    .collect();
+                let losses: Vec<f32> = t
+                    .trades
+                    .iter()
+                    .map(|x| x.pnl_r)
+                    .filter(|p| *p <= 0.0)
+                    .collect();
                 let gw: f32 = wins.iter().sum();
                 let gl: f32 = losses.iter().sum::<f32>().abs();
                 let mut by_symbol_r: HashMap<String, f32> = HashMap::new();
@@ -377,11 +528,29 @@ mod replay {
                     wins: t.wins,
                     losses: t.losses,
                     win_rate: t.win_rate(),
-                    avg_win_r: if wins.is_empty() { 0.0 } else { gw / wins.len() as f32 },
-                    avg_loss_r: if losses.is_empty() { 0.0 } else { -gl / losses.len() as f32 },
-                    profit_factor: if gl > 0.0 { gw / gl } else if gw > 0.0 { f32::INFINITY } else { 0.0 },
+                    avg_win_r: if wins.is_empty() {
+                        0.0
+                    } else {
+                        gw / wins.len() as f32
+                    },
+                    avg_loss_r: if losses.is_empty() {
+                        0.0
+                    } else {
+                        -gl / losses.len() as f32
+                    },
+                    profit_factor: if gl > 0.0 {
+                        gw / gl
+                    } else if gw > 0.0 {
+                        f32::INFINITY
+                    } else {
+                        0.0
+                    },
                     max_drawdown_r: t.max_drawdown_r,
-                    spread_paid_r: t.trades.iter().map(|x| x.spread_ticks_in / x.stop_ticks.max(1.0)).sum(),
+                    spread_paid_r: t
+                        .trades
+                        .iter()
+                        .map(|x| x.spread_ticks_in / x.stop_ticks.max(1.0))
+                        .sum(),
                     by_symbol_r,
                 }
             })
@@ -394,7 +563,8 @@ mod replay {
     /// The window comes from summary.json when it is there, else from the trades themselves.
     fn report_only(dir: PathBuf) -> Result<(), String> {
         let path = dir.join("trades.jsonl");
-        let text = fs::read_to_string(&path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+        let text = fs::read_to_string(&path)
+            .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
         let (trades, bad) = parse_jsonl(&text);
         if bad > 0 {
             eprintln!("replay: {bad} unparseable lines in {}", path.display());
@@ -406,12 +576,34 @@ mod replay {
             .ok()
             .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
             .and_then(|v| v.get("config").cloned());
-        let get_ms = |k: &str| config.as_ref().and_then(|c| c.get(k)).and_then(|v| v.as_str()).and_then(parse_iso_ms);
-        let from_ms = get_ms("from").unwrap_or_else(|| trades.iter().map(|t| t.opened_ms).min().unwrap());
-        let to_ms = get_ms("to").unwrap_or_else(|| trades.iter().map(|t| t.closed_ms).max().unwrap());
-        let seed = config.as_ref().and_then(|c| c.get("seed")).and_then(|v| v.as_u64()).unwrap_or(42);
-        let jev = config.as_ref().and_then(|c| c.get("jev")).and_then(|v| v.as_str()).unwrap_or("?").to_string();
-        let title = format!("OpenCry paper book replay  jev {jev}  (rebuilt from {}/trades.jsonl)", dir.file_name().map(&std::ffi::OsStr::to_string_lossy).unwrap_or_default());
+        let get_ms = |k: &str| {
+            config
+                .as_ref()
+                .and_then(|c| c.get(k))
+                .and_then(|v| v.as_str())
+                .and_then(parse_iso_ms)
+        };
+        let from_ms =
+            get_ms("from").unwrap_or_else(|| trades.iter().map(|t| t.opened_ms).min().unwrap());
+        let to_ms =
+            get_ms("to").unwrap_or_else(|| trades.iter().map(|t| t.closed_ms).max().unwrap());
+        let seed = config
+            .as_ref()
+            .and_then(|c| c.get("seed"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(42);
+        let jev = config
+            .as_ref()
+            .and_then(|c| c.get("jev"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("?")
+            .to_string();
+        let title = format!(
+            "OpenCry paper book replay  jev {jev}  (rebuilt from {}/trades.jsonl)",
+            dir.file_name()
+                .map(std::ffi::OsStr::to_string_lossy)
+                .unwrap_or_default()
+        );
         let report = Report::build(&title, trades, from_ms, to_ms, Archetype::ALL.len(), seed);
         write_reports(&dir, &report)?;
         print!("{}", report.text());
@@ -419,7 +611,7 @@ mod replay {
         Ok(())
     }
 
-    fn write_reports(dir: &PathBuf, report: &Report) -> Result<(), String> {
+    fn write_reports(dir: &std::path::Path, report: &Report) -> Result<(), String> {
         fs::write(dir.join("report.txt"), report.text()).map_err(|e| e.to_string())?;
         fs::write(dir.join("report.html"), report.html()).map_err(|e| e.to_string())?;
         Ok(())
@@ -435,7 +627,11 @@ mod replay {
             "replay: {} -> {}  symbols {}  jev {:?} every {:.0}s  out {}",
             fmt_ms(args.from_ms),
             fmt_ms(args.to_ms),
-            args.symbols.iter().map(|i| tape_symbol(*i)).collect::<Vec<_>>().join(","),
+            args.symbols
+                .iter()
+                .map(|i| tape_symbol(*i))
+                .collect::<Vec<_>>()
+                .join(","),
             args.jev,
             args.jev_every,
             args.out.display()
@@ -446,14 +642,27 @@ mod replay {
         let mut events: Vec<(i64, Event)> = Vec::new();
         for inst in &args.symbols {
             let ticks = load_ticks(&cfg, *inst, args.from_ms, args.to_ms)?;
-            let depth = if args.no_depth { Vec::new() } else { load_depth(&cfg, *inst, args.from_ms, args.to_ms)? };
-            eprintln!("replay: {} ticks {} books {}", tape_symbol(*inst), ticks.len(), depth.len());
+            let depth = if args.no_depth {
+                Vec::new()
+            } else {
+                load_depth(&cfg, *inst, args.from_ms, args.to_ms)?
+            };
+            eprintln!(
+                "replay: {} ticks {} books {}",
+                tape_symbol(*inst),
+                ticks.len(),
+                depth.len()
+            );
             events.extend(ticks);
             events.extend(depth);
         }
         if args.jev == JevMode::Recorded {
             let reads = load_recorded(&args.inferences, &args.symbols, args.from_ms, args.to_ms)?;
-            eprintln!("replay: {} recorded Jev reads from {}", reads.len(), args.inferences.display());
+            eprintln!(
+                "replay: {} recorded Jev reads from {}",
+                reads.len(),
+                args.inferences.display()
+            );
             events.extend(reads);
         }
         if !args.sessions.is_empty() {
@@ -461,17 +670,37 @@ mod replay {
             events.retain(|(t, _)| args.sessions.contains(&Session::of_ms(*t)));
             eprintln!(
                 "replay: sessions {} keep {} of {} events",
-                args.sessions.iter().map(|s| s.label()).collect::<Vec<_>>().join(","),
+                args.sessions
+                    .iter()
+                    .map(|s| s.label())
+                    .collect::<Vec<_>>()
+                    .join(","),
                 events.len(),
                 before
             );
         }
         if events.is_empty() {
-            return Err("no ticks in that range (is the market tape running and writing to tick_data?)".into());
+            return Err(
+                "no ticks in that range (is the market tape running and writing to tick_data?)"
+                    .into(),
+            );
         }
         // Stable by time; ticks before books before reads at the same instant.
-        events.sort_by_key(|(t, e)| (*t, match e { Event::Tick(..) => 0, Event::Depth(..) => 1, Event::Read(..) => 2 }));
-        eprintln!("replay: {} events loaded in {:.1}s", events.len(), started.elapsed().as_secs_f32());
+        events.sort_by_key(|(t, e)| {
+            (
+                *t,
+                match e {
+                    Event::Tick(..) => 0,
+                    Event::Depth(..) => 1,
+                    Event::Read(..) => 2,
+                },
+            )
+        });
+        eprintln!(
+            "replay: {} events loaded in {:.1}s",
+            events.len(),
+            started.elapsed().as_secs_f32()
+        );
 
         // State: exactly what the app holds.
         let mut feed = LiveFeed::default();
@@ -492,10 +721,15 @@ mod replay {
         let mut next_read: HashMap<Instrument, f64> = HashMap::new();
         let mut last_live_call = Instant::now() - Duration::from_secs(5);
         let mut prev_bid: HashMap<Instrument, f32> = HashMap::new();
-        let (mut n_ticks, mut n_depth, mut n_reads, mut n_calls, mut n_call_errors) = (0u64, 0u64, 0u64, 0u64, 0u64);
+        let (mut n_ticks, mut n_depth, mut n_reads, mut n_calls, mut n_call_errors) =
+            (0u64, 0u64, 0u64, 0u64, 0u64);
         let total = events.len();
         let mut next_progress = total / 10;
-        let fresh_secs = if args.jev == JevMode::None { 0.0 } else { READ_FRESH_SECS.max(args.jev_every + 5.0) };
+        let fresh_secs = if args.jev == JevMode::None {
+            0.0
+        } else {
+            READ_FRESH_SECS.max(args.jev_every + 5.0)
+        };
 
         for (idx, (t, ev)) in events.into_iter().enumerate() {
             let now = clock(t);
@@ -514,20 +748,37 @@ mod replay {
                     let prev = feed.quote(inst).map(|q| q.price);
                     feed.ingest_tick(inst, &tick, now);
                     let tick_sz = tick_size(inst);
-                    let d_ticks = prev.map(|p| ((tick.bid - p) / tick_sz as f64) as f32).unwrap_or(0.0);
+                    let d_ticks = prev
+                        .map(|p| ((tick.bid - p) / tick_sz as f64) as f32)
+                        .unwrap_or(0.0);
                     store.apply_live_tick(inst, tick.t, tick.bid as f32, d_ticks);
 
                     // Levels from the 1m bars, like the app.
                     let series = store.series(inst, Timeframe::M1, FeedMode::Live);
                     let n = series.bars.len();
-                    let bars60: Vec<Candle> = series.bars.iter().skip(n.saturating_sub(BOARD_BARS)).copied().collect();
+                    let bars60: Vec<Candle> = series
+                        .bars
+                        .iter()
+                        .skip(n.saturating_sub(BOARD_BARS))
+                        .copied()
+                        .collect();
                     let rev = series.revision;
                     levels.refresh_trading(inst, &bars60, rev, now);
 
                     // Jev, on the chosen schedule.
-                    if matches!(args.jev, JevMode::Rule | JevMode::Live) && now >= *next_read.get(&inst).unwrap_or(&0.0) {
+                    if matches!(args.jev, JevMode::Rule | JevMode::Live)
+                        && now >= *next_read.get(&inst).unwrap_or(&0.0)
+                    {
                         next_read.insert(inst, now + args.jev_every);
-                        if let Some(obs) = desk.observe(inst, &store, Timeframe::M1, &feed, levels.for_trading(inst), now, t) {
+                        if let Some(obs) = desk.observe(
+                            inst,
+                            &store,
+                            Timeframe::M1,
+                            &feed,
+                            levels.for_trading(inst),
+                            now,
+                            t,
+                        ) {
                             match args.jev {
                                 JevMode::Rule => {
                                     let mut r = DeterministicModel::read(&obs);
@@ -542,12 +793,17 @@ mod replay {
                                         std::thread::sleep(Duration::from_millis(2100) - since);
                                     }
                                     let hash = obs.hash();
-                                    let req = system_one_request(&relay, &obs, &questions).map_err(|e| e.short())?;
+                                    let req = system_one_request(&relay, &obs, &questions)
+                                        .map_err(|e| e.short())?;
                                     let sent = Instant::now();
                                     let res = ehttp::fetch_blocking(&req);
                                     last_live_call = Instant::now();
                                     n_calls += 1;
-                                    match system_one_result(res, &hash, sent.elapsed().as_millis() as u64) {
+                                    match system_one_result(
+                                        res,
+                                        &hash,
+                                        sent.elapsed().as_millis() as u64,
+                                    ) {
                                         Ok(mut r) => {
                                             r.at = now;
                                             desk.set_read(inst, r);
@@ -570,14 +826,23 @@ mod replay {
                     }
 
                     // The book.
-                    let PitFeedStatus::Live { rate, .. } = feed.pit_status(inst, now) else { continue };
+                    let PitFeedStatus::Live { rate, .. } = feed.pit_status(inst, now) else {
+                        continue;
+                    };
                     let q = feed.quote(inst).expect("quote after ingest");
                     // The book sees the day's bars (session VWAP, extremes, opening ranges), like the app.
-                    let bars_view: Vec<Candle> = series.bars.iter().skip(n.saturating_sub(VIEW_BARS)).copied().collect();
+                    let bars_view: Vec<Candle> = series
+                        .bars
+                        .iter()
+                        .skip(n.saturating_sub(VIEW_BARS))
+                        .copied()
+                        .collect();
                     let read = desk.read(inst).filter(|r| match args.jev {
                         JevMode::None => false,
                         JevMode::Rule => now - r.at <= fresh_secs,
-                        JevMode::Recorded | JevMode::Live => r.source == ReadSource::Jev && now - r.at <= fresh_secs,
+                        JevMode::Recorded | JevMode::Live => {
+                            r.source == ReadSource::Jev && now - r.at <= fresh_secs
+                        }
                     });
                     let bid = q.price as f32;
                     let view = View {
@@ -600,7 +865,12 @@ mod replay {
                 }
             }
             if idx + 1 >= next_progress && total >= 10 {
-                eprintln!("replay: {:>3}%  {}  trades so far {}", (idx + 1) * 100 / total, fmt_ms(t), book.traders.iter().map(|x| x.trades.len()).sum::<usize>());
+                eprintln!(
+                    "replay: {:>3}%  {}  trades so far {}",
+                    (idx + 1) * 100 / total,
+                    fmt_ms(t),
+                    book.traders.iter().map(|x| x.trades.len()).sum::<usize>()
+                );
                 next_progress += total / 10;
             }
         }
@@ -640,7 +910,15 @@ mod replay {
         for t in &trades {
             writeln!(f, "{}", serde_json::to_string(t).unwrap()).map_err(|e| e.to_string())?;
         }
-        let sessions_label = if args.sessions.is_empty() { "all hours".to_string() } else { args.sessions.iter().map(|s| s.label()).collect::<Vec<_>>().join("+") };
+        let sessions_label = if args.sessions.is_empty() {
+            "all hours".to_string()
+        } else {
+            args.sessions
+                .iter()
+                .map(|s| s.label())
+                .collect::<Vec<_>>()
+                .join("+")
+        };
         let config = serde_json::json!({
             "from": fmt_ms(args.from_ms), "to": fmt_ms(args.to_ms), "sessions": sessions_label,
             "symbols": args.symbols.iter().map(|i| tape_symbol(*i)).collect::<Vec<_>>(),
@@ -654,9 +932,20 @@ mod replay {
             "OpenCry paper book replay  jev {:?}  {}  {}",
             args.jev,
             sessions_label,
-            args.symbols.iter().map(|i| tape_symbol(*i)).collect::<Vec<_>>().join(",")
+            args.symbols
+                .iter()
+                .map(|i| tape_symbol(*i))
+                .collect::<Vec<_>>()
+                .join(",")
         );
-        let report = Report::build(&title, trades.iter().map(|t| ReportTrade::from(*t)).collect(), args.from_ms, args.to_ms, Archetype::ALL.len(), args.seed);
+        let report = Report::build(
+            &title,
+            trades.iter().map(|t| ReportTrade::from(*t)).collect(),
+            args.from_ms,
+            args.to_ms,
+            Archetype::ALL.len(),
+            args.seed,
+        );
         write_reports(&args.out, &report)?;
         fs::write(
             args.out.join("summary.json"),
@@ -665,7 +954,15 @@ mod replay {
         .map_err(|e| e.to_string())?;
 
         println!();
-        println!("REPLAY {} -> {}   ticks {}  books {}  reads {}  ({:.1}s)", fmt_ms(args.from_ms), fmt_ms(args.to_ms), n_ticks, n_depth, n_reads, started.elapsed().as_secs_f32());
+        println!(
+            "REPLAY {} -> {}   ticks {}  books {}  reads {}  ({:.1}s)",
+            fmt_ms(args.from_ms),
+            fmt_ms(args.to_ms),
+            n_ticks,
+            n_depth,
+            n_reads,
+            started.elapsed().as_secs_f32()
+        );
         print!("{}", report.text());
         println!("written: {}", args.out.display());
         Ok(())

@@ -1,5 +1,5 @@
-use bevy::prelude::*;
 use crate::market::{Instrument, MarketActivitySim};
+use bevy::prelude::*;
 
 /// Available market scenarios for weekend simulation and trading demonstrations
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -24,9 +24,15 @@ impl MarketScenario {
     pub fn description(&self) -> &'static str {
         match self {
             Self::Normal => "Steady multi-asset order flow with balanced bid/ask depth.",
-            Self::FedShock => "US Dollar surges; massive institutional selling in Gold; Equities shake.",
-            Self::SilverSqueeze => "Violent buyer sweep; Silver crowd explodes into a directional phalanx.",
-            Self::LunchChop => "Low volume, wide spreads, clerks milling lazily with zero institutional flow.",
+            Self::FedShock => {
+                "US Dollar surges; massive institutional selling in Gold; Equities shake."
+            }
+            Self::SilverSqueeze => {
+                "Violent buyer sweep; Silver crowd explodes into a directional phalanx."
+            }
+            Self::LunchChop => {
+                "Low volume, wide spreads, clerks milling lazily with zero institutional flow."
+            }
         }
     }
 }
@@ -170,7 +176,9 @@ pub fn handle_scenario_hotkeys(
     mut sim: ResMut<MarketActivitySim>,
     mut controller: ResMut<MarketScenarioController>,
 ) {
-    let any = [KeyCode::F2, KeyCode::F3, KeyCode::F4, KeyCode::F5].iter().any(|k| keyboard.just_pressed(*k));
+    let any = [KeyCode::F2, KeyCode::F3, KeyCode::F4, KeyCode::F5]
+        .iter()
+        .any(|k| keyboard.just_pressed(*k));
     if any && !crate::live_feed::sim_only_guard(&feed, &mut controller) {
         return;
     }
@@ -186,7 +194,10 @@ pub fn handle_scenario_hotkeys(
 }
 
 /// System: Ticks the scenario controller clock
-pub fn update_scenario_controller(time: Res<Time>, mut controller: ResMut<MarketScenarioController>) {
+pub fn update_scenario_controller(
+    time: Res<Time>,
+    mut controller: ResMut<MarketScenarioController>,
+) {
     controller.update(time.delta_secs());
 }
 
@@ -196,9 +207,18 @@ mod tests {
 
     #[test]
     fn test_scenario_names() {
-        assert_eq!(MarketScenario::FedShock.name(), "Fed Rate Decision (Macro Rotation)");
-        assert_eq!(MarketScenario::SilverSqueeze.name(), "Silver Short Squeeze (Liquidity Sweep)");
-        assert_eq!(MarketScenario::LunchChop.name(), "Lunchtime Chop (Dead Floor)");
+        assert_eq!(
+            MarketScenario::FedShock.name(),
+            "Fed Rate Decision (Macro Rotation)"
+        );
+        assert_eq!(
+            MarketScenario::SilverSqueeze.name(),
+            "Silver Short Squeeze (Liquidity Sweep)"
+        );
+        assert_eq!(
+            MarketScenario::LunchChop.name(),
+            "Lunchtime Chop (Dead Floor)"
+        );
     }
 
     #[test]

@@ -25,18 +25,18 @@ impl Ethnicity {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum JacketStyle {
     // 6 Iconic Vertical-Striped CME Member Firm Coats
-    CargillRed,        // Candy Stripe: Cargill Red / White
-    DeanWitterBlue,    // Dean Witter: Royal Navy / White
-    CarrGreen,         // Carr Futures: Kelly Green / White
-    FirstOptionsGold,  // First Options of Chicago: Vivid Gold / Royal Blue
-    RefcoCrimson,      // Refco: Crimson Red / Charcoal Black
-    SunOrange,         // Sun Trading: Safety Orange / Dark Navy
+    CargillRed,       // Candy Stripe: Cargill Red / White
+    DeanWitterBlue,   // Dean Witter: Royal Navy / White
+    CarrGreen,        // Carr Futures: Kelly Green / White
+    FirstOptionsGold, // First Options of Chicago: Vivid Gold / Royal Blue
+    RefcoCrimson,     // Refco: Crimson Red / Charcoal Black
+    SunOrange,        // Sun Trading: Safety Orange / Dark Navy
 
     // Official Floor Role Solid Blazers
-    BrokerBlue,        // Lead Floor Broker: Royal Blue
-    ScalperGreen,      // Local Scalper: Kelly Green
-    RunnerGold,        // Concourse Runner: Vivid Gold
-    ReporterBurgundy,  // Price Reporter: Exchange Burgundy
+    BrokerBlue,       // Lead Floor Broker: Royal Blue
+    ScalperGreen,     // Local Scalper: Kelly Green
+    RunnerGold,       // Concourse Runner: Vivid Gold
+    ReporterBurgundy, // Price Reporter: Exchange Burgundy
 }
 
 impl JacketStyle {
@@ -118,15 +118,15 @@ impl JacketStyle {
 
     pub fn tie_color(&self) -> Color {
         match self {
-            JacketStyle::CargillRed => Color::srgb(0.12, 0.23, 0.54),       // Navy tie
-            JacketStyle::DeanWitterBlue => Color::srgb(0.96, 0.62, 0.04),   // Gold tie
-            JacketStyle::CarrGreen => Color::srgb(0.94, 0.27, 0.27),        // Red tie
+            JacketStyle::CargillRed => Color::srgb(0.12, 0.23, 0.54), // Navy tie
+            JacketStyle::DeanWitterBlue => Color::srgb(0.96, 0.62, 0.04), // Gold tie
+            JacketStyle::CarrGreen => Color::srgb(0.94, 0.27, 0.27),  // Red tie
             JacketStyle::FirstOptionsGold => Color::srgb(0.98, 0.98, 0.98), // White tie
-            JacketStyle::RefcoCrimson => Color::srgb(0.98, 0.80, 0.08),     // Gold tie
-            JacketStyle::SunOrange => Color::srgb(0.22, 0.74, 0.97),        // Sky blue tie
-            JacketStyle::BrokerBlue => Color::srgb(0.96, 0.62, 0.04),       // Gold tie
-            JacketStyle::ScalperGreen => Color::srgb(0.94, 0.27, 0.27),      // Red tie
-            JacketStyle::RunnerGold => Color::srgb(0.01, 0.52, 0.78),       // Blue tie
+            JacketStyle::RefcoCrimson => Color::srgb(0.98, 0.80, 0.08), // Gold tie
+            JacketStyle::SunOrange => Color::srgb(0.22, 0.74, 0.97),  // Sky blue tie
+            JacketStyle::BrokerBlue => Color::srgb(0.96, 0.62, 0.04), // Gold tie
+            JacketStyle::ScalperGreen => Color::srgb(0.94, 0.27, 0.27), // Red tie
+            JacketStyle::RunnerGold => Color::srgb(0.01, 0.52, 0.78), // Blue tie
             JacketStyle::ReporterBurgundy => Color::srgb(0.98, 0.80, 0.08), // Gold tie
         }
     }
@@ -136,17 +136,17 @@ impl JacketStyle {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum UnimateClip {
     #[default]
-    Idle,           // Resting stance: Arms hang down naturally at sides, gentle breathing & weight shift
-    Buy,            // Palms In: Hands raised to chin, palms facing trader chest, waving white buy slip
-    Sell,           // Palms Out: Arms pushed wide into pit crowd, palms facing crowd, waving pink sell slip
-    PointDeal,      // Match Point: Right arm points straight at counterparty, sharp affirmative head nod
-    Endorse,        // Card Scribble: Head down -30°, left hand holds card on chest, right hand scribbles rapidly
-    QuantityChin,   // 10+ Lots: Knuckles/index finger touching chin/jaw, signaling block size
-    PriceSlice,     // Horizontal Par/Fraction: Flat hand slicing across chest/throat signaling price level
-    SpreadCross,    // Calendar Spread: Forearms crossed in front of sternum forming an "X"
-    Dispute,        // Out-Trade: Leaning forward across step, waving pencil high, agitated head shake
-    Sprint,         // Concourse sprint: Athletic forward lean, counter-twisting torso, running stride
-    Pulpit,         // Price Reporter on central pulpit logging tape prints
+    Idle, // Resting stance: Arms hang down naturally at sides, gentle breathing & weight shift
+    Buy,       // Palms In: Hands raised to chin, palms facing trader chest, waving white buy slip
+    Sell, // Palms Out: Arms pushed wide into pit crowd, palms facing crowd, waving pink sell slip
+    PointDeal, // Match Point: Right arm points straight at counterparty, sharp affirmative head nod
+    Endorse, // Card Scribble: Head down -30°, left hand holds card on chest, right hand scribbles rapidly
+    QuantityChin, // 10+ Lots: Knuckles/index finger touching chin/jaw, signaling block size
+    PriceSlice, // Horizontal Par/Fraction: Flat hand slicing across chest/throat signaling price level
+    SpreadCross, // Calendar Spread: Forearms crossed in front of sternum forming an "X"
+    Dispute,    // Out-Trade: Leaning forward across step, waving pencil high, agitated head shake
+    Sprint,     // Concourse sprint: Athletic forward lean, counter-twisting torso, running stride
+    Pulpit,     // Price Reporter on central pulpit logging tape prints
 }
 
 /// Demographic skin and hair palette generator adhering to 80% White, 10% Black, 10% Brown
@@ -209,7 +209,13 @@ pub fn sample_demographics(seed: u64) -> (Ethnicity, Color, Color) {
 }
 
 /// Generates a crisp procedural vertical striped RGBA texture
-pub fn generate_striped_image(color_a: Color, color_b: Color, num_stripes: u32, width: u32, height: u32) -> Image {
+pub fn generate_striped_image(
+    color_a: Color,
+    color_b: Color,
+    num_stripes: u32,
+    width: u32,
+    height: u32,
+) -> Image {
     let mut data = Vec::with_capacity((width * height * 4) as usize);
     let stripe_w = (width as f32 / num_stripes as f32).max(1.0);
 
@@ -219,7 +225,7 @@ pub fn generate_striped_image(color_a: Color, color_b: Color, num_stripes: u32, 
     for _y in 0..height {
         for x in 0..width {
             let stripe_idx = (x as f32 / stripe_w).floor() as u32;
-            let is_a = stripe_idx % 2 == 0;
+            let is_a = stripe_idx.is_multiple_of(2);
             if is_a {
                 data.push(r_a);
                 data.push(g_a);
@@ -563,13 +569,13 @@ pub fn spawn_unimate_trader_entity(
     let coat_torso_mat = mats.jacket_torso.get(&jacket).unwrap().clone();
     let coat_sleeve_mat = mats.jacket_sleeve.get(&jacket).unwrap().clone();
     let tie_mat = mats.tie_materials.get(&jacket).unwrap().clone();
-    let pants_mat = if seed % 2 == 0 {
+    let pants_mat = if seed.is_multiple_of(2) {
         mats.pants_navy.clone()
     } else {
         mats.pants_charcoal.clone()
     };
 
-    let root = commands
+    commands
         .spawn((
             UnimateTrader {
                 clip,
@@ -913,9 +919,7 @@ pub fn spawn_unimate_trader_entity(
                     }
                 });
         })
-        .id();
-
-    root
+        .id()
 }
 
 /// Forward kinematics animation system evaluating authentic human pit gestures
@@ -924,14 +928,17 @@ pub fn update_unimate_kinematics(
     view_mode: Res<crate::camera::FloorViewMode>,
     mats: Res<UnimateMaterialCache>,
     traders: Query<(&UnimateTrader, &Children, Option<&Visibility>), Without<JointType>>,
-    mut joints: Query<(
-        &JointType,
-        &mut Transform,
-        Option<&mut Visibility>,
-        Option<&mut PointLight>,
-        Option<&mut MeshMaterial3d<StandardMaterial>>,
-        Option<&Children>,
-    ), Without<UnimateTrader>>,
+    mut joints: Query<
+        (
+            &JointType,
+            &mut Transform,
+            Option<&mut Visibility>,
+            Option<&mut PointLight>,
+            Option<&mut MeshMaterial3d<StandardMaterial>>,
+            Option<&Children>,
+        ),
+        Without<UnimateTrader>,
+    >,
 ) {
     if !view_mode.is_3d() {
         return;
@@ -939,10 +946,10 @@ pub fn update_unimate_kinematics(
     let t_base = time.elapsed_secs();
 
     for (trader, trader_children, opt_vis) in traders.iter() {
-        if let Some(vis) = opt_vis {
-            if *vis == Visibility::Hidden {
-                continue;
-            }
+        if let Some(vis) = opt_vis
+            && *vis == Visibility::Hidden
+        {
+            continue;
         }
         let t = t_base + trader.phase_offset;
 
@@ -950,7 +957,9 @@ pub fn update_unimate_kinematics(
         let mut stack: Vec<Entity> = trader_children.iter().collect();
 
         while let Some(entity) = stack.pop() {
-            if let Ok((joint_type, mut transform, opt_vis, opt_light, opt_mat, opt_children)) = joints.get_mut(entity) {
+            if let Ok((joint_type, mut transform, opt_vis, opt_light, opt_mat, opt_children)) =
+                joints.get_mut(entity)
+            {
                 match joint_type {
                     JointType::Pelvis => match trader.clip {
                         UnimateClip::Idle => {
@@ -1006,7 +1015,8 @@ pub fn update_unimate_kinematics(
                             let breath = (t * 2.2).sin() * 0.08;
                             let weight_shift = (t * 0.9).sin() * 0.25;
                             transform.translation.y = 0.5 + breath;
-                            transform.rotation = Quat::from_euler(EulerRot::XYZ, 0.0, 0.0, weight_shift * 0.04);
+                            transform.rotation =
+                                Quat::from_euler(EulerRot::XYZ, 0.0, 0.0, weight_shift * 0.04);
                         }
                         UnimateClip::Buy => {
                             let lean = 0.24 + (t * 6.0).sin() * 0.06;
@@ -1027,7 +1037,8 @@ pub fn update_unimate_kinematics(
                         UnimateClip::Endorse => {
                             let breath = (t * 3.0).sin() * 0.03;
                             transform.translation.y = 0.48;
-                            transform.rotation = Quat::from_euler(EulerRot::XYZ, 0.26 + breath, 0.0, 0.0);
+                            transform.rotation =
+                                Quat::from_euler(EulerRot::XYZ, 0.26 + breath, 0.0, 0.0);
                         }
                         UnimateClip::QuantityChin => {
                             transform.translation.y = 0.52;
@@ -1036,7 +1047,8 @@ pub fn update_unimate_kinematics(
                         UnimateClip::PriceSlice => {
                             let slice_twist = (t * 4.5).sin() * 0.10;
                             transform.translation.y = 0.5;
-                            transform.rotation = Quat::from_euler(EulerRot::XYZ, 0.06, slice_twist, 0.0);
+                            transform.rotation =
+                                Quat::from_euler(EulerRot::XYZ, 0.06, slice_twist, 0.0);
                         }
                         UnimateClip::SpreadCross => {
                             transform.translation.y = 0.5;
@@ -1045,16 +1057,19 @@ pub fn update_unimate_kinematics(
                         UnimateClip::Dispute => {
                             let agitated = (t * 12.0).sin() * 0.08;
                             transform.translation.y = 0.5;
-                            transform.rotation = Quat::from_euler(EulerRot::XYZ, 0.32, agitated, 0.0);
+                            transform.rotation =
+                                Quat::from_euler(EulerRot::XYZ, 0.32, agitated, 0.0);
                         }
                         UnimateClip::Sprint => {
                             let stride = (t * 10.0).sin();
                             transform.translation.y = 0.5;
-                            transform.rotation = Quat::from_euler(EulerRot::XYZ, 0.32, -stride * 0.18, 0.0);
+                            transform.rotation =
+                                Quat::from_euler(EulerRot::XYZ, 0.32, -stride * 0.18, 0.0);
                         }
                         UnimateClip::Pulpit => {
                             transform.translation.y = 0.5;
-                            transform.rotation = Quat::from_euler(EulerRot::XYZ, 0.15, (t * 0.5).sin() * 0.08, 0.0);
+                            transform.rotation =
+                                Quat::from_euler(EulerRot::XYZ, 0.15, (t * 0.5).sin() * 0.08, 0.0);
                         }
                     },
                     JointType::Neck => match trader.clip {
@@ -1118,102 +1133,161 @@ pub fn update_unimate_kinematics(
                         _ => transform.rotation = Quat::IDENTITY,
                     },
                     JointType::LeftShoulder => match trader.clip {
-                        UnimateClip::Idle => transform.rotation = Quat::from_euler(EulerRot::XYZ, 0.0, 0.0, -0.06),
-                        UnimateClip::Buy => transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.15, 0.1, -0.05),
-                        UnimateClip::Sell => transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.1, -0.15, -0.15),
-                        UnimateClip::PointDeal => transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.08, 0.08, -0.06),
-                        UnimateClip::Endorse => transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.20, 0.16, -0.10),
-                        UnimateClip::QuantityChin => transform.rotation = Quat::from_euler(EulerRot::XYZ, 0.0, 0.0, -0.06),
-                        UnimateClip::PriceSlice => transform.rotation = Quat::from_euler(EulerRot::XYZ, 0.0, 0.0, -0.06),
-                        UnimateClip::SpreadCross => transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.22, 0.18, -0.12),
-                        UnimateClip::Dispute => transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.18, 0.20, -0.20),
+                        UnimateClip::Idle => {
+                            transform.rotation = Quat::from_euler(EulerRot::XYZ, 0.0, 0.0, -0.06)
+                        }
+                        UnimateClip::Buy => {
+                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.15, 0.1, -0.05)
+                        }
+                        UnimateClip::Sell => {
+                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.1, -0.15, -0.15)
+                        }
+                        UnimateClip::PointDeal => {
+                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.08, 0.08, -0.06)
+                        }
+                        UnimateClip::Endorse => {
+                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.20, 0.16, -0.10)
+                        }
+                        UnimateClip::QuantityChin => {
+                            transform.rotation = Quat::from_euler(EulerRot::XYZ, 0.0, 0.0, -0.06)
+                        }
+                        UnimateClip::PriceSlice => {
+                            transform.rotation = Quat::from_euler(EulerRot::XYZ, 0.0, 0.0, -0.06)
+                        }
+                        UnimateClip::SpreadCross => {
+                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.22, 0.18, -0.12)
+                        }
+                        UnimateClip::Dispute => {
+                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.18, 0.20, -0.20)
+                        }
                         UnimateClip::Sprint => transform.rotation = Quat::IDENTITY,
-                        UnimateClip::Pulpit => transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.2, 0.1, 0.0),
+                        UnimateClip::Pulpit => {
+                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.2, 0.1, 0.0)
+                        }
                     },
                     JointType::RightShoulder => match trader.clip {
-                        UnimateClip::Idle => transform.rotation = Quat::from_euler(EulerRot::XYZ, 0.0, 0.0, 0.06),
-                        UnimateClip::Buy => transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.15, -0.1, 0.05),
-                        UnimateClip::Sell => transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.1, 0.15, 0.15),
-                        UnimateClip::PointDeal => transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.25, -0.18, 0.14),
-                        UnimateClip::Endorse => transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.20, -0.16, 0.10),
-                        UnimateClip::QuantityChin => transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.26, -0.12, 0.16),
-                        UnimateClip::PriceSlice => transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.16, -0.12, 0.16),
-                        UnimateClip::SpreadCross => transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.22, -0.18, 0.12),
-                        UnimateClip::Dispute => transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.32, -0.22, 0.26),
+                        UnimateClip::Idle => {
+                            transform.rotation = Quat::from_euler(EulerRot::XYZ, 0.0, 0.0, 0.06)
+                        }
+                        UnimateClip::Buy => {
+                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.15, -0.1, 0.05)
+                        }
+                        UnimateClip::Sell => {
+                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.1, 0.15, 0.15)
+                        }
+                        UnimateClip::PointDeal => {
+                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.25, -0.18, 0.14)
+                        }
+                        UnimateClip::Endorse => {
+                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.20, -0.16, 0.10)
+                        }
+                        UnimateClip::QuantityChin => {
+                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.26, -0.12, 0.16)
+                        }
+                        UnimateClip::PriceSlice => {
+                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.16, -0.12, 0.16)
+                        }
+                        UnimateClip::SpreadCross => {
+                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.22, -0.18, 0.12)
+                        }
+                        UnimateClip::Dispute => {
+                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.32, -0.22, 0.26)
+                        }
                         UnimateClip::Sprint => transform.rotation = Quat::IDENTITY,
-                        UnimateClip::Pulpit => transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.2, -0.1, 0.0),
+                        UnimateClip::Pulpit => {
+                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.2, -0.1, 0.0)
+                        }
                     },
                     JointType::LeftUpperArm => match trader.clip {
                         UnimateClip::Idle => transform.rotation = Quat::IDENTITY,
                         UnimateClip::Buy => {
                             let wave = (t * 12.0).sin() * 0.12;
-                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.85 + wave * 0.4, 0.0, -0.22);
+                            transform.rotation =
+                                Quat::from_euler(EulerRot::XYZ, -0.85 + wave * 0.4, 0.0, -0.22);
                         }
                         UnimateClip::Sell => {
                             let push = (t * 9.0).sin() * 0.12;
-                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -1.25 + push * 0.5, 0.0, -0.42);
+                            transform.rotation =
+                                Quat::from_euler(EulerRot::XYZ, -1.25 + push * 0.5, 0.0, -0.42);
                         }
                         UnimateClip::PointDeal => {
-                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.60, 0.18, -0.24);
+                            transform.rotation =
+                                Quat::from_euler(EulerRot::XYZ, -0.60, 0.18, -0.24);
                         }
                         UnimateClip::Endorse => {
-                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.70, 0.38, -0.32);
+                            transform.rotation =
+                                Quat::from_euler(EulerRot::XYZ, -0.70, 0.38, -0.32);
                         }
                         UnimateClip::QuantityChin => {
-                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.40, 0.12, -0.18);
+                            transform.rotation =
+                                Quat::from_euler(EulerRot::XYZ, -0.40, 0.12, -0.18);
                         }
                         UnimateClip::PriceSlice => {
                             transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.30, 0.0, -0.12);
                         }
                         UnimateClip::SpreadCross => {
-                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.92, 0.48, -0.36);
+                            transform.rotation =
+                                Quat::from_euler(EulerRot::XYZ, -0.92, 0.48, -0.36);
                         }
                         UnimateClip::Dispute => {
                             let jitter = (t * 12.0).sin() * 0.08;
-                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.82 + jitter, 0.32, -0.48);
+                            transform.rotation =
+                                Quat::from_euler(EulerRot::XYZ, -0.82 + jitter, 0.32, -0.48);
                         }
                         UnimateClip::Sprint => {
                             let arm_swing = (t * 10.0).sin();
                             transform.rotation = Quat::from_rotation_x(arm_swing * 0.9);
                         }
-                        UnimateClip::Pulpit => transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.6, 0.0, -0.15),
+                        UnimateClip::Pulpit => {
+                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.6, 0.0, -0.15)
+                        }
                     },
                     JointType::RightUpperArm => match trader.clip {
                         UnimateClip::Idle => transform.rotation = Quat::IDENTITY,
                         UnimateClip::Buy => {
                             let wave = (t * 12.0).sin() * 0.12;
-                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.85 - wave * 0.4, 0.0, 0.22);
+                            transform.rotation =
+                                Quat::from_euler(EulerRot::XYZ, -0.85 - wave * 0.4, 0.0, 0.22);
                         }
                         UnimateClip::Sell => {
                             let push = (t * 9.0).sin() * 0.12;
-                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -1.25 + push * 0.5, 0.0, 0.42);
+                            transform.rotation =
+                                Quat::from_euler(EulerRot::XYZ, -1.25 + push * 0.5, 0.0, 0.42);
                         }
                         UnimateClip::PointDeal => {
                             let jolt = (t * 6.0).sin().max(0.0) * 0.08;
-                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -1.48 - jolt, -0.06, 0.08);
+                            transform.rotation =
+                                Quat::from_euler(EulerRot::XYZ, -1.48 - jolt, -0.06, 0.08);
                         }
                         UnimateClip::Endorse => {
-                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.70, -0.38, 0.32);
+                            transform.rotation =
+                                Quat::from_euler(EulerRot::XYZ, -0.70, -0.38, 0.32);
                         }
                         UnimateClip::QuantityChin => {
-                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -1.90, -0.28, 0.46);
+                            transform.rotation =
+                                Quat::from_euler(EulerRot::XYZ, -1.90, -0.28, 0.46);
                         }
                         UnimateClip::PriceSlice => {
                             let slice = (t * 4.5).sin();
-                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -1.18, slice * 0.42, 0.36);
+                            transform.rotation =
+                                Quat::from_euler(EulerRot::XYZ, -1.18, slice * 0.42, 0.36);
                         }
                         UnimateClip::SpreadCross => {
-                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.92, -0.48, 0.36);
+                            transform.rotation =
+                                Quat::from_euler(EulerRot::XYZ, -0.92, -0.48, 0.36);
                         }
                         UnimateClip::Dispute => {
                             let wave = (t * 12.0).sin() * 0.28;
-                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -2.15 + wave, -0.22, 0.42);
+                            transform.rotation =
+                                Quat::from_euler(EulerRot::XYZ, -2.15 + wave, -0.22, 0.42);
                         }
                         UnimateClip::Sprint => {
                             let arm_swing = (t * 10.0).sin();
                             transform.rotation = Quat::from_rotation_x(-arm_swing * 0.9);
                         }
-                        UnimateClip::Pulpit => transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.6, 0.0, 0.15),
+                        UnimateClip::Pulpit => {
+                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.6, 0.0, 0.15)
+                        }
                     },
                     JointType::LeftElbow => match trader.clip {
                         UnimateClip::Idle => transform.rotation = Quat::from_rotation_x(-0.12),
@@ -1227,9 +1301,15 @@ pub fn update_unimate_kinematics(
                         }
                         UnimateClip::PointDeal => transform.rotation = Quat::from_rotation_x(-1.42),
                         UnimateClip::Endorse => transform.rotation = Quat::from_rotation_x(-1.62),
-                        UnimateClip::QuantityChin => transform.rotation = Quat::from_rotation_x(-0.48),
-                        UnimateClip::PriceSlice => transform.rotation = Quat::from_rotation_x(-0.38),
-                        UnimateClip::SpreadCross => transform.rotation = Quat::from_rotation_x(-1.52),
+                        UnimateClip::QuantityChin => {
+                            transform.rotation = Quat::from_rotation_x(-0.48)
+                        }
+                        UnimateClip::PriceSlice => {
+                            transform.rotation = Quat::from_rotation_x(-0.38)
+                        }
+                        UnimateClip::SpreadCross => {
+                            transform.rotation = Quat::from_rotation_x(-1.52)
+                        }
                         UnimateClip::Dispute => transform.rotation = Quat::from_rotation_x(-0.52),
                         UnimateClip::Sprint => transform.rotation = Quat::from_rotation_x(-1.4),
                         UnimateClip::Pulpit => transform.rotation = Quat::from_rotation_x(-1.1),
@@ -1246,9 +1326,15 @@ pub fn update_unimate_kinematics(
                         }
                         UnimateClip::PointDeal => transform.rotation = Quat::from_rotation_x(-0.14),
                         UnimateClip::Endorse => transform.rotation = Quat::from_rotation_x(-1.68),
-                        UnimateClip::QuantityChin => transform.rotation = Quat::from_rotation_x(-2.38),
-                        UnimateClip::PriceSlice => transform.rotation = Quat::from_rotation_x(-1.28),
-                        UnimateClip::SpreadCross => transform.rotation = Quat::from_rotation_x(-1.52),
+                        UnimateClip::QuantityChin => {
+                            transform.rotation = Quat::from_rotation_x(-2.38)
+                        }
+                        UnimateClip::PriceSlice => {
+                            transform.rotation = Quat::from_rotation_x(-1.28)
+                        }
+                        UnimateClip::SpreadCross => {
+                            transform.rotation = Quat::from_rotation_x(-1.52)
+                        }
                         UnimateClip::Dispute => {
                             let wave = (t * 12.0).sin() * 0.20;
                             transform.rotation = Quat::from_rotation_x(-1.15 + wave);
@@ -1258,16 +1344,27 @@ pub fn update_unimate_kinematics(
                     },
                     JointType::LeftWrist => match trader.clip {
                         UnimateClip::Idle => {
-                            transform.rotation = Quat::from_euler(EulerRot::XYZ, 0.0, std::f32::consts::FRAC_PI_2, 0.0);
+                            transform.rotation = Quat::from_euler(
+                                EulerRot::XYZ,
+                                0.0,
+                                std::f32::consts::FRAC_PI_2,
+                                0.0,
+                            );
                         }
                         UnimateClip::Buy => {
                             let wave_fast = (t * 22.0).sin() * 0.06;
                             let wave = (t * 12.0).sin() * 0.12;
-                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.50 + wave_fast, -0.34, wave * 0.25);
+                            transform.rotation = Quat::from_euler(
+                                EulerRot::XYZ,
+                                -0.50 + wave_fast,
+                                -0.34,
+                                wave * 0.25,
+                            );
                         }
                         UnimateClip::Sell => {
                             let push = (t * 9.0).sin() * 0.12;
-                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -1.35, 2.85, -push * 0.15);
+                            transform.rotation =
+                                Quat::from_euler(EulerRot::XYZ, -1.35, 2.85, -push * 0.15);
                         }
                         UnimateClip::PointDeal => {
                             transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.22, 0.42, 0.0);
@@ -1288,30 +1385,49 @@ pub fn update_unimate_kinematics(
                             transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.82, 0.0, 0.0);
                         }
                         UnimateClip::Sprint => transform.rotation = Quat::IDENTITY,
-                        UnimateClip::Pulpit => transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.3, 0.0, 0.0),
+                        UnimateClip::Pulpit => {
+                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.3, 0.0, 0.0)
+                        }
                     },
                     JointType::RightWrist => match trader.clip {
                         UnimateClip::Idle => {
-                            transform.rotation = Quat::from_euler(EulerRot::XYZ, 0.0, -std::f32::consts::FRAC_PI_2, 0.0);
+                            transform.rotation = Quat::from_euler(
+                                EulerRot::XYZ,
+                                0.0,
+                                -std::f32::consts::FRAC_PI_2,
+                                0.0,
+                            );
                         }
                         UnimateClip::Buy => {
                             let wave_fast = (t * 22.0).sin() * 0.06;
                             let wave = (t * 12.0).sin() * 0.12;
-                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.50 - wave_fast, 0.34, -wave * 0.25);
+                            transform.rotation = Quat::from_euler(
+                                EulerRot::XYZ,
+                                -0.50 - wave_fast,
+                                0.34,
+                                -wave * 0.25,
+                            );
                         }
                         UnimateClip::Sell => {
                             let push = (t * 9.0).sin() * 0.12;
-                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -1.35, -2.85, push * 0.15);
+                            transform.rotation =
+                                Quat::from_euler(EulerRot::XYZ, -1.35, -2.85, push * 0.15);
                         }
                         UnimateClip::PointDeal => {
                             transform.rotation = Quat::IDENTITY;
                         }
                         UnimateClip::Endorse => {
                             let scribble = (t * 26.0).sin() * 0.22;
-                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.42 + scribble, -0.32, scribble * 0.5);
+                            transform.rotation = Quat::from_euler(
+                                EulerRot::XYZ,
+                                -0.42 + scribble,
+                                -0.32,
+                                scribble * 0.5,
+                            );
                         }
                         UnimateClip::QuantityChin => {
-                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.48, -0.22, 0.12);
+                            transform.rotation =
+                                Quat::from_euler(EulerRot::XYZ, -0.48, -0.22, 0.12);
                         }
                         UnimateClip::PriceSlice => {
                             transform.rotation = Quat::from_euler(EulerRot::XYZ, -1.22, -1.57, 0.0);
@@ -1321,10 +1437,13 @@ pub fn update_unimate_kinematics(
                         }
                         UnimateClip::Dispute => {
                             let flick = (t * 15.0).sin() * 0.35;
-                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.32 + flick, 0.0, flick * 0.4);
+                            transform.rotation =
+                                Quat::from_euler(EulerRot::XYZ, -0.32 + flick, 0.0, flick * 0.4);
                         }
                         UnimateClip::Sprint => transform.rotation = Quat::IDENTITY,
-                        UnimateClip::Pulpit => transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.3, 0.0, 0.0),
+                        UnimateClip::Pulpit => {
+                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.3, 0.0, 0.0)
+                        }
                     },
                     JointType::LeftFingers | JointType::RightFingers => match trader.clip {
                         UnimateClip::Idle => transform.rotation = Quat::from_rotation_x(-0.25),
@@ -1332,32 +1451,61 @@ pub fn update_unimate_kinematics(
                         UnimateClip::Sell => transform.rotation = Quat::from_rotation_x(0.05),
                         UnimateClip::PointDeal => transform.rotation = Quat::from_rotation_x(0.0),
                         UnimateClip::Endorse => transform.rotation = Quat::from_rotation_x(-0.90),
-                        UnimateClip::QuantityChin => transform.rotation = Quat::from_rotation_x(-1.10),
+                        UnimateClip::QuantityChin => {
+                            transform.rotation = Quat::from_rotation_x(-1.10)
+                        }
                         UnimateClip::PriceSlice => transform.rotation = Quat::from_rotation_x(0.0),
-                        UnimateClip::SpreadCross => transform.rotation = Quat::from_rotation_x(-0.60),
+                        UnimateClip::SpreadCross => {
+                            transform.rotation = Quat::from_rotation_x(-0.60)
+                        }
                         UnimateClip::Dispute => transform.rotation = Quat::from_rotation_x(-0.90),
                         UnimateClip::Sprint => transform.rotation = Quat::from_rotation_x(-1.0),
-                        UnimateClip::Pulpit => transform.rotation = Quat::from_rotation_x((t * 8.0).sin() * 0.15),
+                        UnimateClip::Pulpit => {
+                            transform.rotation = Quat::from_rotation_x((t * 8.0).sin() * 0.15)
+                        }
                     },
                     JointType::LeftThumb => match trader.clip {
-                        UnimateClip::Idle => transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.15, 0.2, 0.0),
-                        UnimateClip::Buy => transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.3, 0.35, 0.0),
-                        UnimateClip::Sell => transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.2, 0.2, 0.0),
-                        UnimateClip::Endorse => transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.4, 0.4, 0.0),
+                        UnimateClip::Idle => {
+                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.15, 0.2, 0.0)
+                        }
+                        UnimateClip::Buy => {
+                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.3, 0.35, 0.0)
+                        }
+                        UnimateClip::Sell => {
+                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.2, 0.2, 0.0)
+                        }
+                        UnimateClip::Endorse => {
+                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.4, 0.4, 0.0)
+                        }
                         _ => transform.rotation = Quat::IDENTITY,
                     },
                     JointType::RightThumb => match trader.clip {
-                        UnimateClip::Idle => transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.15, -0.2, 0.0),
-                        UnimateClip::Buy => transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.3, -0.35, 0.0),
-                        UnimateClip::Sell => transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.2, -0.2, 0.0),
-                        UnimateClip::PointDeal => transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.35, -0.2, 0.0),
-                        UnimateClip::Endorse => transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.45, -0.35, 0.0),
+                        UnimateClip::Idle => {
+                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.15, -0.2, 0.0)
+                        }
+                        UnimateClip::Buy => {
+                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.3, -0.35, 0.0)
+                        }
+                        UnimateClip::Sell => {
+                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.2, -0.2, 0.0)
+                        }
+                        UnimateClip::PointDeal => {
+                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.35, -0.2, 0.0)
+                        }
+                        UnimateClip::Endorse => {
+                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.45, -0.35, 0.0)
+                        }
                         _ => transform.rotation = Quat::IDENTITY,
                     },
                     JointType::LeftTicket | JointType::RightTicket => {
                         if let Some(mut vis) = opt_vis {
                             match trader.clip {
-                                UnimateClip::Buy | UnimateClip::Sell | UnimateClip::PointDeal | UnimateClip::Endorse | UnimateClip::QuantityChin | UnimateClip::PriceSlice => {
+                                UnimateClip::Buy
+                                | UnimateClip::Sell
+                                | UnimateClip::PointDeal
+                                | UnimateClip::Endorse
+                                | UnimateClip::QuantityChin
+                                | UnimateClip::PriceSlice => {
                                     *vis = Visibility::Inherited;
                                 }
                                 _ => *vis = Visibility::Hidden,
@@ -1365,10 +1513,15 @@ pub fn update_unimate_kinematics(
                         }
                         if let Some(mut mat) = opt_mat {
                             match trader.clip {
-                                UnimateClip::Buy | UnimateClip::PointDeal | UnimateClip::Endorse | UnimateClip::QuantityChin => {
+                                UnimateClip::Buy
+                                | UnimateClip::PointDeal
+                                | UnimateClip::Endorse
+                                | UnimateClip::QuantityChin => {
                                     *mat = MeshMaterial3d(mats.ticket_buy_white.clone());
                                 }
-                                UnimateClip::Sell | UnimateClip::PriceSlice | UnimateClip::Dispute => {
+                                UnimateClip::Sell
+                                | UnimateClip::PriceSlice
+                                | UnimateClip::Dispute => {
                                     *mat = MeshMaterial3d(mats.ticket_sell_pink.clone());
                                 }
                                 _ => {}
@@ -1399,16 +1552,27 @@ pub fn update_unimate_kinematics(
                     JointType::LeftHip => match trader.clip {
                         UnimateClip::Idle => {
                             let weight_shift = (t * 1.2).sin();
-                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -weight_shift * 0.12, 0.0, -0.04);
+                            transform.rotation =
+                                Quat::from_euler(EulerRot::XYZ, -weight_shift * 0.12, 0.0, -0.04);
                         }
-                        UnimateClip::Buy => transform.rotation = Quat::from_euler(EulerRot::XYZ, 0.2, 0.0, -0.15),
-                        UnimateClip::Sell => transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.25, 0.0, -0.35),
-                        UnimateClip::PointDeal => transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.05, 0.0, -0.05),
-                        UnimateClip::Endorse => transform.rotation = Quat::from_euler(EulerRot::XYZ, 0.08, 0.0, -0.04),
+                        UnimateClip::Buy => {
+                            transform.rotation = Quat::from_euler(EulerRot::XYZ, 0.2, 0.0, -0.15)
+                        }
+                        UnimateClip::Sell => {
+                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.25, 0.0, -0.35)
+                        }
+                        UnimateClip::PointDeal => {
+                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.05, 0.0, -0.05)
+                        }
+                        UnimateClip::Endorse => {
+                            transform.rotation = Quat::from_euler(EulerRot::XYZ, 0.08, 0.0, -0.04)
+                        }
                         UnimateClip::QuantityChin => transform.rotation = Quat::IDENTITY,
                         UnimateClip::PriceSlice => transform.rotation = Quat::IDENTITY,
                         UnimateClip::SpreadCross => transform.rotation = Quat::IDENTITY,
-                        UnimateClip::Dispute => transform.rotation = Quat::from_euler(EulerRot::XYZ, 0.25, 0.0, -0.10),
+                        UnimateClip::Dispute => {
+                            transform.rotation = Quat::from_euler(EulerRot::XYZ, 0.25, 0.0, -0.10)
+                        }
                         UnimateClip::Sprint => {
                             let stride = (t * 10.0).sin();
                             transform.rotation = Quat::from_rotation_x(stride * 0.8);
@@ -1418,16 +1582,27 @@ pub fn update_unimate_kinematics(
                     JointType::RightHip => match trader.clip {
                         UnimateClip::Idle => {
                             let weight_shift = (t * 1.2).sin();
-                            transform.rotation = Quat::from_euler(EulerRot::XYZ, weight_shift * 0.12, 0.0, 0.04);
+                            transform.rotation =
+                                Quat::from_euler(EulerRot::XYZ, weight_shift * 0.12, 0.0, 0.04);
                         }
-                        UnimateClip::Buy => transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.35, 0.0, 0.15),
-                        UnimateClip::Sell => transform.rotation = Quat::from_euler(EulerRot::XYZ, 0.25, 0.0, 0.35),
-                        UnimateClip::PointDeal => transform.rotation = Quat::from_euler(EulerRot::XYZ, 0.05, 0.0, 0.05),
-                        UnimateClip::Endorse => transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.08, 0.0, 0.04),
+                        UnimateClip::Buy => {
+                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.35, 0.0, 0.15)
+                        }
+                        UnimateClip::Sell => {
+                            transform.rotation = Quat::from_euler(EulerRot::XYZ, 0.25, 0.0, 0.35)
+                        }
+                        UnimateClip::PointDeal => {
+                            transform.rotation = Quat::from_euler(EulerRot::XYZ, 0.05, 0.0, 0.05)
+                        }
+                        UnimateClip::Endorse => {
+                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.08, 0.0, 0.04)
+                        }
                         UnimateClip::QuantityChin => transform.rotation = Quat::IDENTITY,
                         UnimateClip::PriceSlice => transform.rotation = Quat::IDENTITY,
                         UnimateClip::SpreadCross => transform.rotation = Quat::IDENTITY,
-                        UnimateClip::Dispute => transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.20, 0.0, 0.10),
+                        UnimateClip::Dispute => {
+                            transform.rotation = Quat::from_euler(EulerRot::XYZ, -0.20, 0.0, 0.10)
+                        }
                         UnimateClip::Sprint => {
                             let stride = (t * 10.0).sin();
                             transform.rotation = Quat::from_rotation_x(-stride * 0.8);
@@ -1444,13 +1619,18 @@ pub fn update_unimate_kinematics(
                         UnimateClip::Sell => transform.rotation = Quat::from_rotation_x(0.20),
                         UnimateClip::PointDeal => transform.rotation = Quat::from_rotation_x(0.12),
                         UnimateClip::Endorse => transform.rotation = Quat::from_rotation_x(0.18),
-                        UnimateClip::QuantityChin => transform.rotation = Quat::from_rotation_x(0.05),
+                        UnimateClip::QuantityChin => {
+                            transform.rotation = Quat::from_rotation_x(0.05)
+                        }
                         UnimateClip::PriceSlice => transform.rotation = Quat::from_rotation_x(0.10),
-                        UnimateClip::SpreadCross => transform.rotation = Quat::from_rotation_x(0.10),
+                        UnimateClip::SpreadCross => {
+                            transform.rotation = Quat::from_rotation_x(0.10)
+                        }
                         UnimateClip::Dispute => transform.rotation = Quat::from_rotation_x(0.38),
                         UnimateClip::Sprint => {
                             let stride = (t * 10.0).sin();
-                            transform.rotation = Quat::from_rotation_x((stride * 0.8).max(0.0) * 1.2);
+                            transform.rotation =
+                                Quat::from_rotation_x((stride * 0.8).max(0.0) * 1.2);
                         }
                         UnimateClip::Pulpit => transform.rotation = Quat::IDENTITY,
                     },
@@ -1464,16 +1644,21 @@ pub fn update_unimate_kinematics(
                         UnimateClip::Sell => transform.rotation = Quat::from_rotation_x(0.30),
                         UnimateClip::PointDeal => transform.rotation = Quat::from_rotation_x(0.12),
                         UnimateClip::Endorse => transform.rotation = Quat::from_rotation_x(0.18),
-                        UnimateClip::QuantityChin => transform.rotation = Quat::from_rotation_x(0.05),
+                        UnimateClip::QuantityChin => {
+                            transform.rotation = Quat::from_rotation_x(0.05)
+                        }
                         UnimateClip::PriceSlice => transform.rotation = Quat::from_rotation_x(0.10),
-                        UnimateClip::SpreadCross => transform.rotation = Quat::from_rotation_x(0.10),
+                        UnimateClip::SpreadCross => {
+                            transform.rotation = Quat::from_rotation_x(0.10)
+                        }
                         UnimateClip::Dispute => transform.rotation = Quat::from_rotation_x(0.12),
                         UnimateClip::Sprint => {
                             let stride = (t * 10.0).sin();
-                            transform.rotation = Quat::from_rotation_x((-stride * 0.8).max(0.0) * 1.2);
+                            transform.rotation =
+                                Quat::from_rotation_x((-stride * 0.8).max(0.0) * 1.2);
                         }
                         UnimateClip::Pulpit => transform.rotation = Quat::IDENTITY,
-                    }
+                    },
                 }
 
                 if let Some(children) = opt_children {

@@ -12,7 +12,9 @@ impl Rng {
     /// A generator for one (stream, index) pair: minute `m` of symbol `s` always draws the
     /// same numbers, however it is reached.
     pub fn keyed(seed: u64, stream: u64, index: u64) -> Self {
-        let mut r = Rng(seed ^ stream.wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ index.wrapping_mul(0xC2B2_AE3D_27D4_EB4F));
+        let mut r = Rng(seed
+            ^ stream.wrapping_mul(0x9E37_79B9_7F4A_7C15)
+            ^ index.wrapping_mul(0xC2B2_AE3D_27D4_EB4F));
         r.next_u64();
         r
     }
@@ -66,7 +68,10 @@ mod tests {
     fn a_keyed_stream_is_the_same_however_it_is_reached() {
         let a: Vec<u64> = (0..4).map(|_| Rng::keyed(7, 3, 99).next_u64()).collect();
         assert!(a.windows(2).all(|w| w[0] == w[1]));
-        assert_ne!(Rng::keyed(7, 3, 99).next_u64(), Rng::keyed(7, 3, 100).next_u64());
+        assert_ne!(
+            Rng::keyed(7, 3, 99).next_u64(),
+            Rng::keyed(7, 3, 100).next_u64()
+        );
     }
 
     #[test]
@@ -75,6 +80,9 @@ mod tests {
         let xs: Vec<f64> = (0..20000).map(|_| r.normal()).collect();
         let mean = xs.iter().sum::<f64>() / xs.len() as f64;
         let var = xs.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / xs.len() as f64;
-        assert!(mean.abs() < 0.03 && (var - 1.0).abs() < 0.05, "mean {mean} var {var}");
+        assert!(
+            mean.abs() < 0.03 && (var - 1.0).abs() < 0.05,
+            "mean {mean} var {var}"
+        );
     }
 }

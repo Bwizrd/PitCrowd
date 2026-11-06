@@ -47,7 +47,6 @@ fn main() {
 
     // let higher = higher_close(&c1, &c2);
 
-    let higher;
     let c1 = Candle {
         open: 100,
         close: 105,
@@ -59,7 +58,7 @@ fn main() {
         open: 100,
         close: 102,
     }; // lives ONLY inside this { } block
-    higher = higher_close(&c1, &c2);
+    let higher = higher_close(&c1, &c2);
     // } // <--- c2 is destroyed here!
 
     println!("higher={}", higher.close);

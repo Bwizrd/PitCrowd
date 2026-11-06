@@ -11,7 +11,9 @@ fn main() {}
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() {
-    let out = std::env::args().nth(1).unwrap_or_else(|| "static/explainer.html".to_string());
+    let out = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| "static/explainer.html".to_string());
     let html = page::render();
     std::fs::write(&out, &html).unwrap_or_else(|e| panic!("cannot write {out}: {e}"));
     println!("wrote {out} ({} bytes)", html.len());
@@ -21,15 +23,20 @@ fn main() {
 mod page {
     use std::fmt::Write as _;
 
-    use opencry_visual::jev::{all_questions, DeterministicModel, JevDesk, JevQuestion, JEV_CADENCE_SECS};
+    use opencry_visual::jev::{
+        DeterministicModel, JEV_CADENCE_SECS, JevDesk, JevQuestion, all_questions,
+    };
     use opencry_visual::levels::tape_symbol;
     use opencry_visual::market::Instrument;
     use opencry_visual::paper::{
-        Archetype, Session, ENTRY_FROM, ENTRY_UNTIL, FLAT_AT, JEV_CREW, MIN_STOP_SPREADS, MIN_TARGET_SPREADS, READ_FRESH_SECS, STAKE_PER_TICK,
+        Archetype, ENTRY_FROM, ENTRY_UNTIL, FLAT_AT, JEV_CREW, MIN_STOP_SPREADS,
+        MIN_TARGET_SPREADS, READ_FRESH_SECS, STAKE_PER_TICK, Session,
     };
 
     fn esc(s: &str) -> String {
-        s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+        s.replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
     }
 
     fn hm(minute: i64) -> String {
@@ -37,12 +44,18 @@ mod page {
     }
 
     fn sessions(s: &[Session]) -> String {
-        s.iter().map(|w| format!("{}-{}", hm(w.from), hm(w.until))).collect::<Vec<_>>().join(", ")
+        s.iter()
+            .map(|w| format!("{}-{}", hm(w.from), hm(w.until)))
+            .collect::<Vec<_>>()
+            .join(", ")
     }
 
     /// Today's date from the system clock, no crate needed (civil-from-days, Howard Hinnant).
     fn today() -> String {
-        let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
+        let secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
         let z = secs.div_euclid(86_400) + 719_468;
         let era = z.div_euclid(146_097);
         let doe = z - era * 146_097;
@@ -86,9 +99,16 @@ a { color:var(--blue); }
 
     pub fn render() -> String {
         let mut h = String::with_capacity(120_000);
-        let _ = write!(h, "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>OpenCry Floor Guide</title><style>{CSS}</style></head><body><main>");
+        let _ = write!(
+            h,
+            "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>OpenCry Floor Guide</title><style>{CSS}</style></head><body><main>"
+        );
         h.push_str("<h1>OpenCry Floor: the guide</h1>");
-        let _ = write!(h, "<p class=\"dim\">What you are looking at, how Jev works, how the paper traders trade, who they are, how the evolving pit breeds new ones and lets Jev vote on their trades, and where to look to see them trading. Generated {} from the code that runs the floor (<code>cargo run --bin explain</code>).</p>", today());
+        let _ = write!(
+            h,
+            "<p class=\"dim\">What you are looking at, how Jev works, how the paper traders trade, who they are, how the evolving pit breeds new ones and lets Jev vote on their trades, and where to look to see them trading. Generated {} from the code that runs the floor (<code>cargo run --bin explain</code>).</p>",
+            today()
+        );
 
         // ---- the 30-second version -------------------------------------------------
         h.push_str(&r##"<div class="box gold"><h3 style="margin-top:0">The thirty-second version</h3>
@@ -102,7 +122,8 @@ a { color:var(--blue); }
 </ul></div>"##.replace("{n_traders}", &Archetype::ALL.len().to_string()).replace("{n_questions}", &all_questions().len().to_string()).replace("{n_jev}", &Archetype::ALL.iter().filter(|a| a.uses_jev()).count().to_string()));
 
         // ---- contents -------------------------------------------------------------
-        h.push_str(r##"<ul class="toc">
+        h.push_str(
+            r##"<ul class="toc">
 <li><a href="#floor">1. The floor and its services</a></li>
 <li><a href="#screen">2. Reading the screen</a></li>
 <li><a href="#jev">3. How Jev works</a></li>
@@ -113,7 +134,8 @@ a { color:var(--blue); }
 <li><a href="#pits">8. Why the traders never enter a pit</a></li>
 <li><a href="#state">9. Where things stand and known gaps</a></li>
 <li><a href="#glossary">10. Glossary</a></li>
-</ul>"##);
+</ul>"##,
+        );
 
         // ---- 1. floor -------------------------------------------------------------
         h.push_str("<h2 id=\"floor\">1. The floor and its services</h2>");
@@ -127,8 +149,22 @@ a { color:var(--blue); }
         h.push_str("<p>Start, stop and check them with <code>./start-floor.sh --status</code> in the JevFloor folder. The nine pits:</p>");
         h.push_str("<table><tr><th>Pit</th><th>Tape symbol</th><th>Retail order book</th></tr>");
         for inst in Instrument::ALL {
-            let oanda = matches!(inst, Instrument::Gold | Instrument::Silver | Instrument::GbpUsd | Instrument::EurUsd);
-            let _ = write!(h, "<tr><td>{}</td><td><code>{}</code></td><td class=\"{}\">{}</td></tr>", esc(inst.symbol()), tape_symbol(inst), if oanda { "yes" } else { "no" }, if oanda { "yes (synthetic on the synthetic tape)" } else { "none (OANDA publishes no book for it)" });
+            let oanda = matches!(
+                inst,
+                Instrument::Gold | Instrument::Silver | Instrument::GbpUsd | Instrument::EurUsd
+            );
+            let _ = write!(
+                h,
+                "<tr><td>{}</td><td><code>{}</code></td><td class=\"{}\">{}</td></tr>",
+                esc(inst.symbol()),
+                tape_symbol(inst),
+                if oanda { "yes" } else { "no" },
+                if oanda {
+                    "yes (synthetic on the synthetic tape)"
+                } else {
+                    "none (OANDA publishes no book for it)"
+                }
+            );
         }
         h.push_str("</table>");
         h.push_str("<p>On the floor the pits stand in three rows by district: the two metals at the back, the four indices across the middle, the two FX pairs at the front with Bitcoin set apart at the end of their row. Each row has its district name on the concourse behind it, and the wall board above the selected pit carries that pit's symbol in large letters.</p>");
@@ -175,19 +211,55 @@ a { color:var(--blue); }
         qs.sort_by(|a, b| a.0.cmp(&b.0));
         for (name, q) in qs {
             let (kind, instr, answers) = match q {
-                JevQuestion::Noul { instructions } => ("yes/no probability".to_string(), instructions, "a single probability (0..1)".to_string()),
-                JevQuestion::Choice { instructions, criteria } => {
+                JevQuestion::Noul { instructions } => (
+                    "yes/no probability".to_string(),
+                    instructions,
+                    "a single probability (0..1)".to_string(),
+                ),
+                JevQuestion::Choice {
+                    instructions,
+                    criteria,
+                } => {
                     let mut c: Vec<(String, String)> = criteria.into_iter().collect();
                     c.sort();
-                    ("choice".to_string(), instructions, c.iter().map(|(k, v)| format!("<b>{}</b>: {}", esc(k), esc(v))).collect::<Vec<_>>().join("<br>"))
+                    (
+                        "choice".to_string(),
+                        instructions,
+                        c.iter()
+                            .map(|(k, v)| format!("<b>{}</b>: {}", esc(k), esc(v)))
+                            .collect::<Vec<_>>()
+                            .join("<br>"),
+                    )
                 }
-                JevQuestion::Score { instructions, criteria } => ("score 0..2".to_string(), instructions, criteria.iter().enumerate().map(|(i, c)| format!("<b>{i}</b>: {}", esc(c))).collect::<Vec<_>>().join("<br>")),
+                JevQuestion::Score {
+                    instructions,
+                    criteria,
+                } => (
+                    "score 0..2".to_string(),
+                    instructions,
+                    criteria
+                        .iter()
+                        .enumerate()
+                        .map(|(i, c)| format!("<b>{i}</b>: {}", esc(c)))
+                        .collect::<Vec<_>>()
+                        .join("<br>"),
+                ),
             };
-            let _ = write!(h, "<tr><td><code>{}</code></td><td>{}</td><td>{}</td><td class=\"small\">{}</td></tr>", esc(&name), kind, esc(&instr), answers);
+            let _ = write!(
+                h,
+                "<tr><td><code>{}</code></td><td>{}</td><td>{}</td><td class=\"small\">{}</td></tr>",
+                esc(&name),
+                kind,
+                esc(&instr),
+                answers
+            );
         }
         h.push_str("</table>");
         h.push_str("<h3>What comes back</h3><p>A read (<code>MarketInterpretation</code>) with: <b>direction</b> (up / down / flat) and its <b>confidence</b> (the probability of the chosen direction); <b>conviction</b> as an expected score 0..2; <b>continuation</b> and <b>exhaustion</b> as probabilities; the <b>level reaction</b> (absorbing / rejecting / sweeping / breaking / no_level) with its confidence. The board line under the chart prints exactly these numbers, then a sentence composed from them (never from Jev's own words).</p>");
-        let _ = write!(h, "<h3>Cadence, freshness, cost</h3><ul><li>The desk asks about each of the nine pits once a minute (pits staggered, so a call every 6 or 7 seconds). The browser asks about the pit you are looking at every {JEV_CADENCE_SECS:.0} s while Jev is on (<kbd>J</kbd>).</li><li>A trader only acts on a read younger than the freshness limit ({READ_FRESH_SECS:.0} s in the browser; the desk's limit is its cadence plus 5 s, so 65 s). Between reads the pass reason says \"no fresh Jev read\".</li><li>Reads are per pit and shared by every trader, so adding a trader costs nothing: about 540 calls an hour at the one-minute cadence, plus the touch reads. A Jev twin is the exception: it makes one call of its own each time its genome enters.</li></ul>");
+        let _ = write!(
+            h,
+            "<h3>Cadence, freshness, cost</h3><ul><li>The desk asks about each of the nine pits once a minute (pits staggered, so a call every 6 or 7 seconds). The browser asks about the pit you are looking at every {JEV_CADENCE_SECS:.0} s while Jev is on (<kbd>J</kbd>).</li><li>A trader only acts on a read younger than the freshness limit ({READ_FRESH_SECS:.0} s in the browser; the desk's limit is its cadence plus 5 s, so 65 s). Between reads the pass reason says \"no fresh Jev read\".</li><li>Reads are per pit and shared by every trader, so adding a trader costs nothing: about 540 calls an hour at the one-minute cadence, plus the touch reads. A Jev twin is the exception: it makes one call of its own each time its genome enters.</li></ul>"
+        );
         h.push_str(r##"<h3>What Jev actually says</h3><p>From 9,515 real reads in the 24 hours to 2026-10-22 17:00 UTC:</p>
 <table><tr><th>Field</th><th>Distribution</th></tr>
 <tr><td>Direction</td><td>flat 48%, down 34%, up 17%</td></tr>
@@ -202,7 +274,9 @@ a { color:var(--blue); }
 
         // ---- 4. paper -------------------------------------------------------------
         h.push_str("<h2 id=\"paper\">4. How paper trading works</h2>");
-        let _ = write!(h, r##"<p>The paper book (<code>paper.rs</code>) is one piece of code run in two places: in the browser tab, and in the desk around the clock. Each trader is an <em>archetype</em>: a pure rule that looks at a <em>view</em> of one pit (bid, ask, spread, the last 1m bars, the tick flow, the levels, Jev's latest read) and answers either "enter, this way, with these exits" or "pass, because ...". The book runs every trader over every pit on every tick.</p>
+        let _ = write!(
+            h,
+            r##"<p>The paper book (<code>paper.rs</code>) is one piece of code run in two places: in the browser tab, and in the desk around the clock. Each trader is an <em>archetype</em>: a pure rule that looks at a <em>view</em> of one pit (bid, ask, spread, the last 1m bars, the tick flow, the levels, Jev's latest read) and answers either "enter, this way, with these exits" or "pass, because ...". The book runs every trader over every pit on every tick.</p>
 <h3>Fills and costs</h3><ul>
 <li>A buy fills at the <b>ask</b>, a sell at the <b>bid</b>, so every trade starts behind by the spread, exactly as a real one would. There is no slippage model beyond that and no commission (spread-bet symbols carry their cost in the spread).</li>
 <li>Stake is flat: £{STAKE_PER_TICK:.0} per tick in every pit, so pits are comparable.</li>
@@ -217,11 +291,25 @@ a { color:var(--blue); }
 <li>The Traders panel ranks the last 24 hours (rolling, so it reads the same at 03:00 and 15:00). The figure labels and the trader panel's "Today" block count since 00:00 UTC.</li>
 <li>Every entry, exit and closed trade is appended to <code>jev_relay/log/paper_trades.jsonl</code> and <code>paper_decisions.jsonl</code> (with <code>"source":"desk"</code> or the tab). The record outlives any browser tab.</li>
 <li>The desk posts a heartbeat every 3 s with the board, each trader's open position, last ten trades, day stats, and the reason it is passing in each pit. The browser polls it every 2 s. If the desk dies the tab's own book takes over.</li>
-</ul>"##, flat = hm(FLAT_AT), stop = MIN_STOP_SPREADS, target = MIN_TARGET_SPREADS, from = hm(ENTRY_FROM), until = hm(ENTRY_UNTIL));
+</ul>"##,
+            flat = hm(FLAT_AT),
+            stop = MIN_STOP_SPREADS,
+            target = MIN_TARGET_SPREADS,
+            from = hm(ENTRY_FROM),
+            until = hm(ENTRY_UNTIL)
+        );
 
         // ---- 5. traders -----------------------------------------------------------
-        let _ = write!(h, "<h2 id=\"traders\">5. The {} hand-written traders</h2>", Archetype::ALL.len());
-        let _ = write!(h, "<p>Three groups. The <b>originals</b> (nine): three on Jev, five on market structure with no Jev at all, and the control. Six of the <b>Jev crew</b> trade Jev's common read (Tess takes every lean, Gus fades every lean, Ivo fades the unconvinced ones, Sol trades the flat calls, Lena fades the lean when Jev sees absorption at a level, Kit when it sees a sweep; Lena and Kit were reinstated on 24 October after leading the desk under the 20-spread stops). The other {} are the <b>question traders</b>: each owns one question Jev is asked on every read, and a rule that turns the answer into a side. Vera, Wren, Xi and Yusuf ask about a level price has just touched (what it will have done in fifteen minutes; whether size is absorbing; whether it was a stop run; whether a break would carry) and so trade only on touch reads. Zara asks about the last twenty seconds of tape, Ana and Ben ask the same question about the shape of the last twenty bars and trade different answers, Cy asks which level price reaches first, Dee asks whether the move is thinning out. The scorer grades each question on its own, so a question earns or loses its trader.</p>", JEV_CREW.iter().filter(|s| s.ask.is_some()).count());
+        let _ = write!(
+            h,
+            "<h2 id=\"traders\">5. The {} hand-written traders</h2>",
+            Archetype::ALL.len()
+        );
+        let _ = write!(
+            h,
+            "<p>Three groups. The <b>originals</b> (nine): three on Jev, five on market structure with no Jev at all, and the control. Six of the <b>Jev crew</b> trade Jev's common read (Tess takes every lean, Gus fades every lean, Ivo fades the unconvinced ones, Sol trades the flat calls, Lena fades the lean when Jev sees absorption at a level, Kit when it sees a sweep; Lena and Kit were reinstated on 24 October after leading the desk under the 20-spread stops). The other {} are the <b>question traders</b>: each owns one question Jev is asked on every read, and a rule that turns the answer into a side. Vera, Wren, Xi and Yusuf ask about a level price has just touched (what it will have done in fifteen minutes; whether size is absorbing; whether it was a stop run; whether a break would carry) and so trade only on touch reads. Zara asks about the last twenty seconds of tape, Ana and Ben ask the same question about the shape of the last twenty bars and trade different answers, Cy asks which level price reaches first, Dee asks whether the move is thinning out. The scorer grades each question on its own, so a question earns or loses its trader.</p>",
+            JEV_CREW.iter().filter(|s| s.ask.is_some()).count()
+        );
         h.push_str("<p><b>Only four of these still trade on the desk</b>: Gus, Lena, Tomasz and Colin (the control). The others were taken off on 25 October after the desk's first 1,024 trades showed none of them at t 2 or better; their rows stay here so their past records still read, and their figures are hidden on the floor. Colours below are the jackets on the floor. \"Hours\" are UTC entry windows.</p>");
         h.push_str("<table><tr><th>#</th><th>Trader</th><th>Label</th><th>Jev</th><th>Hours</th><th>Idea</th></tr>");
         for (i, arch) in Archetype::ALL.iter().enumerate() {
@@ -244,7 +332,11 @@ a { color:var(--blue); }
             );
         }
         h.push_str("</table>");
-        let _ = write!(h, "<p class=\"small dim\">{} crew members. To change one, edit its row in <code>JEV_CREW</code> in <code>opencry-visual/src/paper.rs</code>, rebuild the desk and restart it (<code>./start-floor.sh --restart desk</code>); trunk rebuilds the browser on its own.</p>", JEV_CREW.len());
+        let _ = write!(
+            h,
+            "<p class=\"small dim\">{} crew members. To change one, edit its row in <code>JEV_CREW</code> in <code>opencry-visual/src/paper.rs</code>, rebuild the desk and restart it (<code>./start-floor.sh --restart desk</code>); trunk rebuilds the browser on its own.</p>",
+            JEV_CREW.len()
+        );
 
         // ---- 6. evolving pit --------------------------------------------------------
         h.push_str("<h2 id=\"evolve\">6. The evolving pit and the Jev twins</h2>");
@@ -259,7 +351,11 @@ a { color:var(--blue); }
 <h3>The twins</h3><p>Every seated genome gets a twin, named with <code>-J</code>. When the genome enters, the twin sends Jev the last 24 bars (no symbol, no dates, prices rebased so the last close is 1000) and asks one question: for a follower, is this move strong and likely to carry on; for a fader, is it tiring and likely to turn. On a yes (0.5 or more) the twin takes the same trade seconds later with the genome's stop, target and remaining time; on a no, it stays out. Every answer is logged (<code>opencry-visual/log/genome_jev.jsonl</code>), so each of the genome's trades is tagged yes or no.</p>
 <p>The verdict comes at 300 tagged trades, with checks at 60 and 150. Jev is said to add something only if it said no to at least 15% of trades, the yes trades average at least +0.05R, and the yes-minus-no gap clears the bar after allowing for how many twins have been judged. Twins are never cut on their own record; a twin leaves with its genome.</p>
 <h3>Where to see it</h3><p>The Traders panel ends with the pit's summary (genomes tried, seated, retired) and a row per genome and twin, in the genome's colour, with its forward record and how far it is from each cut and from graduation. Each genome takes one of 40 spare bodies on the floor, repainted in its colour, and gives it back when it retires. Clicking a row or a body opens its panel, with the genome's rule in words and, for the pair, the running Jev yes/no split. <code>python3 evolve/evolve.py status</code> prints the same from the command line.</p>"##);
-        let _ = write!(h, "<p class=\"dim small\">As of {}: about 5,000 genomes tried, one seated (Jax9, a New York opening-range follower on US500, NAS100, US30 and UK100) with its twin Jax9-J. The search keeps running every hour; this paragraph is a snapshot, the board is live.</p>", today());
+        let _ = write!(
+            h,
+            "<p class=\"dim small\">As of {}: about 5,000 genomes tried, one seated (Jax9, a New York opening-range follower on US500, NAS100, US30 and UK100) with its twin Jax9-J. The search keeps running every hour; this paragraph is a snapshot, the board is live.</p>",
+            today()
+        );
 
         // ---- 7. one trader --------------------------------------------------------
         h.push_str("<h2 id=\"trader-panel\">7. Reading one trader</h2>");

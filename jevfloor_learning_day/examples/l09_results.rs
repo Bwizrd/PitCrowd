@@ -12,10 +12,7 @@ fn parse_price(text: &str) -> Result<i64, std::num::ParseIntError> {
 }
 
 fn price_plus_one(text: &str) -> Result<i64, std::num::ParseIntError> {
-    let price = match parse_price(text) {
-        Ok(p) => p,              // got the parcel: use the number
-        Err(e) => return Err(e), // got a note: stop and pass it up
-    };
+    let price = parse_price(text)?;
     Ok(price + 1)
 }
 

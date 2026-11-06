@@ -11,12 +11,12 @@ use crate::candles::wall_clock_ms;
 use crate::desk_feed::DeskFeed;
 use crate::jev::relay_url;
 use crate::live_feed::LiveFeed;
-use crate::panels::{spawn_close_button, Panel, PanelId};
+use crate::panels::{Panel, PanelId, spawn_close_button};
 use crate::paper::day_start_ms;
-use crate::paper_avatars::{instrument_for_symbol, LineTone};
+use crate::paper_avatars::{LineTone, instrument_for_symbol};
 use crate::pit::{format_price_with_commas, instrument_decimals};
 use crate::pit_engine::tick_size;
-use crate::ticket::{ticket_trader, Ticket, DEFAULT_TICKET_TRADER};
+use crate::ticket::{DEFAULT_TICKET_TRADER, Ticket, ticket_trader};
 
 const POLL_SECS: f64 = 3.0;
 /// Text spans kept for the pane's lines; closed trades past this many are summed, not listed.
@@ -48,7 +48,11 @@ impl ClosedTrade {
             exit: v.get("exit")?.as_f64()?,
             closed_ms: v.get("closed_ms")?.as_i64()?,
             pnl_r: v.get("pnl_r")?.as_f64()?,
-            why_out: v.get("why_out").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+            why_out: v
+                .get("why_out")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .to_string(),
         })
     }
 }
@@ -83,12 +87,24 @@ pub fn positions_lines(open: Option<&OpenLine>, closed: &[ClosedTrade]) -> Vec<(
     match open {
         Some((sym, side, entry, stop, target, r)) => {
             out.push((format!("OPEN (1)   open P&L {r:+.2}R"), LineTone::Pnl(*r)));
-            let t = target.map(|t| px(sym, t as f64)).unwrap_or_else(|| "none".into());
-            out.push((format!("  {sym} {side} from {}  stop {}  target {t}   {r:+.2}R", px(sym, *entry as f64), px(sym, *stop as f64)), LineTone::Pnl(*r)));
+            let t = target
+                .map(|t| px(sym, t as f64))
+                .unwrap_or_else(|| "none".into());
+            out.push((
+                format!(
+                    "  {sym} {side} from {}  stop {}  target {t}   {r:+.2}R",
+                    px(sym, *entry as f64),
+                    px(sym, *stop as f64)
+                ),
+                LineTone::Pnl(*r),
+            ));
         }
         None => {
             out.push(("OPEN (0)".into(), LineTone::Head));
-            out.push(("  none: use the trade ticket to open one".into(), LineTone::Plain));
+            out.push((
+                "  none: use the trade ticket to open one".into(),
+                LineTone::Plain,
+            ));
         }
     }
     let total: f64 = closed.iter().map(|c| c.pnl_r).sum();
@@ -97,20 +113,41 @@ pub fn positions_lines(open: Option<&OpenLine>, closed: &[ClosedTrade]) -> Vec<(
         out.push(("CLOSED TODAY (0)".into(), LineTone::Head));
         out.push(("  none yet".into(), LineTone::Plain));
     } else {
-        out.push((format!("CLOSED TODAY ({})   {wins} won   total {total:+.2}R", closed.len()), LineTone::Pnl(total as f32)));
+        out.push((
+            format!(
+                "CLOSED TODAY ({})   {wins} won   total {total:+.2}R",
+                closed.len()
+            ),
+            LineTone::Pnl(total as f32),
+        ));
         let room = LINES.saturating_sub(out.len() + 2);
         for c in closed.iter().rev().take(room) {
             out.push((
-                format!("  {} {:<7} {:<5} {} -> {}  {:+.2}R  {}", hm(c.closed_ms), c.symbol, c.side, px(&c.symbol, c.entry), px(&c.symbol, c.exit), c.pnl_r, c.why_out),
+                format!(
+                    "  {} {:<7} {:<5} {} -> {}  {:+.2}R  {}",
+                    hm(c.closed_ms),
+                    c.symbol,
+                    c.side,
+                    px(&c.symbol, c.entry),
+                    px(&c.symbol, c.exit),
+                    c.pnl_r,
+                    c.why_out
+                ),
                 LineTone::Pnl(c.pnl_r as f32),
             ));
         }
         if closed.len() > room {
-            out.push((format!("  ... and {} earlier, in the total", closed.len() - room), LineTone::Plain));
+            out.push((
+                format!("  ... and {} earlier, in the total", closed.len() - room),
+                LineTone::Plain,
+            ));
         }
     }
     let open_r = open.map(|o| o.5 as f64).unwrap_or(0.0);
-    out.push((format!("TODAY IN ALL (closed + open): {:+.2}R", total + open_r), LineTone::Pnl((total + open_r) as f32)));
+    out.push((
+        format!("TODAY IN ALL (closed + open): {:+.2}R", total + open_r),
+        LineTone::Pnl((total + open_r) as f32),
+    ));
     out
 }
 
@@ -138,16 +175,53 @@ pub fn setup_positions_panel(mut commands: Commands) {
         .with_children(|panel| {
             let me = panel.target_entity();
             panel
-                .spawn(Node { flex_direction: FlexDirection::Row, justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Center, width: Val::Percent(100.0), ..default() })
+                .spawn(Node {
+                    flex_direction: FlexDirection::Row,
+                    justify_content: JustifyContent::SpaceBetween,
+                    align_items: AlignItems::Center,
+                    width: Val::Percent(100.0),
+                    ..default()
+                })
                 .with_children(|row| {
-                    row.spawn((PositionsTitle, Text::new(format!("POSITIONS  |  paper, {DEFAULT_TICKET_TRADER}, today (UTC)")), TextFont { font_size: 11.0, ..default() }, TextColor(Color::srgb(0.55, 1.0, 0.65)), Node { flex_grow: 1.0, ..default() }));
+                    row.spawn((
+                        PositionsTitle,
+                        Text::new(format!(
+                            "POSITIONS  |  paper, {DEFAULT_TICKET_TRADER}, today (UTC)"
+                        )),
+                        TextFont {
+                            font_size: 11.0,
+                            ..default()
+                        },
+                        TextColor(Color::srgb(0.55, 1.0, 0.65)),
+                        Node {
+                            flex_grow: 1.0,
+                            ..default()
+                        },
+                    ));
                     spawn_close_button(row, me);
                 });
-            panel.spawn((Text::new(""), TextFont { font_size: 10.0, ..default() }, TextColor(LineTone::Plain.color()))).with_children(|text| {
-                for i in 0..LINES {
-                    text.spawn((PositionsLine(i), TextSpan::new(""), TextFont { font_size: 10.0, ..default() }, TextColor(LineTone::Plain.color())));
-                }
-            });
+            panel
+                .spawn((
+                    Text::new(""),
+                    TextFont {
+                        font_size: 10.0,
+                        ..default()
+                    },
+                    TextColor(LineTone::Plain.color()),
+                ))
+                .with_children(|text| {
+                    for i in 0..LINES {
+                        text.spawn((
+                            PositionsLine(i),
+                            TextSpan::new(""),
+                            TextFont {
+                                font_size: 10.0,
+                                ..default()
+                            },
+                            TextColor(LineTone::Plain.color()),
+                        ));
+                    }
+                });
         });
 }
 
@@ -157,9 +231,17 @@ pub fn poll_positions(time: Res<Time>, desk: Res<DeskFeed>, mut feed: ResMut<Pos
     let done = feed.pending.lock().ok().and_then(|mut p| p.take());
     if let Some(res) = done {
         feed.in_flight = false;
-        match res.and_then(|text| serde_json::from_str::<serde_json::Value>(&text).map_err(|e| e.to_string())) {
+        match res.and_then(|text| {
+            serde_json::from_str::<serde_json::Value>(&text).map_err(|e| e.to_string())
+        }) {
             Ok(v) => {
-                feed.closed = v.get("trades").and_then(|t| t.as_array()).into_iter().flatten().filter_map(ClosedTrade::from_json).collect();
+                feed.closed = v
+                    .get("trades")
+                    .and_then(|t| t.as_array())
+                    .into_iter()
+                    .flatten()
+                    .filter_map(ClosedTrade::from_json)
+                    .collect();
                 feed.last_error = None;
             }
             Err(e) => feed.last_error = Some(e),
@@ -172,7 +254,10 @@ pub fn poll_positions(time: Res<Time>, desk: Res<DeskFeed>, mut feed: ResMut<Pos
     feed.in_flight = true;
     let since = day_start_ms(wall_clock_ms());
     let name = url_encode(ticket_trader(desk.live_board(time.elapsed_secs_f64())));
-    let req = ehttp::Request::get(format!("{}/paper/trades?since_ms={since}&trader={name}&source=desk&limit=2000", relay_url()));
+    let req = ehttp::Request::get(format!(
+        "{}/paper/trades?since_ms={since}&trader={name}&source=desk&limit=2000",
+        relay_url()
+    ));
     let pending = feed.pending.clone();
     ehttp::fetch(req, move |res| {
         let out = match res {
@@ -203,22 +288,39 @@ pub fn update_positions_panel(
     *next = time.elapsed_secs() + 0.5;
     let board = desk.live_board(time.elapsed_secs_f64());
     for mut t in title.iter_mut() {
-        crate::pit::set_ui_text(&mut t, format!("POSITIONS  |  paper, {}, today (UTC)", ticket_trader(board)));
+        crate::pit::set_ui_text(
+            &mut t,
+            format!("POSITIONS  |  paper, {}, today (UTC)", ticket_trader(board)),
+        );
     }
-    let open: Option<OpenLine> = board.and_then(|b| b.traders.iter().find(|t| t.trader == ticket_trader(board))).and_then(|t| t.open.as_ref()).map(|o| {
-        // Marked at this tab's own feed, like the Traders table.
-        let r = instrument_for_symbol(&o.symbol)
-            .and_then(|i| live.quote(i).map(|q| (i, q)))
-            .filter(|_| o.stop != 0.0)
-            .map(|(i, q)| {
-                let tick = tick_size(i);
-                let stop_ticks = ((o.entry - o.stop).abs() / tick).max(1.0);
-                let ticks = if o.side == "long" { (q.price as f32 - o.entry) / tick } else { (o.entry - q.ask as f32) / tick };
-                ticks / stop_ticks
-            })
-            .unwrap_or(o.open_r);
-        (o.symbol.replace('/', ""), o.side.clone(), o.entry, o.stop, o.target, r)
-    });
+    let open: Option<OpenLine> = board
+        .and_then(|b| b.traders.iter().find(|t| t.trader == ticket_trader(board)))
+        .and_then(|t| t.open.as_ref())
+        .map(|o| {
+            // Marked at this tab's own feed, like the Traders table.
+            let r = instrument_for_symbol(&o.symbol)
+                .and_then(|i| live.quote(i).map(|q| (i, q)))
+                .filter(|_| o.stop != 0.0)
+                .map(|(i, q)| {
+                    let tick = tick_size(i);
+                    let stop_ticks = ((o.entry - o.stop).abs() / tick).max(1.0);
+                    let ticks = if o.side == "long" {
+                        (q.price as f32 - o.entry) / tick
+                    } else {
+                        (o.entry - q.ask as f32) / tick
+                    };
+                    ticks / stop_ticks
+                })
+                .unwrap_or(o.open_r);
+            (
+                o.symbol.replace('/', ""),
+                o.side.clone(),
+                o.entry,
+                o.stop,
+                o.target,
+                r,
+            )
+        });
     let mut lines = positions_lines(open.as_ref(), &feed.closed);
     if let Some(e) = &feed.last_error {
         lines.push((format!("closed trades: {e}"), LineTone::Plain));
@@ -226,11 +328,21 @@ pub fn update_positions_panel(
     write_lines(&mut spans, &lines);
 }
 
-fn write_lines(spans: &mut Query<(&PositionsLine, &mut TextSpan, &mut TextColor)>, lines: &[(String, LineTone)]) {
+fn write_lines(
+    spans: &mut Query<(&PositionsLine, &mut TextSpan, &mut TextColor)>,
+    lines: &[(String, LineTone)],
+) {
     let n = lines.len().min(LINES);
     for (line, mut span, mut color) in spans.iter_mut() {
         let (text, tone) = match lines.get(line.0).filter(|_| line.0 < n) {
-            Some((t, tone)) => (if line.0 + 1 < n { format!("{t}\n") } else { t.clone() }, *tone),
+            Some((t, tone)) => (
+                if line.0 + 1 < n {
+                    format!("{t}\n")
+                } else {
+                    t.clone()
+                },
+                *tone,
+            ),
             None => (String::new(), LineTone::Plain),
         };
         if span.0 != text {
@@ -244,7 +356,15 @@ fn write_lines(spans: &mut Query<(&PositionsLine, &mut TextSpan, &mut TextColor)
 
 /// Percent-encodes a query value (a name with a space in it), leaving the unreserved set.
 fn url_encode(s: &str) -> String {
-    s.bytes().map(|b| if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect()
+    s.bytes()
+        .map(|b| {
+            if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) {
+                (b as char).to_string()
+            } else {
+                format!("%{b:02X}")
+            }
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -258,19 +378,49 @@ mod tests {
     }
 
     fn closed(r: f64, at: i64) -> ClosedTrade {
-        ClosedTrade { symbol: "XAUUSD".into(), side: "long".into(), entry: 2000.2, exit: 2000.2 + r, closed_ms: at, pnl_r: r, why_out: "target".into() }
+        ClosedTrade {
+            symbol: "XAUUSD".into(),
+            side: "long".into(),
+            entry: 2000.2,
+            exit: 2000.2 + r,
+            closed_ms: at,
+            pnl_r: r,
+            why_out: "target".into(),
+        }
     }
 
     #[test]
     fn open_and_closed_are_listed_with_their_totals_and_colours() {
-        let open: OpenLine = ("US500".into(), "short".into(), 6000.0, 6010.0, Some(5980.0), -0.4);
+        let open: OpenLine = (
+            "US500".into(),
+            "short".into(),
+            6000.0,
+            6010.0,
+            Some(5980.0),
+            -0.4,
+        );
         let lines = positions_lines(Some(&open), &[closed(2.0, 1_000), closed(-1.0, 2_000)]);
         let text: Vec<&str> = lines.iter().map(|l| l.0.as_str()).collect();
-        assert!(text[0].starts_with("OPEN (1)") && lines[0].1 == LineTone::Pnl(-0.4), "{text:?}");
-        assert!(text[2].starts_with("CLOSED TODAY (2)   1 won   total +1.00R"), "{text:?}");
-        assert!(text[3].contains("-1.00R") && text[4].contains("+2.00R"), "newest first: {text:?}");
-        assert_eq!((lines[3].1, lines[4].1), (LineTone::Pnl(-1.0), LineTone::Pnl(2.0)));
-        assert_eq!(text.last().unwrap(), &"TODAY IN ALL (closed + open): +0.60R");
+        assert!(
+            text[0].starts_with("OPEN (1)") && lines[0].1 == LineTone::Pnl(-0.4),
+            "{text:?}"
+        );
+        assert!(
+            text[2].starts_with("CLOSED TODAY (2)   1 won   total +1.00R"),
+            "{text:?}"
+        );
+        assert!(
+            text[3].contains("-1.00R") && text[4].contains("+2.00R"),
+            "newest first: {text:?}"
+        );
+        assert_eq!(
+            (lines[3].1, lines[4].1),
+            (LineTone::Pnl(-1.0), LineTone::Pnl(2.0))
+        );
+        assert_eq!(
+            text.last().unwrap(),
+            &"TODAY IN ALL (closed + open): +0.60R"
+        );
         let none = positions_lines(None, &[]);
         assert!(none[0].0.starts_with("OPEN (0)") && none[2].0.starts_with("CLOSED TODAY (0)"));
     }

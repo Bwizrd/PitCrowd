@@ -29,11 +29,11 @@ mod fade {
     use std::path::PathBuf;
 
     use opencry_visual::candles::Candle;
-    use opencry_visual::levels::{compose, detect_levels, round_step, tape_symbol, LEVEL_NODES};
+    use opencry_visual::levels::{LEVEL_NODES, compose, detect_levels, round_step, tape_symbol};
     use opencry_visual::market::Instrument;
     use opencry_visual::paper::MIN_STOP_SPREADS;
     use opencry_visual::pit_engine::tick_size;
-    use opencry_visual::reaction::{unit_ticks, Side, Step, TouchTracker};
+    use opencry_visual::reaction::{Side, Step, TouchTracker, unit_ticks};
     use opencry_visual::report::Session;
     use opencry_visual::tape_chart::BOARD_BARS;
 
@@ -84,7 +84,16 @@ mod fade {
                 continue;
             }
             let p = |i: usize| v[i].parse::<f32>().unwrap_or(0.0);
-            out.push(Candle { time_ms: v[0].parse().unwrap_or(0), open: p(1), high: p(2), low: p(3), close: p(4), volume: p(5), delta: 0.0, sweep: 0.0 });
+            out.push(Candle {
+                time_ms: v[0].parse().unwrap_or(0),
+                open: p(1),
+                high: p(2),
+                low: p(3),
+                close: p(4),
+                volume: p(5),
+                delta: 0.0,
+                sweep: 0.0,
+            });
         }
         Ok(out)
     }
@@ -112,13 +121,30 @@ mod fade {
     }
 
     /// One fade: R after spread, whether it hit target, whether it timed out.
-    fn trade(bars: &[Candle], i: usize, long: bool, entry: f32, stop: f32, target_r: f32, spread: f32, tick: f32) -> (f32, bool, bool) {
+    fn trade(
+        bars: &[Candle],
+        i: usize,
+        long: bool,
+        entry: f32,
+        stop: f32,
+        target_r: f32,
+        spread: f32,
+        tick: f32,
+    ) -> (f32, bool, bool) {
         let risk = (entry - stop).abs();
-        let target = if long { entry + target_r * risk } else { entry - target_r * risk };
+        let target = if long {
+            entry + target_r * risk
+        } else {
+            entry - target_r * risk
+        };
         let cost = spread * tick / risk;
         let end = (i + HOLD_BARS).min(bars.len() - 1);
         for b in &bars[i + 1..=end] {
-            let (hit_stop, hit_target) = if long { (b.low <= stop, b.high >= target) } else { (b.high >= stop, b.low <= target) };
+            let (hit_stop, hit_target) = if long {
+                (b.low <= stop, b.high >= target)
+            } else {
+                (b.high >= stop, b.low <= target)
+            };
             if hit_stop {
                 return (-1.0 - cost, false, false);
             }
@@ -127,25 +153,47 @@ mod fade {
             }
         }
         let c = bars[end].close;
-        let r = if long { (c - entry) / risk } else { (entry - c) / risk };
+        let r = if long {
+            (c - entry) / risk
+        } else {
+            (entry - c) / risk
+        };
         (r - cost, r > 0.0, true)
     }
 
     pub fn run() -> Result<(), String> {
-        let want: Option<Vec<String>> = std::env::args().skip_while(|a| a != "--symbols").nth(1).map(|s| s.split(',').map(|x| x.trim().to_uppercase()).collect());
+        let want: Option<Vec<String>> = std::env::args()
+            .skip_while(|a| a != "--symbols")
+            .nth(1)
+            .map(|s| s.split(',').map(|x| x.trim().to_uppercase()).collect());
         // `--floor 0` drops the minimum stop, to see the level's own stop.
-        let floor: f32 = std::env::args().skip_while(|a| a != "--floor").nth(1).map(|s| s.parse().unwrap_or(MIN_STOP_SPREADS)).unwrap_or(MIN_STOP_SPREADS);
+        let floor: f32 = std::env::args()
+            .skip_while(|a| a != "--floor")
+            .nth(1)
+            .map(|s| s.parse().unwrap_or(MIN_STOP_SPREADS))
+            .unwrap_or(MIN_STOP_SPREADS);
         // `--tf 15` builds 15m bars from the 1m cache; levels, units and the hold are then in those bars.
-        let tf: i64 = std::env::args().skip_while(|a| a != "--tf").nth(1).and_then(|s| s.parse().ok()).unwrap_or(1);
+        let tf: i64 = std::env::args()
+            .skip_while(|a| a != "--tf")
+            .nth(1)
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(1);
         let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         // (config, group) -> acc
         let mut acc: BTreeMap<(String, String), Acc> = BTreeMap::new();
-        for inst in Instrument::ALL.iter().copied().filter(|i| *i != Instrument::Bitcoin) {
+        for inst in Instrument::ALL
+            .iter()
+            .copied()
+            .filter(|i| *i != Instrument::Bitcoin)
+        {
             let sym = tape_symbol(inst);
             if want.as_ref().is_some_and(|w| !w.contains(&sym)) {
                 continue;
             }
-            let bars = aggregate(&read_cache(&manifest.join(format!("replay_out/bars_cache/{sym}_SB_1m.txt")))?, tf);
+            let bars = aggregate(
+                &read_cache(&manifest.join(format!("replay_out/bars_cache/{sym}_SB_1m.txt")))?,
+                tf,
+            );
             let (tick, round, spread) = (tick_size(inst), round_step(inst), spread_ticks(inst));
             let mut tracker = TouchTracker::default();
             let mut touches = 0u64;
@@ -155,37 +203,63 @@ mod fade {
                 let levels = compose(detect_levels(window, tick, round), LEVEL_NODES * 2);
                 let unit = unit_ticks(window, tick);
                 let bar = &bars[i];
-                let ts = tracker.step(&levels, Step::bar(bar), bar.time_ms, bar.time_ms, tick, unit);
-                if ts.is_empty() || bars[i + HOLD_BARS].time_ms - bar.time_ms > 3 * HOLD_BARS as i64 * tf * 60_000 {
+                let ts = tracker.step(
+                    &levels,
+                    Step::bar(bar),
+                    bar.time_ms,
+                    bar.time_ms,
+                    tick,
+                    unit,
+                );
+                if ts.is_empty()
+                    || bars[i + HOLD_BARS].time_ms - bar.time_ms
+                        > 3 * HOLD_BARS as i64 * tf * 60_000
+                {
                     continue;
                 }
                 for t in ts {
                     touches += 1;
                     let long = t.side == Side::FromAbove;
                     let entry = bar.close;
-                    let fresh = levels.iter().find(|l| l.kind == t.kind && l.lo == t.lo && l.hi == t.hi).map(|l| !l.touched).unwrap_or(false);
+                    let fresh = levels
+                        .iter()
+                        .find(|l| l.kind == t.kind && l.lo == t.lo && l.hi == t.hi)
+                        .map(|l| !l.touched)
+                        .unwrap_or(false);
                     let back = bars[i.saturating_sub(5)].close;
                     let speed = ((entry - back).abs() / tick) / unit;
                     let approach = if speed >= 2.0 { "fast" } else { "slow" };
                     let session = format!("{:?}", Session::of_ms(bar.time_ms));
                     let kind = format!("{} {}", t.kind.tag(), t.side.label());
                     for &buf in &BUFFERS {
-                        let far = if long { t.lo - buf * unit * tick } else { t.hi + buf * unit * tick };
+                        let far = if long {
+                            t.lo - buf * unit * tick
+                        } else {
+                            t.hi + buf * unit * tick
+                        };
                         let min_risk = (floor * spread).max(1.0) * tick;
-                        let stop = if long { far.min(entry - min_risk) } else { far.max(entry + min_risk) };
+                        let stop = if long {
+                            far.min(entry - min_risk)
+                        } else {
+                            far.max(entry + min_risk)
+                        };
                         if (long && entry <= stop) || (!long && entry >= stop) {
                             continue;
                         }
                         for &tr in &TARGETS {
-                            let (r, won, timed) = trade(&bars, i, long, entry, stop, tr, spread, tick);
+                            let (r, won, timed) =
+                                trade(&bars, i, long, entry, stop, tr, spread, tick);
                             let cfg = format!("stop +{buf:.1}u target {tr:.1}R");
                             for g in [
                                 format!("kind  {kind}"),
-                                format!("kfrsh {kind} {}", if fresh { "untouched" } else { "touched" }),
+                                format!(
+                                    "kfrsh {kind} {}",
+                                    if fresh { "untouched" } else { "touched" }
+                                ),
                                 format!("kappr {kind} {approach}"),
                                 format!("ksym  {kind} {sym}"),
                                 format!("ksess {kind} {session}"),
-                                format!("all"),
+                                "all".to_string(),
                             ] {
                                 acc.entry((cfg.clone(), g)).or_default().add(r, won, timed);
                             }
@@ -197,20 +271,38 @@ mod fade {
         }
         let mut cfgs: Vec<&String> = acc.keys().map(|(c, _)| c).collect();
         cfgs.dedup();
-        println!("LEVEL FADE  every touch, fade it: enter at the touch bar close, stop beyond the far edge (>= {floor} spreads), out after {HOLD_BARS} bars of {tf}m; R after spread\n");
+        println!(
+            "LEVEL FADE  every touch, fade it: enter at the touch bar close, stop beyond the far edge (>= {floor} spreads), out after {HOLD_BARS} bars of {tf}m; R after spread\n"
+        );
         println!("== every config, all touches and the best kinds");
         for c in &cfgs {
             for ((cc, g), a) in &acc {
                 if cc == *c && (g == "all" || (g.starts_with("kind ") && a.n >= 1000)) {
-                    println!("{c:<22} {g:<36} n {:>7}  win {:>3.0}%  timed {:>3.0}%  R/tr {:+.3}", a.n, 100.0 * a.wins as f64 / a.n as f64, 100.0 * a.timed as f64 / a.n as f64, a.r / a.n as f64);
+                    println!(
+                        "{c:<22} {g:<36} n {:>7}  win {:>3.0}%  timed {:>3.0}%  R/tr {:+.3}",
+                        a.n,
+                        100.0 * a.wins as f64 / a.n as f64,
+                        100.0 * a.timed as f64 / a.n as f64,
+                        a.r / a.n as f64
+                    );
                 }
             }
         }
         println!("\n== every cell with n >= 300, ranked by R per trade (top 60)");
-        let mut cells: Vec<(&(String, String), &Acc)> = acc.iter().filter(|(_, a)| a.n >= 300).collect();
-        cells.sort_by(|a, b| (b.1.r / b.1.n as f64).partial_cmp(&(a.1.r / a.1.n as f64)).unwrap());
+        let mut cells: Vec<(&(String, String), &Acc)> =
+            acc.iter().filter(|(_, a)| a.n >= 300).collect();
+        cells.sort_by(|a, b| {
+            (b.1.r / b.1.n as f64)
+                .partial_cmp(&(a.1.r / a.1.n as f64))
+                .unwrap()
+        });
         for ((c, g), a) in cells.iter().take(60) {
-            println!("{c:<22} {g:<44} n {:>7}  win {:>3.0}%  R/tr {:+.3}", a.n, 100.0 * a.wins as f64 / a.n as f64, a.r / a.n as f64);
+            println!(
+                "{c:<22} {g:<44} n {:>7}  win {:>3.0}%  R/tr {:+.3}",
+                a.n,
+                100.0 * a.wins as f64 / a.n as f64,
+                a.r / a.n as f64
+            );
         }
         Ok(())
     }

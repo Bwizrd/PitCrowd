@@ -20,12 +20,12 @@ use std::sync::{Arc, Mutex};
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::candles::{wall_clock_ms, CandleStore, ChartSettings, Timeframe};
+use crate::candles::{CandleStore, ChartSettings, Timeframe, wall_clock_ms};
 use crate::levels::{Level, LevelStore};
 use crate::live_feed::{FeedMode, LiveFeed, PitFeedStatus, TickFlow};
 use crate::market::Instrument;
 use crate::pit::{instrument_decimals, set_ui_text};
-use crate::pit_engine::{tick_size, FloorRead, PitEngines};
+use crate::pit_engine::{FloorRead, PitEngines, tick_size};
 use crate::scenario::MarketScenarioController;
 use crate::ui::Selection;
 
@@ -142,11 +142,28 @@ impl MarketObservation {
             .map(|l| {
                 let px = price as f32;
                 // Where the level sits relative to price: above is positive, below negative.
-                let distance = if px < l.lo { (l.lo - px) / tick } else if px > l.hi { (l.hi - px) / tick } else { 0.0 };
-                ObsLevel { kind: l.kind.tag().to_string(), lo: l.lo, hi: l.hi, distance_ticks: distance, touched: l.touched }
+                let distance = if px < l.lo {
+                    (l.lo - px) / tick
+                } else if px > l.hi {
+                    (l.hi - px) / tick
+                } else {
+                    0.0
+                };
+                ObsLevel {
+                    kind: l.kind.tag().to_string(),
+                    lo: l.lo,
+                    hi: l.hi,
+                    distance_ticks: distance,
+                    touched: l.touched,
+                }
             })
             .collect();
-        obs_levels.sort_by(|a, b| a.distance_ticks.abs().partial_cmp(&b.distance_ticks.abs()).unwrap());
+        obs_levels.sort_by(|a, b| {
+            a.distance_ticks
+                .abs()
+                .partial_cmp(&b.distance_ticks.abs())
+                .unwrap()
+        });
         obs_levels.truncate(OBS_LEVELS);
         Self {
             symbol: inst.symbol().to_string(),
@@ -172,7 +189,9 @@ impl MarketObservation {
 
     /// The level price is at, if any.
     pub fn level_at_price(&self) -> Option<&ObsLevel> {
-        self.levels.iter().find(|l| l.distance_ticks.abs() <= AT_LEVEL_TICKS)
+        self.levels
+            .iter()
+            .find(|l| l.distance_ticks.abs() <= AT_LEVEL_TICKS)
     }
 
     /// Net change over the bars, in ticks.
@@ -187,8 +206,17 @@ impl MarketObservation {
     pub fn state_text(&self) -> String {
         let d = self.decimals;
         let mut s = String::with_capacity(2048);
-        s.push_str(&format!("INSTRUMENT: {} ({}), tick {}\n", self.name, self.symbol, fmt_f(self.tick_size as f64, d)));
-        s.push_str(&format!("TIME: {} UTC, bars of {}\n", hhmm(self.at_ms), self.timeframe));
+        s.push_str(&format!(
+            "INSTRUMENT: {} ({}), tick {}\n",
+            self.name,
+            self.symbol,
+            fmt_f(self.tick_size as f64, d)
+        ));
+        s.push_str(&format!(
+            "TIME: {} UTC, bars of {}\n",
+            hhmm(self.at_ms),
+            self.timeframe
+        ));
         s.push_str(&format!("LAST PRICE: {}\n", fmt_f(self.price, d)));
         s.push_str(&format!(
             "LAST {} BARS, oldest first (open high low close | delta = upticks minus downticks | sweep = largest move in ticks):\n",
@@ -210,7 +238,10 @@ impl MarketObservation {
                 b.sweep
             ));
         }
-        s.push_str(&format!("NET CHANGE OVER THESE BARS: {:+.0} ticks\n", self.net_change_ticks()));
+        s.push_str(&format!(
+            "NET CHANGE OVER THESE BARS: {:+.0} ticks\n",
+            self.net_change_ticks()
+        ));
         let t = &self.tape;
         if t.ticks == 0 {
             s.push_str("TAPE (last 20 s): no ticks\n");
@@ -227,7 +258,12 @@ impl MarketObservation {
         if m.bid_sizes.is_empty() && m.ask_sizes.is_empty() {
             s.push_str(&format!("TOUCH: spread {:.0} ticks\n", m.spread_ticks));
         } else {
-            let sizes = |v: &[f32]| v.iter().map(|x| format!("{x}")).collect::<Vec<_>>().join("/");
+            let sizes = |v: &[f32]| {
+                v.iter()
+                    .map(|x| format!("{x}"))
+                    .collect::<Vec<_>>()
+                    .join("/")
+            };
             s.push_str(&format!(
                 "TOUCH: spread {:.0} ticks, broker ladder sizes bid {} ask {} (best first)\n",
                 m.spread_ticks,
@@ -246,12 +282,22 @@ impl MarketObservation {
                     fmt_f(l.lo as f64, d),
                     fmt_f(l.hi as f64, d),
                     l.distance_ticks,
-                    if l.touched { " (already traded into once)" } else { "" }
+                    if l.touched {
+                        " (already traded into once)"
+                    } else {
+                        ""
+                    }
                 ));
             }
         }
         if let Some(t) = &self.trigger {
-            let band = format!("{} {}..{} {}", t.level, fmt_f(t.lo as f64, d), fmt_f(t.hi as f64, d), t.side);
+            let band = format!(
+                "{} {}..{} {}",
+                t.level,
+                fmt_f(t.lo as f64, d),
+                fmt_f(t.hi as f64, d),
+                t.side
+            );
             if t.kind == "follow" {
                 s.push_str(&format!("TRIGGER: {:.0} s after price touched {band}; this read was asked to see how the reaction at that level is developing\n", t.secs_since));
             } else {
@@ -294,9 +340,17 @@ pub fn fnv64(s: &str) -> String {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum JevQuestion {
-    Noul { instructions: String },
-    Choice { instructions: String, criteria: HashMap<String, String> },
-    Score { instructions: String, criteria: Vec<String> },
+    Noul {
+        instructions: String,
+    },
+    Choice {
+        instructions: String,
+        criteria: HashMap<String, String>,
+    },
+    Score {
+        instructions: String,
+        criteria: Vec<String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -347,9 +401,18 @@ struct SystemOneBody<'a> {
 pub fn floor_questions() -> HashMap<String, JevQuestion> {
     let mut q = HashMap::new();
     let mut dir = HashMap::new();
-    dir.insert("up".to_string(), "price works higher over the next few bars".to_string());
-    dir.insert("down".to_string(), "price works lower over the next few bars".to_string());
-    dir.insert("flat".to_string(), "price chops or pauses; no clear direction".to_string());
+    dir.insert(
+        "up".to_string(),
+        "price works higher over the next few bars".to_string(),
+    );
+    dir.insert(
+        "down".to_string(),
+        "price works lower over the next few bars".to_string(),
+    );
+    dir.insert(
+        "flat".to_string(),
+        "price chops or pauses; no clear direction".to_string(),
+    );
     q.insert(
         "direction".to_string(),
         JevQuestion::Choice {
@@ -371,7 +434,8 @@ pub fn floor_questions() -> HashMap<String, JevQuestion> {
     q.insert(
         "continuation".to_string(),
         JevQuestion::Noul {
-            instructions: "Is the move of the last few bars more likely to continue than to reverse?".into(),
+            instructions:
+                "Is the move of the last few bars more likely to continue than to reverse?".into(),
         },
     );
     q.insert(
@@ -382,10 +446,23 @@ pub fn floor_questions() -> HashMap<String, JevQuestion> {
     );
     let mut reaction = HashMap::new();
     reaction.insert("absorbing".to_string(), "price is at a level, the tick rate is up, and price is not getting through: something is taking everything".to_string());
-    reaction.insert("rejecting".to_string(), "price touched a level and is turning away from it quickly".to_string());
-    reaction.insert("sweeping".to_string(), "price pushed a few ticks through a level, stalled, and is coming back: a stop run".to_string());
-    reaction.insert("breaking".to_string(), "price is going through a level cleanly with follow-through".to_string());
-    reaction.insert("no_level".to_string(), "price is not at any of the listed levels".to_string());
+    reaction.insert(
+        "rejecting".to_string(),
+        "price touched a level and is turning away from it quickly".to_string(),
+    );
+    reaction.insert(
+        "sweeping".to_string(),
+        "price pushed a few ticks through a level, stalled, and is coming back: a stop run"
+            .to_string(),
+    );
+    reaction.insert(
+        "breaking".to_string(),
+        "price is going through a level cleanly with follow-through".to_string(),
+    );
+    reaction.insert(
+        "no_level".to_string(),
+        "price is not at any of the listed levels".to_string(),
+    );
     q.insert(
         "level_reaction".to_string(),
         JevQuestion::Choice {
@@ -445,9 +522,15 @@ pub enum AskRule {
     /// A choice names a direction relative to the touched level; unlisted choices pass, and
     /// so does a choice Jev holds under `min` (a choice is only the largest of several
     /// probabilities, so a 9% "break" is not a call).
-    LevelChoice { map: &'static [(&'static str, LevelSide)], min: f32 },
+    LevelChoice {
+        map: &'static [(&'static str, LevelSide)],
+        min: f32,
+    },
     /// A choice names an absolute side; unlisted or under-confident choices pass.
-    Choice { map: &'static [(&'static str, AskSide)], min: f32 },
+    Choice {
+        map: &'static [(&'static str, AskSide)],
+        min: f32,
+    },
     /// A yes-probability at or over `min` trades relative to the touched level.
     NoulLevel { min: f32, side: LevelSide },
     /// A yes-probability at or over `min` trades with Jev's direction lean, or against it.
@@ -465,10 +548,22 @@ pub static ASK_TOUCH_OUTCOME: JevAsk = JevAsk {
     key: "touch_outcome",
     touch_only: true,
     kind: AskKind::Choice(&[
-        ("reject", "price never trades through the far edge of the level and is at least half a unit back the way it came within fifteen minutes"),
-        ("break", "price is at least half a unit beyond the far edge within fifteen minutes and stays there"),
-        ("sweep", "price trades through the far edge by a tick or more, then comes back to the near side"),
-        ("stall", "price is still sitting at the level after fifteen minutes, within half a unit either side"),
+        (
+            "reject",
+            "price never trades through the far edge of the level and is at least half a unit back the way it came within fifteen minutes",
+        ),
+        (
+            "break",
+            "price is at least half a unit beyond the far edge within fifteen minutes and stays there",
+        ),
+        (
+            "sweep",
+            "price trades through the far edge by a tick or more, then comes back to the near side",
+        ),
+        (
+            "stall",
+            "price is still sitting at the level after fifteen minutes, within half a unit either side",
+        ),
     ]),
     instructions: "Price has just touched the level named in TRIGGER. From the tape, the bars and the ladder, what will price have done at that level fifteen minutes from now? A unit is the mean bar range.",
 };
@@ -494,8 +589,14 @@ pub static ASK_TAPE_STATE: JevAsk = JevAsk {
     key: "tape_state",
     touch_only: false,
     kind: AskKind::Choice(&[
-        ("one_way_buying", "the last 20 seconds are mostly upticks at a rising rate: the asks are being lifted"),
-        ("one_way_selling", "the last 20 seconds are mostly downticks at a rising rate: the bids are being hit"),
+        (
+            "one_way_buying",
+            "the last 20 seconds are mostly upticks at a rising rate: the asks are being lifted",
+        ),
+        (
+            "one_way_selling",
+            "the last 20 seconds are mostly downticks at a rising rate: the bids are being hit",
+        ),
         ("two_way", "ticks both ways, nobody in charge"),
         ("dead", "few ticks, nothing happening"),
     ]),
@@ -505,11 +606,26 @@ pub static ASK_BAR_SHAPE: JevAsk = JevAsk {
     key: "bar_shape",
     touch_only: false,
     kind: AskKind::Choice(&[
-        ("climax_up", "an accelerating rise into the last bars with the biggest ranges at the end: a buying climax"),
-        ("climax_down", "an accelerating fall into the last bars with the biggest ranges at the end: a selling climax"),
-        ("trend_up", "steady higher highs and higher lows with ordinary bar ranges"),
-        ("trend_down", "steady lower highs and lower lows with ordinary bar ranges"),
-        ("compression", "ranges shrinking bar by bar inside a narrowing band"),
+        (
+            "climax_up",
+            "an accelerating rise into the last bars with the biggest ranges at the end: a buying climax",
+        ),
+        (
+            "climax_down",
+            "an accelerating fall into the last bars with the biggest ranges at the end: a selling climax",
+        ),
+        (
+            "trend_up",
+            "steady higher highs and higher lows with ordinary bar ranges",
+        ),
+        (
+            "trend_down",
+            "steady lower highs and lower lows with ordinary bar ranges",
+        ),
+        (
+            "compression",
+            "ranges shrinking bar by bar inside a narrowing band",
+        ),
         ("chop", "none of those: overlapping bars going nowhere"),
     ]),
     instructions: "Name the shape of the last twenty bars.",
@@ -518,8 +634,14 @@ pub static ASK_MAGNET: JevAsk = JevAsk {
     key: "magnet",
     touch_only: false,
     kind: AskKind::Choice(&[
-        ("above", "the nearest listed level above price is reached first"),
-        ("below", "the nearest listed level below price is reached first"),
+        (
+            "above",
+            "the nearest listed level above price is reached first",
+        ),
+        (
+            "below",
+            "the nearest listed level below price is reached first",
+        ),
         ("neither", "price reaches neither within fifteen minutes"),
     ]),
     instructions: "Of the listed levels, which will price reach first within fifteen minutes: the nearest above or the nearest below?",
@@ -546,17 +668,36 @@ pub static CREW_ASKS: [&JevAsk; 8] = [
 impl JevAsk {
     pub fn question(&self) -> JevQuestion {
         match self.kind {
-            AskKind::Noul => JevQuestion::Noul { instructions: self.instructions.into() },
-            AskKind::Choice(opts) => JevQuestion::Choice { instructions: self.instructions.into(), criteria: opts.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect() },
-            AskKind::Score(c) => JevQuestion::Score { instructions: self.instructions.into(), criteria: c.iter().map(|x| x.to_string()).collect() },
+            AskKind::Noul => JevQuestion::Noul {
+                instructions: self.instructions.into(),
+            },
+            AskKind::Choice(opts) => JevQuestion::Choice {
+                instructions: self.instructions.into(),
+                criteria: opts
+                    .iter()
+                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                    .collect(),
+            },
+            AskKind::Score(c) => JevQuestion::Score {
+                instructions: self.instructions.into(),
+                criteria: c.iter().map(|x| x.to_string()).collect(),
+            },
         }
     }
 
     /// The answer in a few words, for a trade's `why` and the logs.
     pub fn answer_text(answer: &JevAnswer) -> String {
         match answer {
-            JevAnswer::Choice { choice, confidence, probabilities } => {
-                let c = if *confidence > 0.0 { *confidence } else { probabilities.get(choice).copied().unwrap_or(0.0) };
+            JevAnswer::Choice {
+                choice,
+                confidence,
+                probabilities,
+            } => {
+                let c = if *confidence > 0.0 {
+                    *confidence
+                } else {
+                    probabilities.get(choice).copied().unwrap_or(0.0)
+                };
                 format!("{choice} {:.0}%", c * 100.0)
             }
             JevAnswer::Noul { noul } => format!("yes {:.0}%", noul * 100.0),
@@ -568,7 +709,15 @@ impl JevAsk {
     pub fn bucket(answer: &JevAnswer) -> String {
         match answer {
             JevAnswer::Choice { choice, .. } => choice.clone(),
-            JevAnswer::Noul { noul } => if *noul >= 0.6 { "yes>=60%".into() } else if *noul >= 0.4 { "40-60%".into() } else { "no<40%".into() },
+            JevAnswer::Noul { noul } => {
+                if *noul >= 0.6 {
+                    "yes>=60%".into()
+                } else if *noul >= 0.4 {
+                    "40-60%".into()
+                } else {
+                    "no<40%".into()
+                }
+            }
             JevAnswer::Score { score, .. } => format!("score {}", score.round() as i64),
         }
     }
@@ -586,8 +735,19 @@ pub fn all_questions() -> HashMap<String, JevQuestion> {
 /// A choice answer's pick and how sure Jev is of it (its stated confidence, else the pick's
 /// probability).
 fn choice_and_confidence<'a>(key: &str, answer: &'a JevAnswer) -> Result<(&'a str, f32), String> {
-    let JevAnswer::Choice { choice, confidence, probabilities } = answer else { return Err(format!("{key} is not a choice")) };
-    let conf = if *confidence > 0.0 { *confidence } else { probabilities.get(choice).copied().unwrap_or(0.0) };
+    let JevAnswer::Choice {
+        choice,
+        confidence,
+        probabilities,
+    } = answer
+    else {
+        return Err(format!("{key} is not a choice"));
+    };
+    let conf = if *confidence > 0.0 {
+        *confidence
+    } else {
+        probabilities.get(choice).copied().unwrap_or(0.0)
+    };
     Ok((choice.as_str(), conf as f32))
 }
 
@@ -602,44 +762,87 @@ pub fn level_side_to_ask(trigger: &ObsTrigger, side: LevelSide) -> AskSide {
 
 impl AskRule {
     /// The side this answer implies, or why the trader passes.
-    pub fn side(&self, key: &str, answer: &JevAnswer, trigger: Option<&ObsTrigger>, lean: Direction) -> Result<AskSide, String> {
+    pub fn side(
+        &self,
+        key: &str,
+        answer: &JevAnswer,
+        trigger: Option<&ObsTrigger>,
+        lean: Direction,
+    ) -> Result<AskSide, String> {
         match self {
             AskRule::LevelChoice { map, min } => {
                 let t = trigger.ok_or_else(|| "no touch to trade".to_string())?;
                 let (choice, conf) = choice_and_confidence(key, answer)?;
-                let ls = map.iter().find(|(c, _)| *c == choice).map(|(_, s)| *s).ok_or_else(|| format!("Jev {key} = {choice}: no trade"))?;
+                let ls = map
+                    .iter()
+                    .find(|(c, _)| *c == choice)
+                    .map(|(_, s)| *s)
+                    .ok_or_else(|| format!("Jev {key} = {choice}: no trade"))?;
                 if conf < *min {
-                    return Err(format!("Jev {key} = {choice} at {:.0}% < {:.0}%", conf * 100.0, min * 100.0));
+                    return Err(format!(
+                        "Jev {key} = {choice} at {:.0}% < {:.0}%",
+                        conf * 100.0,
+                        min * 100.0
+                    ));
                 }
                 Ok(level_side_to_ask(t, ls))
             }
             AskRule::Choice { map, min } => {
                 let (choice, conf) = choice_and_confidence(key, answer)?;
-                let side = map.iter().find(|(c, _)| *c == choice).map(|(_, s)| *s).ok_or_else(|| format!("Jev {key} = {choice}: no trade"))?;
+                let side = map
+                    .iter()
+                    .find(|(c, _)| *c == choice)
+                    .map(|(_, s)| *s)
+                    .ok_or_else(|| format!("Jev {key} = {choice}: no trade"))?;
                 if conf < *min {
-                    return Err(format!("Jev {key} = {choice} at {:.0}% < {:.0}%", conf * 100.0, min * 100.0));
+                    return Err(format!(
+                        "Jev {key} = {choice} at {:.0}% < {:.0}%",
+                        conf * 100.0,
+                        min * 100.0
+                    ));
                 }
                 Ok(side)
             }
             AskRule::NoulLevel { min, side } => {
                 let t = trigger.ok_or_else(|| "no touch to trade".to_string())?;
-                let JevAnswer::Noul { noul } = answer else { return Err(format!("{key} is not a yes/no")) };
+                let JevAnswer::Noul { noul } = answer else {
+                    return Err(format!("{key} is not a yes/no"));
+                };
                 if (*noul as f32) < *min {
-                    return Err(format!("Jev {key} {:.0}% < {:.0}%", noul * 100.0, min * 100.0));
+                    return Err(format!(
+                        "Jev {key} {:.0}% < {:.0}%",
+                        noul * 100.0,
+                        min * 100.0
+                    ));
                 }
                 Ok(level_side_to_ask(t, *side))
             }
             AskRule::NoulLean { min, with_lean } => {
-                let JevAnswer::Noul { noul } = answer else { return Err(format!("{key} is not a yes/no")) };
+                let JevAnswer::Noul { noul } = answer else {
+                    return Err(format!("{key} is not a yes/no"));
+                };
                 if (*noul as f32) < *min {
-                    return Err(format!("Jev {key} {:.0}% < {:.0}%", noul * 100.0, min * 100.0));
+                    return Err(format!(
+                        "Jev {key} {:.0}% < {:.0}%",
+                        noul * 100.0,
+                        min * 100.0
+                    ));
                 }
                 let lean_side = match lean {
                     Direction::Up => AskSide::Buy,
                     Direction::Down => AskSide::Sell,
-                    Direction::Flat => return Err(format!("Jev {key} says yes but has no lean to trade")),
+                    Direction::Flat => {
+                        return Err(format!("Jev {key} says yes but has no lean to trade"));
+                    }
                 };
-                Ok(if *with_lean { lean_side } else { match lean_side { AskSide::Buy => AskSide::Sell, AskSide::Sell => AskSide::Buy } })
+                Ok(if *with_lean {
+                    lean_side
+                } else {
+                    match lean_side {
+                        AskSide::Buy => AskSide::Sell,
+                        AskSide::Sell => AskSide::Buy,
+                    }
+                })
             }
         }
     }
@@ -651,10 +854,33 @@ impl AskRule {
             LevelSide::Through => "through the level",
         };
         match self {
-            AskRule::LevelChoice { map, min } => format!("{}; the answer must be at least {:.0}% sure", map.iter().map(|(c, s)| format!("{c}: {}", ls(s))).collect::<Vec<_>>().join(", "), min * 100.0),
-            AskRule::Choice { map, min } => format!("{}; the answer must be at least {:.0}% sure", map.iter().map(|(c, s)| format!("{c}: {}", if *s == AskSide::Buy { "buys" } else { "sells" })).collect::<Vec<_>>().join(", "), min * 100.0),
-            AskRule::NoulLevel { min, side } => format!("yes at {:.0}% or more: trades {}", min * 100.0, ls(side)),
-            AskRule::NoulLean { min, with_lean } => format!("yes at {:.0}% or more: trades {} Jev's lean", min * 100.0, if *with_lean { "with" } else { "against" }),
+            AskRule::LevelChoice { map, min } => format!(
+                "{}; the answer must be at least {:.0}% sure",
+                map.iter()
+                    .map(|(c, s)| format!("{c}: {}", ls(s)))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                min * 100.0
+            ),
+            AskRule::Choice { map, min } => format!(
+                "{}; the answer must be at least {:.0}% sure",
+                map.iter()
+                    .map(|(c, s)| format!(
+                        "{c}: {}",
+                        if *s == AskSide::Buy { "buys" } else { "sells" }
+                    ))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                min * 100.0
+            ),
+            AskRule::NoulLevel { min, side } => {
+                format!("yes at {:.0}% or more: trades {}", min * 100.0, ls(side))
+            }
+            AskRule::NoulLean { min, with_lean } => format!(
+                "yes at {:.0}% or more: trades {} Jev's lean",
+                min * 100.0,
+                if *with_lean { "with" } else { "against" }
+            ),
         }
     }
 }
@@ -805,9 +1031,16 @@ pub enum ModelError {
 impl ModelError {
     pub fn short(&self) -> String {
         match self {
-            ModelError::Transport(e) => format!("relay unreachable ({})", e.chars().take(60).collect::<String>()),
-            ModelError::Status(code, body) => format!("HTTP {code} {}", body.chars().take(60).collect::<String>()),
-            ModelError::Malformed(e) => format!("bad answer ({})", e.chars().take(60).collect::<String>()),
+            ModelError::Transport(e) => format!(
+                "relay unreachable ({})",
+                e.chars().take(60).collect::<String>()
+            ),
+            ModelError::Status(code, body) => {
+                format!("HTTP {code} {}", body.chars().take(60).collect::<String>())
+            }
+            ModelError::Malformed(e) => {
+                format!("bad answer ({})", e.chars().take(60).collect::<String>())
+            }
             ModelError::RateLimited(ms) => format!("rate limited, retry in {ms} ms"),
         }
     }
@@ -823,9 +1056,21 @@ pub trait DecisionModel: Send + Sync {
 }
 
 /// Convert System One's answers into an interpretation. Pure, so it is testable without Jev.
-pub fn interpret(resp: &JevResponse, obs_hash: &str, latency_ms: u64, source: ReadSource) -> Result<MarketInterpretation, ModelError> {
-    let (direction, direction_confidence, p_up, p_down, p_flat) = match resp.answers.get("direction") {
-        Some(JevAnswer::Choice { choice, confidence, probabilities }) => {
+pub fn interpret(
+    resp: &JevResponse,
+    obs_hash: &str,
+    latency_ms: u64,
+    source: ReadSource,
+) -> Result<MarketInterpretation, ModelError> {
+    let (direction, direction_confidence, p_up, p_down, p_flat) = match resp
+        .answers
+        .get("direction")
+    {
+        Some(JevAnswer::Choice {
+            choice,
+            confidence,
+            probabilities,
+        }) => {
             let p = |k: &str| probabilities.get(k).copied().unwrap_or(0.0) as f32;
             let dir = match choice.as_str() {
                 "up" => Direction::Up,
@@ -833,7 +1078,11 @@ pub fn interpret(resp: &JevResponse, obs_hash: &str, latency_ms: u64, source: Re
                 "flat" => Direction::Flat,
                 other => return Err(ModelError::Malformed(format!("direction choice {other:?}"))),
             };
-            let conf = if *confidence > 0.0 { *confidence as f32 } else { p(choice).max(0.0) };
+            let conf = if *confidence > 0.0 {
+                *confidence as f32
+            } else {
+                p(choice).max(0.0)
+            };
             (dir, conf.clamp(0.0, 1.0), p("up"), p("down"), p("flat"))
         }
         Some(other) => return Err(ModelError::Malformed(format!("direction is {other:?}"))),
@@ -851,8 +1100,16 @@ pub fn interpret(resp: &JevResponse, obs_hash: &str, latency_ms: u64, source: Re
     };
     // The reaction question is newer than the first recorded inferences: missing means no_level.
     let (reaction, reaction_confidence) = match resp.answers.get("level_reaction") {
-        Some(JevAnswer::Choice { choice, confidence, probabilities }) => {
-            let conf = if *confidence > 0.0 { *confidence as f32 } else { probabilities.get(choice).copied().unwrap_or(0.0) as f32 };
+        Some(JevAnswer::Choice {
+            choice,
+            confidence,
+            probabilities,
+        }) => {
+            let conf = if *confidence > 0.0 {
+                *confidence as f32
+            } else {
+                probabilities.get(choice).copied().unwrap_or(0.0) as f32
+            };
             (choice.clone(), conf.clamp(0.0, 1.0))
         }
         _ => ("no_level".to_string(), 0.0),
@@ -893,7 +1150,10 @@ pub struct JevModel {
 
 impl JevModel {
     pub fn new(url: String) -> Self {
-        Self { url, questions: all_questions() }
+        Self {
+            url,
+            questions: all_questions(),
+        }
     }
 }
 
@@ -917,16 +1177,31 @@ impl DecisionModel for JevModel {
 }
 
 /// The relay request for one observation. Shared by the app (async) and the replay (blocking).
-pub fn system_one_request(relay: &str, obs: &MarketObservation, questions: &HashMap<String, JevQuestion>) -> Result<ehttp::Request, ModelError> {
-    let body = SystemOneBody { state: obs.state_text(), questions };
-    let bytes = serde_json::to_vec(&body).map_err(|e| ModelError::Malformed(format!("encode: {e}")))?;
+pub fn system_one_request(
+    relay: &str,
+    obs: &MarketObservation,
+    questions: &HashMap<String, JevQuestion>,
+) -> Result<ehttp::Request, ModelError> {
+    let body = SystemOneBody {
+        state: obs.state_text(),
+        questions,
+    };
+    let bytes =
+        serde_json::to_vec(&body).map_err(|e| ModelError::Malformed(format!("encode: {e}")))?;
     let mut req = ehttp::Request::post(format!("{relay}/jev"), bytes);
-    req.headers = ehttp::Headers::new(&[("Accept", "application/json"), ("Content-Type", "application/json")]);
+    req.headers = ehttp::Headers::new(&[
+        ("Accept", "application/json"),
+        ("Content-Type", "application/json"),
+    ]);
     Ok(req)
 }
 
 /// The relay's answer, typed.
-pub fn system_one_result(res: ehttp::Result<ehttp::Response>, hash: &str, latency_ms: u64) -> Result<MarketInterpretation, ModelError> {
+pub fn system_one_result(
+    res: ehttp::Result<ehttp::Response>,
+    hash: &str,
+    latency_ms: u64,
+) -> Result<MarketInterpretation, ModelError> {
     match res {
         Ok(r) if r.ok => match serde_json::from_slice::<JevResponse>(&r.bytes) {
             Ok(parsed) => interpret(&parsed, hash, latency_ms, ReadSource::Jev),
@@ -939,7 +1214,10 @@ pub fn system_one_result(res: ehttp::Result<ehttp::Response>, hash: &str, latenc
                 .unwrap_or(2000);
             Err(ModelError::RateLimited(retry))
         }
-        Ok(r) => Err(ModelError::Status(r.status, r.text().unwrap_or("").to_string())),
+        Ok(r) => Err(ModelError::Status(
+            r.status,
+            r.text().unwrap_or("").to_string(),
+        )),
         Err(e) => Err(ModelError::Transport(e)),
     }
 }
@@ -966,11 +1244,22 @@ impl DeterministicModel {
         } else {
             Direction::Flat
         };
-        let agree = (tape.signum() == recent.signum()) as i32 + (tape.signum() == bars.signum()) as i32;
+        let agree =
+            (tape.signum() == recent.signum()) as i32 + (tape.signum() == bars.signum()) as i32;
         let conviction = (lean.abs() * 1.6 + agree as f32 * 0.2).clamp(0.0, 2.0);
-        let continuation = if direction == Direction::Flat { 0.5 } else { (0.5 + 0.5 * lean.abs() * bars.signum() * lean.signum()).clamp(0.05, 0.95) };
+        let continuation = if direction == Direction::Flat {
+            0.5
+        } else {
+            (0.5 + 0.5 * lean.abs() * bars.signum() * lean.signum()).clamp(0.05, 0.95)
+        };
         // Exhaustion: the last bars shrink in delta while the move persists, or a sweep that did not pay.
-        let last_deltas: Vec<f32> = obs.bars.iter().rev().take(3).filter_map(|b| b.delta).collect();
+        let last_deltas: Vec<f32> = obs
+            .bars
+            .iter()
+            .rev()
+            .take(3)
+            .filter_map(|b| b.delta)
+            .collect();
         let shrinking = last_deltas.len() == 3 && last_deltas[0].abs() < last_deltas[2].abs() * 0.5;
         let exhaustion = if shrinking { 0.65 } else { 0.25 };
         // At a level: a busy tape that is not moving is absorption; a lean away from the level
@@ -978,7 +1267,13 @@ impl DeterministicModel {
         let reaction = match obs.level_at_price() {
             None => "no_level",
             Some(l) => {
-                let toward = if l.distance_ticks < 0.0 { -1.0 } else if l.distance_ticks > 0.0 { 1.0 } else { 0.0 };
+                let toward = if l.distance_ticks < 0.0 {
+                    -1.0
+                } else if l.distance_ticks > 0.0 {
+                    1.0
+                } else {
+                    0.0
+                };
                 if obs.tape.ticks >= 12 && tape.abs() < 0.2 {
                     "absorbing"
                 } else if toward != 0.0 && tape * toward < -0.3 {
@@ -1033,7 +1328,13 @@ impl DecisionModel for MockModel {
     }
 
     fn analyse(&self, _obs: &MarketObservation, done: Done) {
-        let next = self.0.lock().ok().and_then(|mut v| if v.is_empty() { None } else { Some(v.remove(0)) });
+        let next = self.0.lock().ok().and_then(|mut v| {
+            if v.is_empty() {
+                None
+            } else {
+                Some(v.remove(0))
+            }
+        });
         done(next.unwrap_or_else(|| Err(ModelError::Transport("mock exhausted".into()))));
     }
 }
@@ -1109,7 +1410,11 @@ impl JevDesk {
     pub fn toggle(&mut self, controller: &mut MarketScenarioController) {
         self.enabled = !self.enabled;
         controller.announcement_banner = if self.enabled {
-            format!("JEV READS ON ({} every {:.0} s for the focused pit)", self.provider(), JEV_CADENCE_SECS)
+            format!(
+                "JEV READS ON ({} every {:.0} s for the focused pit)",
+                self.provider(),
+                JEV_CADENCE_SECS
+            )
         } else {
             "JEV READS OFF".to_string()
         };
@@ -1134,7 +1439,9 @@ impl JevDesk {
                 line
             }
             None if self.in_flight.is_some() => "JEV: reading the floor...".to_string(),
-            None if !self.last_error.is_empty() => format!("JEV: no read yet  |  {}", self.last_error),
+            None if !self.last_error.is_empty() => {
+                format!("JEV: no read yet  |  {}", self.last_error)
+            }
             None => "JEV: no read yet".to_string(),
         }
     }
@@ -1152,7 +1459,9 @@ impl JevDesk {
         now: f64,
         at_ms: i64,
     ) -> Option<MarketObservation> {
-        let PitFeedStatus::Live { rate, .. } = feed.pit_status(inst, now) else { return None };
+        let PitFeedStatus::Live { rate, .. } = feed.pit_status(inst, now) else {
+            return None;
+        };
         let quote = feed.quote(inst)?;
         let flow = quote.flow(now);
         let series = store.series(inst, tf, FeedMode::Live);
@@ -1168,7 +1477,11 @@ impl JevDesk {
                 high: c.high,
                 low: c.low,
                 close: c.close,
-                delta: if c.time_ms + tf.millis() > session_start { Some(c.delta) } else { None },
+                delta: if c.time_ms + tf.millis() > session_start {
+                    Some(c.delta)
+                } else {
+                    None
+                },
                 sweep: c.sweep,
             })
             .collect();
@@ -1180,7 +1493,17 @@ impl JevDesk {
             bid_sizes: quote.bids.iter().map(|b| b.1).collect(),
             ask_sizes: quote.asks.iter().map(|a| a.1).collect(),
         };
-        Some(MarketObservation::from_parts(inst, at_ms, tf.label(), quote.price, bars, &flow, rate, market, levels))
+        Some(MarketObservation::from_parts(
+            inst,
+            at_ms,
+            tf.label(),
+            quote.price,
+            bars,
+            &flow,
+            rate,
+            market,
+            levels,
+        ))
     }
 
     /// Store a read that came from elsewhere (a recorded inference, the replay's own call).
@@ -1245,18 +1568,20 @@ impl JevDesk {
                 }
             }
         }
-        if let Some((inst, _, since)) = self.in_flight {
-            if now - since > JEV_TIMEOUT_SECS {
-                self.in_flight = None;
-                self.late += 1;
-                self.last_error = format!("no answer in {JEV_TIMEOUT_SECS:.0} s");
-                self.fall_back(inst, fallback_obs, now);
-            }
+        if let Some((inst, _, since)) = self.in_flight
+            && now - since > JEV_TIMEOUT_SECS
+        {
+            self.in_flight = None;
+            self.late += 1;
+            self.last_error = format!("no answer in {JEV_TIMEOUT_SECS:.0} s");
+            self.fall_back(inst, fallback_obs, now);
         }
     }
 
     fn fall_back(&mut self, inst: Instrument, obs: Option<&MarketObservation>, now: f64) {
-        let Some(obs) = obs.filter(|o| o.symbol == inst.symbol()) else { return };
+        let Some(obs) = obs.filter(|o| o.symbol == inst.symbol()) else {
+            return;
+        };
         let mut r = DeterministicModel::read(obs);
         r.at = now;
         self.fallbacks += 1;
@@ -1278,9 +1603,17 @@ pub fn update_jev_desk(
 ) {
     let now = time.elapsed_secs_f64();
     let selected = selection.selected_instrument;
-    let obs = selected
-        .filter(|_| desk.enabled)
-        .and_then(|inst| desk.observe(inst, &store, settings.timeframe, &feed, levels.for_pit(inst), now, wall_clock_ms()));
+    let obs = selected.filter(|_| desk.enabled).and_then(|inst| {
+        desk.observe(
+            inst,
+            &store,
+            settings.timeframe,
+            &feed,
+            levels.for_pit(inst),
+            now,
+            wall_clock_ms(),
+        )
+    });
     desk.settle(now, obs.as_ref());
 
     if let (Some(inst), Some(obs)) = (selected, obs.as_ref()) {
@@ -1295,7 +1628,9 @@ pub fn update_jev_desk(
     for inst in Instrument::ALL {
         let live = matches!(feed.pit_status(inst, now), PitFeedStatus::Live { .. });
         let read = if desk.enabled && live && selected == Some(inst) {
-            desk.read(inst).filter(|r| now - r.at < JEV_CADENCE_SECS * 3.0).map(|r| r.floor_read())
+            desk.read(inst)
+                .filter(|r| now - r.at < JEV_CADENCE_SECS * 3.0)
+                .map(|r| r.floor_read())
         } else {
             None
         };
@@ -1315,7 +1650,9 @@ pub fn update_jev_board(
     mut texts: Query<(&mut Text, &mut TextColor), With<Pit3dBoardJev>>,
 ) {
     let now = time.elapsed_secs_f64();
-    let Some(inst) = selection.selected_instrument else { return };
+    let Some(inst) = selection.selected_instrument else {
+        return;
+    };
     let live = matches!(feed.pit_status(inst, now), PitFeedStatus::Live { .. });
     let line = desk.board_line(inst, now, live);
     let color = match desk.read(inst) {
@@ -1346,12 +1683,17 @@ pub fn handle_jev_keys(
 }
 
 pub fn handle_jev_buttons(
-    interaction_query: Query<(&Interaction, &crate::ui::TouchButtonAction), (Changed<Interaction>, With<Button>)>,
+    interaction_query: Query<
+        (&Interaction, &crate::ui::TouchButtonAction),
+        (Changed<Interaction>, With<Button>),
+    >,
     mut desk: ResMut<JevDesk>,
     mut controller: ResMut<MarketScenarioController>,
 ) {
     for (interaction, action) in interaction_query.iter() {
-        if *interaction == Interaction::Pressed && *action == crate::ui::TouchButtonAction::JevToggle {
+        if *interaction == Interaction::Pressed
+            && *action == crate::ui::TouchButtonAction::JevToggle
+        {
             desk.toggle(&mut controller);
         }
     }
@@ -1359,7 +1701,14 @@ pub fn handle_jev_buttons(
 
 pub fn update_jev_button_style(
     desk: Res<JevDesk>,
-    mut buttons: Query<(&crate::ui::TouchButtonAction, &mut BackgroundColor, &mut BorderColor), With<Button>>,
+    mut buttons: Query<
+        (
+            &crate::ui::TouchButtonAction,
+            &mut BackgroundColor,
+            &mut BorderColor,
+        ),
+        With<Button>,
+    >,
 ) {
     if !desk.is_changed() {
         return;
@@ -1391,16 +1740,59 @@ mod tests {
         let bars = (0..6)
             .map(|i| {
                 let base = 48.0 + sign * 0.02 * i as f32;
-                ObsBar { time_ms: 1_792_575_600_000 + i * 60_000, open: base, high: base + 0.03, low: base - 0.01, close: base + sign * 0.02, delta: Some(sign * 5.0), sweep: 2.0 }
+                ObsBar {
+                    time_ms: 1_792_575_600_000 + i * 60_000,
+                    open: base,
+                    high: base + 0.03,
+                    low: base - 0.01,
+                    close: base + sign * 0.02,
+                    delta: Some(sign * 5.0),
+                    sweep: 2.0,
+                }
             })
             .collect();
-        let flow = TickFlow { direction: sign * 0.6, up_share: if lean_up { 0.8 } else { 0.2 }, ticks: 24, burst_ticks: 2.0 };
-        let market = ObsMarket { spread_ticks: 2.0, bid_sizes: vec![50.0, 50.0, 150.0], ask_sizes: vec![50.0, 50.0, 150.0] };
+        let flow = TickFlow {
+            direction: sign * 0.6,
+            up_share: if lean_up { 0.8 } else { 0.2 },
+            ticks: 24,
+            burst_ticks: 2.0,
+        };
+        let market = ObsMarket {
+            spread_ticks: 2.0,
+            bid_sizes: vec![50.0, 50.0, 150.0],
+            ask_sizes: vec![50.0, 50.0, 150.0],
+        };
         let levels = vec![
-            Level { kind: crate::levels::LevelKind::BullOrderBlock, lo: 47.90, hi: 48.00, strength: 0.9, time_ms: 0, touched: false, pct: 0.0 },
-            Level { kind: crate::levels::LevelKind::SwingHigh, lo: 48.30, hi: 48.31, strength: 0.6, time_ms: 0, touched: false, pct: 0.0 },
+            Level {
+                kind: crate::levels::LevelKind::BullOrderBlock,
+                lo: 47.90,
+                hi: 48.00,
+                strength: 0.9,
+                time_ms: 0,
+                touched: false,
+                pct: 0.0,
+            },
+            Level {
+                kind: crate::levels::LevelKind::SwingHigh,
+                lo: 48.30,
+                hi: 48.31,
+                strength: 0.6,
+                time_ms: 0,
+                touched: false,
+                pct: 0.0,
+            },
         ];
-        MarketObservation::from_parts(Instrument::Silver, 1_792_575_960_000, "1m", price, bars, &flow, 2.4, market, &levels)
+        MarketObservation::from_parts(
+            Instrument::Silver,
+            1_792_575_960_000,
+            "1m",
+            price,
+            bars,
+            &flow,
+            2.4,
+            market,
+            &levels,
+        )
     }
 
     #[test]
@@ -1410,10 +1802,15 @@ mod tests {
         assert!(s.contains("INSTRUMENT: SILVER (XAG/USD)"));
         assert!(s.contains("TIME: 09:46 UTC, bars of 1m"));
         assert!(s.contains("upticks 80% of 24 ticks"));
-        assert!(s.contains("TOUCH: spread 2 ticks, broker ladder sizes bid 50/50/150 ask 50/50/150"));
+        assert!(
+            s.contains("TOUCH: spread 2 ticks, broker ladder sizes bid 50/50/150 ask 50/50/150")
+        );
         assert!(s.contains("OB BULL 47.900..48.000 at -12 ticks"), "{s}");
         assert!(s.contains("SWING HI 48.300..48.310 at +18 ticks"), "{s}");
-        assert!(!s.to_lowercase().contains("headcount") && !s.contains("PIT:"), "no simulated crowd in the observation");
+        assert!(
+            !s.to_lowercase().contains("headcount") && !s.contains("PIT:"),
+            "no simulated crowd in the observation"
+        );
         assert!(o.level_at_price().is_none());
         assert!(s.lines().filter(|l| l.starts_with(" 09:")).count() == 6);
         assert_eq!(o.hash(), fnv64(&s));
@@ -1423,15 +1820,34 @@ mod tests {
     fn a_touch_trigger_is_a_line_in_the_state_and_changes_the_hash() {
         let plain = obs(true);
         let mut touched = obs(true);
-        touched.trigger = Some(ObsTrigger { kind: "touch".into(), level: "SWING HI".into(), lo: 48.30, hi: 48.31, side: "from below".into(), secs_since: 0.0 });
+        touched.trigger = Some(ObsTrigger {
+            kind: "touch".into(),
+            level: "SWING HI".into(),
+            lo: 48.30,
+            hi: 48.31,
+            side: "from below".into(),
+            secs_since: 0.0,
+        });
         let s = touched.state_text();
-        assert!(s.contains("TRIGGER: price has just touched SWING HI 48.300..48.310 from below;"), "{s}");
+        assert!(
+            s.contains("TRIGGER: price has just touched SWING HI 48.300..48.310 from below;"),
+            "{s}"
+        );
         assert_ne!(touched.hash(), plain.hash());
         touched.trigger.as_mut().unwrap().kind = "follow".into();
         touched.trigger.as_mut().unwrap().secs_since = 30.0;
-        assert!(touched.state_text().contains("TRIGGER: 30 s after price touched SWING HI 48.300..48.310 from below;"));
+        assert!(
+            touched
+                .state_text()
+                .contains("TRIGGER: 30 s after price touched SWING HI 48.300..48.310 from below;")
+        );
         // Older logged observations carry no trigger and still deserialise.
-        let v: MarketObservation = serde_json::from_str(&serde_json::to_string(&plain).unwrap().replace(",\"trigger\":null", "")).unwrap();
+        let v: MarketObservation = serde_json::from_str(
+            &serde_json::to_string(&plain)
+                .unwrap()
+                .replace(",\"trigger\":null", ""),
+        )
+        .unwrap();
         assert!(v.trigger.is_none());
     }
 
@@ -1439,36 +1855,172 @@ mod tests {
     fn crew_asks_turn_answers_into_sides() {
         let q = all_questions();
         assert_eq!(q.len(), 5 + CREW_ASKS.len());
-        assert!(matches!(q.get("touch_outcome"), Some(JevQuestion::Choice { criteria, .. }) if criteria.len() == 4));
-        let from_above = ObsTrigger { kind: "touch".into(), level: "OB BULL".into(), lo: 47.90, hi: 48.00, side: "from above".into(), secs_since: 0.0 };
-        let from_below = ObsTrigger { side: "from below".into(), ..from_above.clone() };
-        let choice = |c: &str| JevAnswer::Choice { choice: c.into(), confidence: 0.7, probabilities: HashMap::new() };
-        let oracle = AskRule::LevelChoice { map: &[("reject", LevelSide::Away), ("sweep", LevelSide::Away), ("break", LevelSide::Through)], min: 0.45 };
-        assert_eq!(oracle.side("touch_outcome", &choice("reject"), Some(&from_above), Direction::Flat), Ok(AskSide::Buy), "came down onto it and it held: buy");
-        assert_eq!(oracle.side("touch_outcome", &choice("break"), Some(&from_above), Direction::Flat), Ok(AskSide::Sell));
-        assert_eq!(oracle.side("touch_outcome", &choice("reject"), Some(&from_below), Direction::Flat), Ok(AskSide::Sell));
-        assert!(oracle.side("touch_outcome", &choice("stall"), Some(&from_above), Direction::Flat).unwrap_err().contains("stall: no trade"));
-        assert!(oracle.side("touch_outcome", &choice("reject"), None, Direction::Flat).unwrap_err().contains("no touch"));
-        let faint = JevAnswer::Choice { choice: "break".into(), confidence: 0.09, probabilities: HashMap::new() };
-        assert!(oracle.side("touch_outcome", &faint, Some(&from_above), Direction::Flat).unwrap_err().contains("break at 9% < 45%"), "a 9% break is not a call");
-        let absorb = AskRule::NoulLevel { min: 0.6, side: LevelSide::Away };
-        assert_eq!(absorb.side("absorbing", &JevAnswer::Noul { noul: 0.71 }, Some(&from_below), Direction::Up), Ok(AskSide::Sell));
-        assert!(absorb.side("absorbing", &JevAnswer::Noul { noul: 0.4 }, Some(&from_below), Direction::Up).unwrap_err().contains("40% < 60%"));
-        let tape = AskRule::Choice { map: &[("one_way_buying", AskSide::Buy), ("one_way_selling", AskSide::Sell)], min: 0.5 };
-        assert_eq!(tape.side("tape_state", &choice("one_way_selling"), None, Direction::Up), Ok(AskSide::Sell));
-        assert!(tape.side("tape_state", &choice("two_way"), None, Direction::Up).is_err());
-        let fade = AskRule::NoulLean { min: 0.6, with_lean: false };
-        assert_eq!(fade.side("delta_divergence", &JevAnswer::Noul { noul: 0.8 }, None, Direction::Up), Ok(AskSide::Sell));
-        assert!(fade.side("delta_divergence", &JevAnswer::Noul { noul: 0.8 }, None, Direction::Flat).is_err());
+        assert!(
+            matches!(q.get("touch_outcome"), Some(JevQuestion::Choice { criteria, .. }) if criteria.len() == 4)
+        );
+        let from_above = ObsTrigger {
+            kind: "touch".into(),
+            level: "OB BULL".into(),
+            lo: 47.90,
+            hi: 48.00,
+            side: "from above".into(),
+            secs_since: 0.0,
+        };
+        let from_below = ObsTrigger {
+            side: "from below".into(),
+            ..from_above.clone()
+        };
+        let choice = |c: &str| JevAnswer::Choice {
+            choice: c.into(),
+            confidence: 0.7,
+            probabilities: HashMap::new(),
+        };
+        let oracle = AskRule::LevelChoice {
+            map: &[
+                ("reject", LevelSide::Away),
+                ("sweep", LevelSide::Away),
+                ("break", LevelSide::Through),
+            ],
+            min: 0.45,
+        };
+        assert_eq!(
+            oracle.side(
+                "touch_outcome",
+                &choice("reject"),
+                Some(&from_above),
+                Direction::Flat
+            ),
+            Ok(AskSide::Buy),
+            "came down onto it and it held: buy"
+        );
+        assert_eq!(
+            oracle.side(
+                "touch_outcome",
+                &choice("break"),
+                Some(&from_above),
+                Direction::Flat
+            ),
+            Ok(AskSide::Sell)
+        );
+        assert_eq!(
+            oracle.side(
+                "touch_outcome",
+                &choice("reject"),
+                Some(&from_below),
+                Direction::Flat
+            ),
+            Ok(AskSide::Sell)
+        );
+        assert!(
+            oracle
+                .side(
+                    "touch_outcome",
+                    &choice("stall"),
+                    Some(&from_above),
+                    Direction::Flat
+                )
+                .unwrap_err()
+                .contains("stall: no trade")
+        );
+        assert!(
+            oracle
+                .side("touch_outcome", &choice("reject"), None, Direction::Flat)
+                .unwrap_err()
+                .contains("no touch")
+        );
+        let faint = JevAnswer::Choice {
+            choice: "break".into(),
+            confidence: 0.09,
+            probabilities: HashMap::new(),
+        };
+        assert!(
+            oracle
+                .side("touch_outcome", &faint, Some(&from_above), Direction::Flat)
+                .unwrap_err()
+                .contains("break at 9% < 45%"),
+            "a 9% break is not a call"
+        );
+        let absorb = AskRule::NoulLevel {
+            min: 0.6,
+            side: LevelSide::Away,
+        };
+        assert_eq!(
+            absorb.side(
+                "absorbing",
+                &JevAnswer::Noul { noul: 0.71 },
+                Some(&from_below),
+                Direction::Up
+            ),
+            Ok(AskSide::Sell)
+        );
+        assert!(
+            absorb
+                .side(
+                    "absorbing",
+                    &JevAnswer::Noul { noul: 0.4 },
+                    Some(&from_below),
+                    Direction::Up
+                )
+                .unwrap_err()
+                .contains("40% < 60%")
+        );
+        let tape = AskRule::Choice {
+            map: &[
+                ("one_way_buying", AskSide::Buy),
+                ("one_way_selling", AskSide::Sell),
+            ],
+            min: 0.5,
+        };
+        assert_eq!(
+            tape.side(
+                "tape_state",
+                &choice("one_way_selling"),
+                None,
+                Direction::Up
+            ),
+            Ok(AskSide::Sell)
+        );
+        assert!(
+            tape.side("tape_state", &choice("two_way"), None, Direction::Up)
+                .is_err()
+        );
+        let fade = AskRule::NoulLean {
+            min: 0.6,
+            with_lean: false,
+        };
+        assert_eq!(
+            fade.side(
+                "delta_divergence",
+                &JevAnswer::Noul { noul: 0.8 },
+                None,
+                Direction::Up
+            ),
+            Ok(AskSide::Sell)
+        );
+        assert!(
+            fade.side(
+                "delta_divergence",
+                &JevAnswer::Noul { noul: 0.8 },
+                None,
+                Direction::Flat
+            )
+            .is_err()
+        );
         assert_eq!(JevAsk::answer_text(&choice("reject")), "reject 70%");
         assert_eq!(JevAsk::bucket(&JevAnswer::Noul { noul: 0.65 }), "yes>=60%");
-        assert!(oracle.text().contains("break: through the level"), "{}", oracle.text());
+        assert!(
+            oracle.text().contains("break: through the level"),
+            "{}",
+            oracle.text()
+        );
         // Answers ride on the interpretation, so a trader can read its own.
         let resp: JevResponse = serde_json::from_str(r#"{"answers":{"direction":{"type":"choice","choice":"up","confidence":0.6,"probabilities":{"up":0.6,"down":0.2,"flat":0.2}},
             "conviction":{"type":"score","score":1.0},"continuation":{"type":"noul","noul":0.5},"exhaustion":{"type":"noul","noul":0.3},
             "touch_outcome":{"type":"choice","choice":"sweep","confidence":0.5}}}"#).unwrap();
         let r = interpret(&resp, "h", 1, ReadSource::Jev).unwrap();
-        assert!(matches!(r.answers.get("touch_outcome"), Some(JevAnswer::Choice { choice, .. }) if choice == "sweep"));
+        assert!(
+            matches!(r.answers.get("touch_outcome"), Some(JevAnswer::Choice { choice, .. }) if choice == "sweep")
+        );
     }
 
     #[test]
@@ -1486,7 +2038,11 @@ mod tests {
         assert_eq!(down.direction, Direction::Down);
         assert!(up.lean() > 0.3 && down.lean() < -0.3);
         assert_eq!(up.source, ReadSource::Deterministic);
-        assert!(up.continuation > 0.5, "move and lean agree: continuation {}", up.continuation);
+        assert!(
+            up.continuation > 0.5,
+            "move and lean agree: continuation {}",
+            up.continuation
+        );
     }
 
     #[test]
@@ -1509,7 +2065,10 @@ mod tests {
         assert_eq!(r.model, "jev-1.13.0");
         assert!(r.headline().starts_with("JEV: UP 98%"));
         assert_eq!(r.reaction, "absorbing");
-        assert_eq!(r.narrate(), "buyers have it and they mean it; more to come; absorbing at the level");
+        assert_eq!(
+            r.narrate(),
+            "buyers have it and they mean it; more to come; absorbing at the level"
+        );
         let fr = r.floor_read();
         assert!(fr.lean > 0.9 && fr.confidence > 0.8);
     }
@@ -1520,34 +2079,68 @@ mod tests {
         let r = DeterministicModel::read(&o);
         assert!(o.level_at_price().is_some());
         assert_ne!(r.reaction, "no_level");
-        let resp: JevResponse = serde_json::from_str(r#"{"answers":{
+        let resp: JevResponse = serde_json::from_str(
+            r#"{"answers":{
             "direction":{"type":"choice","choice":"flat","confidence":0.5},
             "conviction":{"type":"score","score":0.3},
             "continuation":{"type":"noul","noul":0.5},
-            "exhaustion":{"type":"noul","noul":0.5}}}"#).unwrap();
+            "exhaustion":{"type":"noul","noul":0.5}}}"#,
+        )
+        .unwrap();
         let r = interpret(&resp, "x", 0, ReadSource::Jev).unwrap();
         assert_eq!(r.reaction, "no_level");
     }
 
     #[test]
     fn a_missing_answer_is_malformed_not_a_panic() {
-        let resp: JevResponse = serde_json::from_str(r#"{"answers":{"direction":{"type":"choice","choice":"up"}}}"#).unwrap();
-        assert!(matches!(interpret(&resp, "x", 0, ReadSource::Jev), Err(ModelError::Malformed(_))));
-        let resp: JevResponse = serde_json::from_str(r#"{"answers":{"direction":{"type":"choice","choice":"sideways"}}}"#).unwrap();
-        assert!(matches!(interpret(&resp, "x", 0, ReadSource::Jev), Err(ModelError::Malformed(_))));
+        let resp: JevResponse =
+            serde_json::from_str(r#"{"answers":{"direction":{"type":"choice","choice":"up"}}}"#)
+                .unwrap();
+        assert!(matches!(
+            interpret(&resp, "x", 0, ReadSource::Jev),
+            Err(ModelError::Malformed(_))
+        ));
+        let resp: JevResponse = serde_json::from_str(
+            r#"{"answers":{"direction":{"type":"choice","choice":"sideways"}}}"#,
+        )
+        .unwrap();
+        assert!(matches!(
+            interpret(&resp, "x", 0, ReadSource::Jev),
+            Err(ModelError::Malformed(_))
+        ));
     }
 
     #[test]
     fn request_body_is_what_system_one_expects() {
         let q = floor_questions();
-        let body = SystemOneBody { state: "s".into(), questions: &q };
+        let body = SystemOneBody {
+            state: "s".into(),
+            questions: &q,
+        };
         let v: serde_json::Value = serde_json::to_value(&body).unwrap();
         assert_eq!(v["questions"]["direction"]["type"], "choice");
-        assert_eq!(v["questions"]["direction"]["criteria"]["up"].as_str().unwrap().contains("higher"), true);
+        assert!(
+            v["questions"]["direction"]["criteria"]["up"]
+                .as_str()
+                .unwrap()
+                .contains("higher")
+        );
         assert_eq!(v["questions"]["conviction"]["type"], "score");
-        assert_eq!(v["questions"]["conviction"]["criteria"].as_array().unwrap().len(), 3);
+        assert_eq!(
+            v["questions"]["conviction"]["criteria"]
+                .as_array()
+                .unwrap()
+                .len(),
+            3
+        );
         assert_eq!(v["questions"]["continuation"]["type"], "noul");
-        assert_eq!(v["questions"]["level_reaction"]["criteria"].as_object().unwrap().len(), 5);
+        assert_eq!(
+            v["questions"]["level_reaction"]["criteria"]
+                .as_object()
+                .unwrap()
+                .len(),
+            5
+        );
         assert!(v.get("model").is_none(), "the relay names the model");
     }
 
@@ -1559,7 +2152,10 @@ mod tests {
             r.model = "jev-test".into();
             r
         };
-        let mock = MockModel(Mutex::new(vec![Err(ModelError::Transport("down".into())), Ok(good.clone())]));
+        let mock = MockModel(Mutex::new(vec![
+            Err(ModelError::Transport("down".into())),
+            Ok(good.clone()),
+        ]));
         let mut desk = JevDesk::with_model(Box::new(mock));
         let o = obs(true);
 
@@ -1606,8 +2202,14 @@ mod tests {
     #[test]
     fn board_line_names_the_state() {
         let desk = JevDesk::with_model(Box::new(DeterministicModel));
-        assert_eq!(desk.board_line(Instrument::Gold, 0.0, false), "JEV: waits for the live tape");
-        assert_eq!(desk.board_line(Instrument::Gold, 0.0, true), "JEV: no read yet");
+        assert_eq!(
+            desk.board_line(Instrument::Gold, 0.0, false),
+            "JEV: waits for the live tape"
+        );
+        assert_eq!(
+            desk.board_line(Instrument::Gold, 0.0, true),
+            "JEV: no read yet"
+        );
         let mut off = JevDesk::with_model(Box::new(DeterministicModel));
         off.enabled = false;
         assert_eq!(off.board_line(Instrument::Gold, 0.0, true), "JEV: off  (J)");

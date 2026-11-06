@@ -95,7 +95,10 @@ pub fn symbol_id_for(inst: Instrument) -> Option<u32> {
 }
 
 pub fn instrument_for_symbol_id(id: u32) -> Option<Instrument> {
-    Instrument::ALL.iter().copied().find(|i| symbol_id_for(*i) == Some(id))
+    Instrument::ALL
+        .iter()
+        .copied()
+        .find(|i| symbol_id_for(*i) == Some(id))
 }
 
 /// Parse one text frame from the tape into a tick or a book change for a pit we run.
@@ -196,7 +199,11 @@ pub struct TickFlow {
 
 impl LiveQuote {
     pub fn rate(&self, now: f64) -> f32 {
-        let n = self.recent.iter().filter(|t| now - **t <= RATE_WINDOW_SECS).count();
+        let n = self
+            .recent
+            .iter()
+            .filter(|t| now - **t <= RATE_WINDOW_SECS)
+            .count();
         n as f32 / RATE_WINDOW_SECS as f32
     }
 
@@ -215,7 +222,11 @@ impl LiveQuote {
             self.last_dir = dir;
             self.flow.push_back((now, dir * weight, d_ticks.abs()));
         }
-        while self.flow.front().is_some_and(|f| now - f.0 > FLOW_WINDOW_SECS) {
+        while self
+            .flow
+            .front()
+            .is_some_and(|f| now - f.0 > FLOW_WINDOW_SECS)
+        {
             self.flow.pop_front();
         }
     }
@@ -227,19 +238,33 @@ impl LiveQuote {
                 continue;
             }
             n += 1;
-            if w > 0.0 { up += w } else { down -= w }
+            if w > 0.0 {
+                up += w
+            } else {
+                down -= w
+            }
             if now - t <= BURST_WINDOW_SECS {
                 burst = burst.max(mv);
             }
         }
         let total = up + down;
         if total <= 0.0 {
-            return TickFlow { direction: 0.0, up_share: 0.5, ticks: 0, burst_ticks: 0.0 };
+            return TickFlow {
+                direction: 0.0,
+                up_share: 0.5,
+                ticks: 0,
+                burst_ticks: 0.0,
+            };
         }
         let raw = (up - down) / total;
         // Two upticks are a lean, not a sweep: shrink toward neutral for small samples.
         let shrink = n as f32 / (n as f32 + 3.0);
-        TickFlow { direction: raw * shrink, up_share: up / total, ticks: n, burst_ticks: burst }
+        TickFlow {
+            direction: raw * shrink,
+            up_share: up / total,
+            ticks: n,
+            burst_ticks: burst,
+        }
     }
 }
 
@@ -334,7 +359,10 @@ impl LiveFeed {
                 if age as f64 > QUIET_AFTER_SECS {
                     PitFeedStatus::Quiet { age }
                 } else {
-                    PitFeedStatus::Live { age, rate: q.rate(now) }
+                    PitFeedStatus::Live {
+                        age,
+                        rate: q.rate(now),
+                    }
                 }
             }
         }
@@ -401,7 +429,11 @@ impl LiveFeed {
         q.last_update = now;
         q.updates += 1;
         q.recent.push_back(now);
-        while q.recent.front().is_some_and(|t| now - *t > RATE_WINDOW_SECS) {
+        while q
+            .recent
+            .front()
+            .is_some_and(|t| now - *t > RATE_WINDOW_SECS)
+        {
             q.recent.pop_front();
         }
         changed
@@ -463,7 +495,13 @@ impl LiveFeed {
     }
 
     /// Switch mode. Leaving live mode releases the engines from their anchors.
-    pub fn set_mode(&mut self, mode: FeedMode, engines: &mut PitEngines, controller: &mut MarketScenarioController, now: f64) {
+    pub fn set_mode(
+        &mut self,
+        mode: FeedMode,
+        engines: &mut PitEngines,
+        controller: &mut MarketScenarioController,
+        now: f64,
+    ) {
         if mode == self.mode {
             return;
         }
@@ -473,12 +511,14 @@ impl LiveFeed {
                 for pit in engines.pits.iter_mut() {
                     pit.clear_live_anchor();
                 }
-                controller.announcement_banner = "SIMULATED FLOW - NOT MARKET DATA  (L returns to live)".to_string();
+                controller.announcement_banner =
+                    "SIMULATED FLOW - NOT MARKET DATA  (L returns to live)".to_string();
                 controller.banner_timer = 4.0;
                 warn!("live feed: switched to SIMULATED flow");
             }
             FeedMode::Live => {
-                controller.announcement_banner = "LIVE FEED - pits re-anchor on the next tick".to_string();
+                controller.announcement_banner =
+                    "LIVE FEED - pits re-anchor on the next tick".to_string();
                 controller.banner_timer = 3.0;
                 self.next_connect_at = now;
                 info!("live feed: switched to LIVE");
@@ -490,7 +530,8 @@ impl LiveFeed {
 /// Scenario and shock keys inject synthetic paper; refuse them while live and say why.
 pub fn sim_only_guard(feed: &LiveFeed, controller: &mut MarketScenarioController) -> bool {
     if feed.mode == FeedMode::Live {
-        controller.announcement_banner = "SCENARIOS AND SHOCKS ARE SIMULATION-ONLY  (press L for simulated flow)".to_string();
+        controller.announcement_banner =
+            "SCENARIOS AND SHOCKS ARE SIMULATION-ONLY  (press L for simulated flow)".to_string();
         controller.banner_timer = 3.0;
         false
     } else {
@@ -514,13 +555,13 @@ pub fn poll_live_feed(
     feed.ensure_connected(now);
 
     let mut events = Vec::new();
-    if let Ok(guard) = feed.socket.0.lock() {
-        if let Some((_, rx)) = guard.as_ref() {
-            while let Some(ev) = rx.try_recv() {
-                events.push(ev);
-                if events.len() > 4096 {
-                    break;
-                }
+    if let Ok(guard) = feed.socket.0.lock()
+        && let Some((_, rx)) = guard.as_ref()
+    {
+        while let Some(ev) = rx.try_recv() {
+            events.push(ev);
+            if events.len() > 4096 {
+                break;
             }
         }
     }
@@ -539,7 +580,11 @@ pub fn poll_live_feed(
                         feed.ingest_tick(inst, &tick, now);
                         // The candles are built from the tape itself: the first tick of a minute
                         // opens the bar, every tick moves it, and the tick rule signs it.
-                        let d_ticks = prev.map(|p| ((tick.bid - p) / crate::pit_engine::tick_size(inst) as f64) as f32).unwrap_or(0.0);
+                        let d_ticks = prev
+                            .map(|p| {
+                                ((tick.bid - p) / crate::pit_engine::tick_size(inst) as f64) as f32
+                            })
+                            .unwrap_or(0.0);
                         candles.apply_live_tick(inst, tick.t, tick.bid as f32, d_ticks);
                         if feed.mode == FeedMode::Live {
                             let pit = engines.pit_mut(inst);
@@ -584,7 +629,10 @@ pub fn setup_feed_status(mut commands: Commands) {
                 justify_content: JustifyContent::FlexEnd,
                 ..default()
             },
-            Pickable { should_block_lower: false, is_hoverable: false },
+            Pickable {
+                should_block_lower: false,
+                is_hoverable: false,
+            },
         ))
         .with_children(|row| {
             row.spawn((
@@ -597,13 +645,19 @@ pub fn setup_feed_status(mut commands: Commands) {
                 },
                 BackgroundColor(Color::srgba(0.10, 0.12, 0.16, 0.92)),
                 BorderColor::all(Color::srgba(0.5, 0.5, 0.5, 0.7)),
-                Pickable { should_block_lower: false, is_hoverable: false },
+                Pickable {
+                    should_block_lower: false,
+                    is_hoverable: false,
+                },
             ))
             .with_children(|chip| {
                 chip.spawn((
                     FeedStatusText,
                     Text::new("CONNECTING TO FEED"),
-                    TextFont { font_size: 13.0, ..default() },
+                    TextFont {
+                        font_size: 13.0,
+                        ..default()
+                    },
                     TextColor(Color::srgb(0.85, 0.85, 0.85)),
                 ));
             });
@@ -633,7 +687,10 @@ pub fn feed_status_line(feed: &LiveFeed, now: f64) -> (String, Color, Color) {
                 let (n, rate) = feed.live_summary(now);
                 if n == 0 {
                     (
-                        format!("FEED CONNECTED - NO TICKS {}  - ACTION HALTED", mmss(now - feed.state_since)),
+                        format!(
+                            "FEED CONNECTED - NO TICKS {}  - ACTION HALTED",
+                            mmss(now - feed.state_since)
+                        ),
                         Color::srgba(0.55, 0.40, 0.02, 0.95),
                         Color::srgb(1.0, 0.85, 0.35),
                     )
@@ -646,12 +703,19 @@ pub fn feed_status_line(feed: &LiveFeed, now: f64) -> (String, Color, Color) {
                 }
             }
             FeedState::Stale => (
-                format!("FEED STALE {}  - ACTION HALTED", mmss(now - feed.state_since)),
+                format!(
+                    "FEED STALE {}  - ACTION HALTED",
+                    mmss(now - feed.state_since)
+                ),
                 Color::srgba(0.55, 0.40, 0.02, 0.95),
                 Color::srgb(1.0, 0.85, 0.35),
             ),
             FeedState::Down => (
-                format!("FEED DOWN {}  - ACTION HALTED - reconnecting  ({})", mmss(now - feed.state_since), feed.last_error),
+                format!(
+                    "FEED DOWN {}  - ACTION HALTED - reconnecting  ({})",
+                    mmss(now - feed.state_since),
+                    feed.last_error
+                ),
                 Color::srgba(0.55, 0.06, 0.06, 0.95),
                 Color::srgb(1.0, 0.45, 0.45),
             ),
@@ -721,12 +785,16 @@ mod tests {
 
     #[test]
     fn parses_gold_tick_and_book() {
-        let Some(TapeMessage::Tick(inst, tick)) = parse_tape(SAMPLE) else { panic!("tick") };
+        let Some(TapeMessage::Tick(inst, tick)) = parse_tape(SAMPLE) else {
+            panic!("tick")
+        };
         assert_eq!(inst, Instrument::Gold);
         assert_eq!(tick.bid, 4121.83);
         assert_eq!(tick.ask, 4122.03);
         assert_eq!(tick.t, 1792601242826);
-        let Some(TapeMessage::Depth(inst, depth)) = parse_tape(DEPTH) else { panic!("depth") };
+        let Some(TapeMessage::Depth(inst, depth)) = parse_tape(DEPTH) else {
+            panic!("depth")
+        };
         assert_eq!(inst, Instrument::Gold);
         assert_eq!(depth.bids.len(), 2);
         assert_eq!(depth.asks[2], (4122.25, 2.5));
@@ -745,10 +813,17 @@ mod tests {
     fn book_rides_on_the_quote_and_spread_is_kept() {
         let mut feed = LiveFeed::default();
         feed.note_message(0.0);
-        let Some(TapeMessage::Tick(_, tick)) = parse_tape(SAMPLE) else { panic!() };
-        let Some(TapeMessage::Depth(_, depth)) = parse_tape(DEPTH) else { panic!() };
+        let Some(TapeMessage::Tick(_, tick)) = parse_tape(SAMPLE) else {
+            panic!()
+        };
+        let Some(TapeMessage::Depth(_, depth)) = parse_tape(DEPTH) else {
+            panic!()
+        };
         feed.ingest_depth(Instrument::Gold, &depth);
-        assert!(feed.quote(Instrument::Gold).is_none(), "a book before any tick has nowhere to live");
+        assert!(
+            feed.quote(Instrument::Gold).is_none(),
+            "a book before any tick has nowhere to live"
+        );
         feed.ingest_tick(Instrument::Gold, &tick, 1.0);
         feed.ingest_depth(Instrument::Gold, &depth);
         let q = feed.quote(Instrument::Gold).unwrap();
@@ -773,7 +848,9 @@ mod tests {
     }
 
     fn bar_at(price: f64) -> TapeTick {
-        let Some(TapeMessage::Tick(_, mut tick)) = parse_tape(SAMPLE) else { panic!() };
+        let Some(TapeMessage::Tick(_, mut tick)) = parse_tape(SAMPLE) else {
+            panic!()
+        };
         tick.bid = price;
         tick.ask = price + 0.2;
         tick
@@ -785,19 +862,35 @@ mod tests {
         let mut feed = LiveFeed::default();
         feed.note_message(0.0);
         for i in 0..=20 {
-            feed.ingest_tick(Instrument::Gold, &bar_at(4120.0 + 0.1 * i as f64), 0.5 * i as f64);
+            feed.ingest_tick(
+                Instrument::Gold,
+                &bar_at(4120.0 + 0.1 * i as f64),
+                0.5 * i as f64,
+            );
         }
         let up = feed.quote(Instrument::Gold).unwrap().flow(10.0);
-        assert!(up.direction > 0.7, "rising tape direction {:.2}", up.direction);
+        assert!(
+            up.direction > 0.7,
+            "rising tape direction {:.2}",
+            up.direction
+        );
         assert!(up.up_share > 0.95, "up share {:.2}", up.up_share);
         assert_eq!(up.ticks, 20);
 
         // Then falling: the window forgets the rise.
         for i in 1..=20 {
-            feed.ingest_tick(Instrument::Gold, &bar_at(4122.0 - 0.1 * i as f64), 10.0 + 0.5 * i as f64);
+            feed.ingest_tick(
+                Instrument::Gold,
+                &bar_at(4122.0 - 0.1 * i as f64),
+                10.0 + 0.5 * i as f64,
+            );
         }
         let down = feed.quote(Instrument::Gold).unwrap().flow(30.0);
-        assert!(down.direction < -0.7, "falling tape direction {:.2}", down.direction);
+        assert!(
+            down.direction < -0.7,
+            "falling tape direction {:.2}",
+            down.direction
+        );
 
         // Alternating ticks read as two-way.
         let mut feed = LiveFeed::default();
@@ -807,7 +900,11 @@ mod tests {
             feed.ingest_tick(Instrument::Gold, &bar_at(px), 0.5 * i as f64);
         }
         let flat = feed.quote(Instrument::Gold).unwrap().flow(10.0);
-        assert!(flat.direction.abs() < 0.15, "chop direction {:.2}", flat.direction);
+        assert!(
+            flat.direction.abs() < 0.15,
+            "chop direction {:.2}",
+            flat.direction
+        );
 
         // One uptick alone is a lean, not a verdict.
         let mut feed = LiveFeed::default();
@@ -815,7 +912,11 @@ mod tests {
         feed.ingest_tick(Instrument::Gold, &bar_at(4120.0), 0.0);
         feed.ingest_tick(Instrument::Gold, &bar_at(4120.1), 1.0);
         let one = feed.quote(Instrument::Gold).unwrap().flow(1.0);
-        assert!(one.direction > 0.0 && one.direction < 0.4, "single tick direction {:.2}", one.direction);
+        assert!(
+            one.direction > 0.0 && one.direction < 0.4,
+            "single tick direction {:.2}",
+            one.direction
+        );
     }
 
     #[test]
@@ -858,27 +959,75 @@ mod tests {
 
     #[test]
     fn live_flow_mapping_is_bounded_and_monotone() {
-        let up = TickFlow { direction: 1.0, up_share: 1.0, ticks: 30, burst_ticks: 1.0 };
-        let down = TickFlow { direction: -1.0, ..up };
-        let flat = TickFlow { direction: 0.0, up_share: 0.5, ..up };
+        let up = TickFlow {
+            direction: 1.0,
+            up_share: 1.0,
+            ticks: 30,
+            burst_ticks: 1.0,
+        };
+        let down = TickFlow {
+            direction: -1.0,
+            ..up
+        };
+        let flat = TickFlow {
+            direction: 0.0,
+            up_share: 0.5,
+            ..up
+        };
         assert!((live_flow_for(&flat, 1.0).buy_prob - 0.5).abs() < 1e-6);
         assert!(live_flow_for(&up, 1.0).buy_prob >= 0.9);
         assert!(live_flow_for(&down, 1.0).buy_prob <= 0.1);
-        assert!(live_flow_for(&up, 0.0).arrivals_per_sec < live_flow_for(&up, 1.0).arrivals_per_sec);
+        assert!(
+            live_flow_for(&up, 0.0).arrivals_per_sec < live_flow_for(&up, 1.0).arrivals_per_sec
+        );
         assert!(live_flow_for(&up, 100.0).arrivals_per_sec <= 4.0);
-        let sweep = TickFlow { burst_ticks: 6.0, ..up };
+        let sweep = TickFlow {
+            burst_ticks: 6.0,
+            ..up
+        };
         assert!(live_flow_for(&sweep, 1.0).block_prob > live_flow_for(&up, 1.0).block_prob);
-        assert!(live_flow_for(&TickFlow { burst_ticks: 100.0, ..up }, 1.0).block_prob <= 0.40);
+        assert!(
+            live_flow_for(
+                &TickFlow {
+                    burst_ticks: 100.0,
+                    ..up
+                },
+                1.0
+            )
+            .block_prob
+                <= 0.40
+        );
     }
 
     #[test]
     fn tape_label_names_the_lean_only_when_it_is_one() {
-        assert_eq!(tape_label(&TickFlow { ticks: 2, ..Default::default() }), "TAPE THIN");
-        let up = TickFlow { direction: 0.8, up_share: 0.9, ticks: 20, burst_ticks: 1.0 };
+        assert_eq!(
+            tape_label(&TickFlow {
+                ticks: 2,
+                ..Default::default()
+            }),
+            "TAPE THIN"
+        );
+        let up = TickFlow {
+            direction: 0.8,
+            up_share: 0.9,
+            ticks: 20,
+            burst_ticks: 1.0,
+        };
         assert_eq!(tape_label(&up), "UPTICKS 90% BUYERS");
-        let two_way = TickFlow { direction: 0.1, up_share: 0.55, ticks: 20, burst_ticks: 1.0 };
+        let two_way = TickFlow {
+            direction: 0.1,
+            up_share: 0.55,
+            ticks: 20,
+            burst_ticks: 1.0,
+        };
         assert_eq!(tape_label(&two_way), "UPTICKS 55%");
-        let down = TickFlow { direction: -0.7, up_share: 0.15, ticks: 20, burst_ticks: 1.0 };
+        let down = TickFlow {
+            direction: -0.7,
+            up_share: 0.15,
+            ticks: 20,
+            burst_ticks: 1.0,
+        };
         assert_eq!(tape_label(&down), "UPTICKS 15% SELLERS");
     }
 
@@ -889,45 +1038,78 @@ mod tests {
         assert!(feed.pit_flow(Instrument::Gold, 1.0).is_none());
         feed.ingest_tick(Instrument::Gold, &bar_at(4120.0), 1.0);
         feed.ingest_tick(Instrument::Gold, &bar_at(4120.1), 2.0);
-        assert!(feed.pit_flow(Instrument::Gold, 2.5).is_some_and(|f| f.buy_prob > 0.5));
+        assert!(
+            feed.pit_flow(Instrument::Gold, 2.5)
+                .is_some_and(|f| f.buy_prob > 0.5)
+        );
         feed.check_staleness(2.0 + STALE_AFTER_SECS + 1.0);
-        assert!(feed.pit_flow(Instrument::Gold, 2.0 + STALE_AFTER_SECS + 1.0).is_none());
+        assert!(
+            feed.pit_flow(Instrument::Gold, 2.0 + STALE_AFTER_SECS + 1.0)
+                .is_none()
+        );
     }
 
     #[test]
     fn halts_without_ticks_and_recovers() {
         let mut feed = LiveFeed::default();
         let bar = bar_at(4121.83);
-        assert_eq!(feed.pit_status(Instrument::Gold, 0.0), PitFeedStatus::FeedDown);
+        assert_eq!(
+            feed.pit_status(Instrument::Gold, 0.0),
+            PitFeedStatus::FeedDown
+        );
         feed.note_message(1.0);
         assert_eq!(feed.state, FeedState::Live);
-        assert_eq!(feed.pit_status(Instrument::Gold, 1.0), PitFeedStatus::Waiting);
+        assert_eq!(
+            feed.pit_status(Instrument::Gold, 1.0),
+            PitFeedStatus::Waiting
+        );
         feed.ingest_tick(Instrument::Gold, &bar, 1.0);
-        assert!(matches!(feed.pit_status(Instrument::Gold, 2.0), PitFeedStatus::Live { .. }));
+        assert!(matches!(
+            feed.pit_status(Instrument::Gold, 2.0),
+            PitFeedStatus::Live { .. }
+        ));
         assert!(feed.pit_activity(Instrument::Gold, 2.0).is_some());
-        assert_eq!(feed.pit_status(Instrument::Us30, 2.0), PitFeedStatus::Waiting);
+        assert_eq!(
+            feed.pit_status(Instrument::Us30, 2.0),
+            PitFeedStatus::Waiting
+        );
 
         // Socket silent: stale, and every pit halts.
         feed.check_staleness(1.0 + STALE_AFTER_SECS + 1.0);
         assert_eq!(feed.state, FeedState::Stale);
-        assert_eq!(feed.pit_status(Instrument::Gold, 25.0), PitFeedStatus::FeedDown);
+        assert_eq!(
+            feed.pit_status(Instrument::Gold, 25.0),
+            PitFeedStatus::FeedDown
+        );
         assert!(feed.pit_activity(Instrument::Gold, 25.0).is_none());
 
         // Socket speaks again but gold is quiet past the limit.
         feed.note_message(100.0);
         assert_eq!(feed.state, FeedState::Live);
-        assert!(matches!(feed.pit_status(Instrument::Gold, 100.0), PitFeedStatus::Quiet { .. }));
+        assert!(matches!(
+            feed.pit_status(Instrument::Gold, 100.0),
+            PitFeedStatus::Quiet { .. }
+        ));
         feed.ingest_tick(Instrument::Gold, &bar, 100.0);
-        assert!(matches!(feed.pit_status(Instrument::Gold, 100.5), PitFeedStatus::Live { .. }));
+        assert!(matches!(
+            feed.pit_status(Instrument::Gold, 100.5),
+            PitFeedStatus::Live { .. }
+        ));
 
         // The desk sets Down directly on a socket error; the first message after a reconnect
         // must bring the feed back without a Connecting step in between.
         feed.state = FeedState::Down;
-        assert_eq!(feed.pit_status(Instrument::Gold, 101.0), PitFeedStatus::FeedDown);
+        assert_eq!(
+            feed.pit_status(Instrument::Gold, 101.0),
+            PitFeedStatus::FeedDown
+        );
         feed.note_message(101.0);
         assert_eq!(feed.state, FeedState::Live);
         feed.ingest_tick(Instrument::Gold, &bar, 101.0);
-        assert!(matches!(feed.pit_status(Instrument::Gold, 101.5), PitFeedStatus::Live { .. }));
+        assert!(matches!(
+            feed.pit_status(Instrument::Gold, 101.5),
+            PitFeedStatus::Live { .. }
+        ));
     }
 
     #[test]
@@ -949,7 +1131,10 @@ mod tests {
         let mut engines = PitEngines::default();
         let mut controller = MarketScenarioController::default();
         feed.set_mode(FeedMode::Simulated, &mut engines, &mut controller, 0.0);
-        assert_eq!(feed.pit_status(Instrument::Gold, 0.0), PitFeedStatus::Simulated);
+        assert_eq!(
+            feed.pit_status(Instrument::Gold, 0.0),
+            PitFeedStatus::Simulated
+        );
         let (line, ..) = feed_status_line(&feed, 0.0);
         assert!(line.contains("SIMULATED"));
         assert!(!sim_only_guard(&LiveFeed::default(), &mut controller));

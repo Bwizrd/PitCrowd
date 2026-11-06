@@ -202,7 +202,10 @@ impl Phase {
     pub fn is_shouting(&self) -> bool {
         matches!(
             self,
-            Phase::Quoting { .. } | Phase::Working { .. } | Phase::Hitting { .. } | Phase::Disputing { .. }
+            Phase::Quoting { .. }
+                | Phase::Working { .. }
+                | Phase::Hitting { .. }
+                | Phase::Disputing { .. }
         )
     }
 
@@ -276,7 +279,10 @@ impl Participant {
     }
 
     fn can_broker(&self) -> bool {
-        matches!(self.role, ParticipantRole::LeadBroker | ParticipantRole::Broker)
+        matches!(
+            self.role,
+            ParticipantRole::LeadBroker | ParticipantRole::Broker
+        )
     }
 }
 
@@ -289,11 +295,22 @@ pub enum PitEventKind {
     /// A customer order reached a broker.
     OrderArrival { broker: usize, side: Side, qty: u32 },
     /// Someone put a bid or offer into the pit (or a broker improved his price).
-    Quote { slot: usize, side: Side, price_ticks: i32, qty: u32 },
+    Quote {
+        slot: usize,
+        side: Side,
+        price_ticks: i32,
+        qty: u32,
+    },
     /// A quote was pulled or expired.
     Withdraw { slot: usize },
     /// A trade. `side` is the aggressor's side.
-    Fill { aggressor: usize, passive: usize, side: Side, price_ticks: i32, qty: u32 },
+    Fill {
+        aggressor: usize,
+        passive: usize,
+        side: Side,
+        price_ticks: i32,
+        qty: u32,
+    },
     /// Was at the best price but did not get the trade.
     Missed { slot: usize },
     /// The reporter recorded a new price.
@@ -592,10 +609,10 @@ impl PitMarket {
         }
         // Anyone whose counterparty just left stops pointing at them.
         for slot in 0..n {
-            if let Some(cp) = self.participants[slot].phase.counterparty() {
-                if cp >= n {
-                    self.participants[slot].phase = Phase::Endorsing { remaining: 1.0 };
-                }
+            if let Some(cp) = self.participants[slot].phase.counterparty()
+                && cp >= n
+            {
+                self.participants[slot].phase = Phase::Endorsing { remaining: 1.0 };
             }
         }
     }
@@ -603,11 +620,15 @@ impl PitMarket {
     /// Apply a scenario preset. `relax_rate` > 0 makes the preset decay back to baseline.
     pub fn apply_params(&mut self, params: FlowParams, relax_rate: f32) {
         if params.news_pause > 0.0 && self.params.news_pause <= 0.0 {
-            self.push_event(PitEventKind::NewsPause { seconds: params.news_pause });
+            self.push_event(PitEventKind::NewsPause {
+                seconds: params.news_pause,
+            });
             // Everyone pulls quotes and freezes on the news.
             for p in self.participants.iter_mut() {
                 if p.phase.is_quoting() {
-                    p.phase = Phase::BackingAway { remaining: params.news_pause + 0.5 };
+                    p.phase = Phase::BackingAway {
+                        remaining: params.news_pause + 0.5,
+                    };
                 }
             }
         }
@@ -620,7 +641,9 @@ impl PitMarket {
         let mean = self.params.mean_qty.max(1.0);
         for _ in 0..blocks {
             let qty = (mean * (4.0 + self.rng.unit() * 4.0)).round() as u32;
-            self.participants[0].deck.push_back((side, qty.max(1), true));
+            self.participants[0]
+                .deck
+                .push_back((side, qty.max(1), true));
         }
         self.params.arrival_rate = (self.params.arrival_rate * 2.5).max(2.0);
         self.params.buy_prob = if side.is_buy() { 0.88 } else { 0.12 };
@@ -631,7 +654,10 @@ impl PitMarket {
     }
 
     fn push_event(&mut self, kind: PitEventKind) {
-        let ev = PitEvent { t: self.clock, kind };
+        let ev = PitEvent {
+            t: self.clock,
+            kind,
+        };
         if self.events.len() >= EVENT_RING_CAP {
             self.events.pop_front();
         }
@@ -762,7 +788,11 @@ impl PitMarket {
             Some(flow) => (flow.buy_prob, flow.block_prob),
             None => (self.params.buy_prob, self.params.block_prob),
         };
-        let side = if self.rng.chance(buy_prob) { Side::Buy } else { Side::Sell };
+        let side = if self.rng.chance(buy_prob) {
+            Side::Buy
+        } else {
+            Side::Sell
+        };
         let mean = self.params.mean_qty.max(1.0);
         let is_block = self.rng.chance(block_prob);
         let qty = if is_block {
@@ -786,7 +816,9 @@ impl PitMarket {
             let idle: Vec<usize> = brokers
                 .iter()
                 .copied()
-                .filter(|&b| self.participants[b].phase.is_idle() && self.participants[b].deck.is_empty())
+                .filter(|&b| {
+                    self.participants[b].phase.is_idle() && self.participants[b].deck.is_empty()
+                })
                 .collect();
             if !idle.is_empty() {
                 idle[self.rng.range_usize(idle.len())]
@@ -812,7 +844,13 @@ impl PitMarket {
         let phase = self.participants[slot].phase;
         match phase {
             Phase::Idle => {}
-            Phase::Quoting { side, price_ticks, qty, remaining, age } => {
+            Phase::Quoting {
+                side,
+                price_ticks,
+                qty,
+                remaining,
+                age,
+            } => {
                 let remaining = remaining - dt;
                 if remaining <= 0.0 {
                     self.participants[slot].phase = Phase::Idle;
@@ -827,7 +865,15 @@ impl PitMarket {
                     };
                 }
             }
-            Phase::Working { side, price_ticks, limit_ticks, qty_left, age, since_improve, is_market } => {
+            Phase::Working {
+                side,
+                price_ticks,
+                limit_ticks,
+                qty_left,
+                age,
+                since_improve,
+                is_market,
+            } => {
                 self.participants[slot].phase = Phase::Working {
                     side,
                     price_ticks,
@@ -838,7 +884,11 @@ impl PitMarket {
                     is_market,
                 };
             }
-            Phase::Hitting { counterparty, side, remaining } => {
+            Phase::Hitting {
+                counterparty,
+                side,
+                remaining,
+            } => {
                 let remaining = remaining - dt;
                 if remaining <= 0.0 {
                     // A broker with lots left on the card goes straight back to shouting;
@@ -858,15 +908,29 @@ impl PitMarket {
                         _ => Phase::Endorsing { remaining: endorse },
                     };
                 } else {
-                    self.participants[slot].phase = Phase::Hitting { counterparty, side, remaining };
+                    self.participants[slot].phase = Phase::Hitting {
+                        counterparty,
+                        side,
+                        remaining,
+                    };
                 }
             }
-            Phase::Confirming { counterparty, side, remaining } => {
+            Phase::Confirming {
+                counterparty,
+                side,
+                remaining,
+            } => {
                 let remaining = remaining - dt;
                 self.participants[slot].phase = if remaining <= 0.0 {
-                    Phase::Endorsing { remaining: 0.7 + self.rng.unit() * 0.5 }
+                    Phase::Endorsing {
+                        remaining: 0.7 + self.rng.unit() * 0.5,
+                    }
                 } else {
-                    Phase::Confirming { counterparty, side, remaining }
+                    Phase::Confirming {
+                        counterparty,
+                        side,
+                        remaining,
+                    }
                 };
             }
             Phase::Endorsing { remaining } => {
@@ -891,12 +955,18 @@ impl PitMarket {
                     };
                 }
             }
-            Phase::Disputing { counterparty, remaining } => {
+            Phase::Disputing {
+                counterparty,
+                remaining,
+            } => {
                 let remaining = remaining - dt;
                 self.participants[slot].phase = if remaining <= 0.0 {
                     Phase::Endorsing { remaining: 1.0 }
                 } else {
-                    Phase::Disputing { counterparty, remaining }
+                    Phase::Disputing {
+                        counterparty,
+                        remaining,
+                    }
                 };
             }
             Phase::Printing { remaining, up } => {
@@ -948,27 +1018,45 @@ impl PitMarket {
                 // right side stays in to get paid.
                 let stress = self.participants[slot].inventory_stress();
                 let inv = self.participants[slot].inventory;
-                let wrong_footed = (inv > 0 && self.signals.pressure < -0.2) || (inv < 0 && self.signals.pressure > 0.2);
-                let back_chance = if wrong_footed { 0.12 + stress * 0.5 } else { 0.05 };
+                let wrong_footed = (inv > 0 && self.signals.pressure < -0.2)
+                    || (inv < 0 && self.signals.pressure > 0.2);
+                let back_chance = if wrong_footed {
+                    0.12 + stress * 0.5
+                } else {
+                    0.05
+                };
                 if self.signals.fast_market && self.rng.chance(back_chance) {
-                    self.participants[slot].phase = Phase::BackingAway { remaining: 2.0 + self.rng.unit() * 2.5 };
+                    self.participants[slot].phase = Phase::BackingAway {
+                        remaining: 2.0 + self.rng.unit() * 2.5,
+                    };
                     self.push_event(PitEventKind::BackAway { slot });
                     return;
                 }
 
                 // Flatten a heavy position by hitting the other side's quote.
                 if stress > 0.6 {
-                    let reduce = if self.participants[slot].inventory > 0 { Side::Sell } else { Side::Buy };
+                    let reduce = if self.participants[slot].inventory > 0 {
+                        Side::Sell
+                    } else {
+                        Side::Buy
+                    };
                     if self.try_aggress(slot, reduce, None) {
                         return;
                     }
                 }
 
                 // Scalp a stale quote (local-vs-local) if someone is through fair value.
-                if self.rng.chance(self.participants[slot].aggressiveness * 0.35) {
+                if self
+                    .rng
+                    .chance(self.participants[slot].aggressiveness * 0.35)
+                {
                     let fair = self.fair_ticks;
-                    let stale_ask = self.best_quote(Side::Sell).filter(|&(_, px)| (px as f32) < fair - 0.6);
-                    let stale_bid = self.best_quote(Side::Buy).filter(|&(_, px)| (px as f32) > fair + 0.6);
+                    let stale_ask = self
+                        .best_quote(Side::Sell)
+                        .filter(|&(_, px)| (px as f32) < fair - 0.6);
+                    let stale_bid = self
+                        .best_quote(Side::Buy)
+                        .filter(|&(_, px)| (px as f32) > fair + 0.6);
                     if stale_ask.is_some() && self.try_aggress(slot, Side::Buy, None) {
                         return;
                     }
@@ -979,13 +1067,20 @@ impl PitMarket {
 
                 // Otherwise show a quote. Heavy flow makes locals keener: that is the business.
                 let flow_boost = 1.0 + (self.signals.arrival_intensity / 3.0).clamp(0.0, 1.0);
-                let want = self.params.local_quote_rate * (0.5 + self.participants[slot].attention * 0.5) * flow_boost;
+                let want = self.params.local_quote_rate
+                    * (0.5 + self.participants[slot].attention * 0.5)
+                    * flow_boost;
                 if !self.rng.chance(want.min(0.95)) {
                     return;
                 }
                 self.post_local_quote(slot);
             }
-            Phase::Quoting { side, price_ticks, qty, .. } => {
+            Phase::Quoting {
+                side,
+                price_ticks,
+                qty,
+                ..
+            } => {
                 // Re-price if fair moved away from the quote.
                 let fair = self.fair_ticks;
                 let off = match side {
@@ -1011,15 +1106,30 @@ impl PitMarket {
     /// standing against one-way paper (that is what the flow pays for).
     fn quoted_half_spread(&self, slot: usize, side: Side) -> f32 {
         let pressure = self.signals.pressure;
-        let against_flow = (side == Side::Buy && pressure < 0.0) || (side == Side::Sell && pressure > 0.0);
+        let against_flow =
+            (side == Side::Buy && pressure < 0.0) || (side == Side::Sell && pressure > 0.0);
         // Against the screen the premium is capped: the real market says where the offer is.
         let premium = if self.live_anchor.is_some() { 0.8 } else { 2.0 };
         // A local standing against a confident read wants paying for it too: up to a tick.
-        let against_read = self.floor_read.map(|r| {
-            let against = (side == Side::Buy && r.lean < 0.0) || (side == Side::Sell && r.lean > 0.0);
-            if against { (r.lean.abs() * r.confidence).min(1.0) } else { 0.0 }
-        }).unwrap_or(0.0);
-        self.half_spread_ticks(&self.participants[slot]) + if against_flow { pressure.abs() * premium } else { 0.0 } + against_read
+        let against_read = self
+            .floor_read
+            .map(|r| {
+                let against =
+                    (side == Side::Buy && r.lean < 0.0) || (side == Side::Sell && r.lean > 0.0);
+                if against {
+                    (r.lean.abs() * r.confidence).min(1.0)
+                } else {
+                    0.0
+                }
+            })
+            .unwrap_or(0.0);
+        self.half_spread_ticks(&self.participants[slot])
+            + if against_flow {
+                pressure.abs() * premium
+            } else {
+                0.0
+            }
+            + against_read
     }
 
     fn post_local_quote(&mut self, slot: usize) {
@@ -1059,8 +1169,19 @@ impl PitMarket {
             qty *= 2;
         }
         let remaining = 2.5 + self.rng.unit() * 3.5;
-        self.participants[slot].phase = Phase::Quoting { side, price_ticks: px, qty, remaining, age: 0.0 };
-        self.push_event(PitEventKind::Quote { slot, side, price_ticks: px, qty });
+        self.participants[slot].phase = Phase::Quoting {
+            side,
+            price_ticks: px,
+            qty,
+            remaining,
+            age: 0.0,
+        };
+        self.push_event(PitEventKind::Quote {
+            slot,
+            side,
+            price_ticks: px,
+            qty,
+        });
     }
 
     // ----- Brokers ----------------------------------------------------------
@@ -1072,12 +1193,16 @@ impl PitMarket {
                 // Nothing of my own: take an order off the most loaded colleague's deck.
                 if self.participants[slot].deck.is_empty() {
                     let donor = (0..self.active_count)
-                        .filter(|&b| b != slot && self.participants[b].can_broker() && self.participants[b].deck.len() >= 2)
+                        .filter(|&b| {
+                            b != slot
+                                && self.participants[b].can_broker()
+                                && self.participants[b].deck.len() >= 2
+                        })
                         .max_by_key(|&b| self.participants[b].deck.len());
-                    if let Some(d) = donor {
-                        if let Some(order) = self.participants[d].deck.pop_back() {
-                            self.participants[slot].deck.push_back(order);
-                        }
+                    if let Some(d) = donor
+                        && let Some(order) = self.participants[d].deck.pop_back()
+                    {
+                        self.participants[slot].deck.push_back(order);
                     }
                 }
                 let Some((side, qty, is_market)) = self.participants[slot].deck.pop_front() else {
@@ -1110,9 +1235,22 @@ impl PitMarket {
                     since_improve: 0.0,
                     is_market,
                 };
-                self.push_event(PitEventKind::Quote { slot, side, price_ticks: start, qty });
+                self.push_event(PitEventKind::Quote {
+                    slot,
+                    side,
+                    price_ticks: start,
+                    qty,
+                });
             }
-            Phase::Working { side, price_ticks, limit_ticks, qty_left, age, since_improve, is_market } => {
+            Phase::Working {
+                side,
+                price_ticks,
+                limit_ticks,
+                qty_left,
+                age,
+                since_improve,
+                is_market,
+            } => {
                 // Shout for at least half a second before anyone can fill: hands before prints.
                 if age < 0.5 {
                     return;
@@ -1157,7 +1295,12 @@ impl PitMarket {
                         since_improve: 0.0,
                         is_market,
                     };
-                    self.push_event(PitEventKind::Quote { slot, side, price_ticks: px, qty: qty_left });
+                    self.push_event(PitEventKind::Quote {
+                        slot,
+                        side,
+                        price_ticks: px,
+                        qty: qty_left,
+                    });
                     // The pit hears a bid being walked: fair value follows, no print yet.
                     if walked_into_space {
                         self.fair_ticks += side.sign() as f32 * 0.4;
@@ -1181,10 +1324,14 @@ impl PitMarket {
             return;
         }
         // Runners go when a broker has just finished a card.
-        let someone_endorsing = (0..self.active_count)
-            .any(|s| self.participants[s].can_broker() && matches!(self.participants[s].phase, Phase::Endorsing { .. }));
+        let someone_endorsing = (0..self.active_count).any(|s| {
+            self.participants[s].can_broker()
+                && matches!(self.participants[s].phase, Phase::Endorsing { .. })
+        });
         if someone_endorsing && self.rng.chance(0.5) {
-            self.participants[slot].phase = Phase::Running { remaining: 2.5 + self.rng.unit() * 2.0 };
+            self.participants[slot].phase = Phase::Running {
+                remaining: 2.5 + self.rng.unit() * 2.0,
+            };
         }
     }
 
@@ -1194,7 +1341,13 @@ impl PitMarket {
     fn best_quote(&self, side: Side) -> Option<(usize, i32)> {
         let mut best: Option<(usize, i32)> = None;
         for s in 0..self.active_count {
-            if let Phase::Quoting { side: qs, price_ticks, qty, .. } = self.participants[s].phase {
+            if let Phase::Quoting {
+                side: qs,
+                price_ticks,
+                qty,
+                ..
+            } = self.participants[s].phase
+            {
                 if qs != side || qty == 0 {
                     continue;
                 }
@@ -1248,7 +1401,13 @@ impl PitMarket {
             if s == aggressor {
                 continue;
             }
-            if let Phase::Quoting { side: qs, price_ticks, qty, .. } = self.participants[s].phase {
+            if let Phase::Quoting {
+                side: qs,
+                price_ticks,
+                qty,
+                ..
+            } = self.participants[s].phase
+            {
                 if qs != side.opposite() || qty == 0 || !within_limit(price_ticks) {
                     continue;
                 }
@@ -1262,7 +1421,8 @@ impl PitMarket {
                     Tier::Outer => 0.6,
                     _ => 0.8,
                 };
-                let prox = 1.0 / (1.0 + slot_angular_distance(aggressor, s) / std::f32::consts::PI * 3.0);
+                let prox =
+                    1.0 / (1.0 + slot_angular_distance(aggressor, s) / std::f32::consts::PI * 3.0);
                 let w = (p.attention * tier_w * prox).max(0.02);
                 let race = -(self.rng.unit().max(1e-4)).ln() / w;
                 // Noise: occasionally a worse price wins the race against the best.
@@ -1293,12 +1453,11 @@ impl PitMarket {
         }
 
         // Carry the remainder of a broker's card (execute_fill already trimmed it).
-        if sweeping {
-            if let Some((_, _, _, left, _)) = self.participants[aggressor].working_resume {
-                if left == 0 {
-                    self.participants[aggressor].working_resume = None;
-                }
-            }
+        if sweeping
+            && let Some((_, _, _, left, _)) = self.participants[aggressor].working_resume
+            && left == 0
+        {
+            self.participants[aggressor].working_resume = None;
         }
 
         // Everyone at the best price who did not trade missed it; one of them may dispute.
@@ -1310,11 +1469,16 @@ impl PitMarket {
         let mut out_trade_done = false;
         for l in losers {
             if !out_trade_done && self.rng.chance(0.04) {
-                self.participants[l].phase = Phase::Disputing { counterparty: aggressor, remaining: 2.6 };
+                self.participants[l].phase = Phase::Disputing {
+                    counterparty: aggressor,
+                    remaining: 2.6,
+                };
                 self.push_event(PitEventKind::OutTrade { a: aggressor, b: l });
                 out_trade_done = true;
             } else if self.rng.chance(0.7) {
-                self.participants[l].phase = Phase::Missed { remaining: 0.9 + self.rng.unit() * 0.5 };
+                self.participants[l].phase = Phase::Missed {
+                    remaining: 0.9 + self.rng.unit() * 0.5,
+                };
                 self.push_event(PitEventKind::Missed { slot: l });
             }
         }
@@ -1325,16 +1489,41 @@ impl PitMarket {
         // Aggressor state. A broker keeps his card in `working_resume` so he can go back to
         // shouting after pointing; the caller trims the quantity.
         let hit_time = 0.55 + self.rng.unit() * 0.25;
-        if let Phase::Working { side: ws, price_ticks, limit_ticks, qty_left, is_market, .. } = self.participants[aggressor].phase {
-            self.participants[aggressor].working_resume = Some((ws, price_ticks, limit_ticks, qty_left.saturating_sub(qty), is_market));
-        } else if let Some((ws, px, lim, left, is_market)) = self.participants[aggressor].working_resume {
-            self.participants[aggressor].working_resume = Some((ws, px, lim, left.saturating_sub(qty), is_market));
+        if let Phase::Working {
+            side: ws,
+            price_ticks,
+            limit_ticks,
+            qty_left,
+            is_market,
+            ..
+        } = self.participants[aggressor].phase
+        {
+            self.participants[aggressor].working_resume = Some((
+                ws,
+                price_ticks,
+                limit_ticks,
+                qty_left.saturating_sub(qty),
+                is_market,
+            ));
+        } else if let Some((ws, px, lim, left, is_market)) =
+            self.participants[aggressor].working_resume
+        {
+            self.participants[aggressor].working_resume =
+                Some((ws, px, lim, left.saturating_sub(qty), is_market));
         }
-        self.participants[aggressor].phase = Phase::Hitting { counterparty: passive, side, remaining: hit_time };
+        self.participants[aggressor].phase = Phase::Hitting {
+            counterparty: passive,
+            side,
+            remaining: hit_time,
+        };
 
         // Passive state and inventory.
         let pas = &mut self.participants[passive];
-        pas.phase = Phase::Confirming { counterparty: aggressor, side: side.opposite(), remaining: 0.45 + self.rng.unit() * 0.25 };
+        pas.phase = Phase::Confirming {
+            counterparty: aggressor,
+            side: side.opposite(),
+            remaining: 0.45 + self.rng.unit() * 0.25,
+        };
         if pas.role == ParticipantRole::Local {
             pas.inventory -= side.sign() * qty as i32;
             // Passive earns the half-spread relative to fair.
@@ -1360,7 +1549,13 @@ impl PitMarket {
         self.abs_fill_volume += qty as f32;
         self.fill_burst = (self.fill_burst + 0.35).min(1.5);
 
-        self.push_event(PitEventKind::Fill { aggressor, passive, side, price_ticks: px, qty });
+        self.push_event(PitEventKind::Fill {
+            aggressor,
+            passive,
+            side,
+            price_ticks: px,
+            qty,
+        });
 
         // Reporter prints a change.
         let prev = self.signals.last_ticks;
@@ -1371,7 +1566,10 @@ impl PitMarket {
             if self.participants[1].role == ParticipantRole::Reporter {
                 self.participants[1].phase = Phase::Printing { remaining: 0.8, up };
             }
-            self.push_event(PitEventKind::Print { price_ticks: px, up });
+            self.push_event(PitEventKind::Print {
+                price_ticks: px,
+                up,
+            });
         }
     }
 
@@ -1386,7 +1584,10 @@ impl PitMarket {
             let fair = self.fair_ticks;
             let mut pulled = Vec::new();
             for slot in 0..self.participants.len() {
-                if let Phase::Quoting { side, price_ticks, .. } = self.participants[slot].phase {
+                if let Phase::Quoting {
+                    side, price_ticks, ..
+                } = self.participants[slot].phase
+                {
                     let off = match side {
                         Side::Buy => price_ticks as f32 - fair,
                         Side::Sell => fair - price_ticks as f32,
@@ -1396,7 +1597,13 @@ impl PitMarket {
                         self.participants[slot].phase = Phase::Endorsing { remaining: 0.3 };
                         pulled.push(slot);
                     }
-                } else if let Phase::Working { side, ref mut price_ticks, ref mut limit_ticks, .. } = self.participants[slot].phase {
+                } else if let Phase::Working {
+                    side,
+                    ref mut price_ticks,
+                    ref mut limit_ticks,
+                    ..
+                } = self.participants[slot].phase
+                {
                     // A broker working paper against the screen re-prices to it: one tick
                     // behind the real market, keeping the reach he had (a market order stays
                     // a market order).
@@ -1418,13 +1625,15 @@ impl PitMarket {
         let best_ask = self.best_quote(Side::Sell).map(|(_, p)| p);
 
         let s = &mut self.signals;
-        s.arrival_intensity += (self.arrivals_this_window / dt.max(1e-3) - s.arrival_intensity) * k_fast;
+        s.arrival_intensity +=
+            (self.arrivals_this_window / dt.max(1e-3) - s.arrival_intensity) * k_fast;
         s.fill_rate += (self.fills_this_window / dt.max(1e-3) - s.fill_rate) * k_fast;
         let mean = self.params.mean_qty.max(1.0);
         // Signed aggressor volume over what actually traded in the window, shrunk by two
         // routine orders so a single fill reads as a lean, not a verdict. Sustained one-way
         // paper at any pace pushes this toward the rails; two-way business cancels out.
-        let signed_norm = (self.signed_fill_volume / (self.abs_fill_volume + mean * 2.0)).clamp(-1.0, 1.0);
+        let signed_norm =
+            (self.signed_fill_volume / (self.abs_fill_volume + mean * 2.0)).clamp(-1.0, 1.0);
         s.imbalance += (signed_norm - s.imbalance) * (dt * 0.6).min(1.0);
         self.arrivals_this_window = 0.0;
         self.fills_this_window = 0.0;
@@ -1461,11 +1670,22 @@ impl PitMarket {
         s.best_ask_ticks = best_ask;
 
         // Participation and depth.
-        let active_locals = (0..self.active_count).filter(|&i| self.participants[i].role == ParticipantRole::Local).count().max(1);
-        let quoting = (0..self.active_count).filter(|&i| self.participants[i].phase.is_quoting()).count();
-        let backing = (0..self.active_count).filter(|&i| matches!(self.participants[i].phase, Phase::BackingAway { .. })).count();
-        let shouting = (0..self.active_count).filter(|&i| self.participants[i].phase.is_shouting()).count();
-        let working = (0..self.active_count).filter(|&i| matches!(self.participants[i].phase, Phase::Working { .. })).count();
+        let active_locals = (0..self.active_count)
+            .filter(|&i| self.participants[i].role == ParticipantRole::Local)
+            .count()
+            .max(1);
+        let quoting = (0..self.active_count)
+            .filter(|&i| self.participants[i].phase.is_quoting())
+            .count();
+        let backing = (0..self.active_count)
+            .filter(|&i| matches!(self.participants[i].phase, Phase::BackingAway { .. }))
+            .count();
+        let shouting = (0..self.active_count)
+            .filter(|&i| self.participants[i].phase.is_shouting())
+            .count();
+        let working = (0..self.active_count)
+            .filter(|&i| matches!(self.participants[i].phase, Phase::Working { .. }))
+            .count();
         s.participation = self.active_count as f32 / SLOTS as f32;
         let depth = quoting as f32 / active_locals as f32;
         s.unfilled_interest += (depth - s.unfilled_interest) * k_fast;
@@ -1484,7 +1704,11 @@ impl PitMarket {
             + (working as f32 / 3.0).clamp(0.0, 1.0) * 0.2
             + self.fill_burst * 0.15;
         let paused = self.params.news_pause > 0.0;
-        let target_sound = if paused { 0.02 } else { raw_sound.clamp(0.0, 1.0) };
+        let target_sound = if paused {
+            0.02
+        } else {
+            raw_sound.clamp(0.0, 1.0)
+        };
         s.sound += (target_sound - s.sound) * (dt * 3.0).min(1.0);
 
         // Volatility from fair-value motion, fast-market hysteresis.
@@ -1492,7 +1716,11 @@ impl PitMarket {
         self.prev_fair_ticks = self.fair_ticks;
         s.volatility += (dfair - s.volatility) * (dt * 0.5).min(1.0);
         let was_fast = s.fast_market;
-        s.fast_market = if was_fast { s.volatility > 1.2 } else { s.volatility > 2.4 };
+        s.fast_market = if was_fast {
+            s.volatility > 1.2
+        } else {
+            s.volatility > 2.4
+        };
         if s.fast_market != was_fast {
             let on = s.fast_market;
             self.push_event(PitEventKind::FastMarket { on });
@@ -1549,7 +1777,11 @@ pub fn preset_for(scenario: MarketScenario, inst: Instrument) -> (FlowParams, f3
     match scenario {
         MarketScenario::Normal => {
             // Mild alternating lean so pits are not all identical.
-            p.buy_prob = if (inst as usize) % 2 == 0 { 0.54 } else { 0.46 };
+            p.buy_prob = if (inst as usize).is_multiple_of(2) {
+                0.54
+            } else {
+                0.46
+            };
             (p, 0.0)
         }
         MarketScenario::FedShock => {
@@ -1639,7 +1871,10 @@ impl Default for PitEngines {
             .enumerate()
             .map(|(i, inst)| PitMarket::new(*inst, 0x51_7E_A5 + i as u64 * 7919))
             .collect();
-        let mut engines = Self { pits, last_scenario: MarketScenario::Normal };
+        let mut engines = Self {
+            pits,
+            last_scenario: MarketScenario::Normal,
+        };
         engines.apply_scenario(MarketScenario::Normal);
         engines
     }
@@ -1710,7 +1945,8 @@ pub fn step_pit_engines(
 
         // Bridge for legacy readers: realised imbalance and intensity, not scripted inputs.
         controller.deltas[i] = pit.signals.imbalance;
-        controller.volume_multipliers[i] = (0.4 + pit.signals.arrival_intensity * 1.4).clamp(0.25, 5.0);
+        controller.volume_multipliers[i] =
+            (0.4 + pit.signals.arrival_intensity * 1.4).clamp(0.25, 5.0);
     }
 }
 
@@ -1739,7 +1975,9 @@ mod tests {
         assert_eq!(role_for_slot(0), ParticipantRole::LeadBroker);
         assert_eq!(role_for_slot(1), ParticipantRole::Reporter);
         assert_eq!(role_for_slot(10), ParticipantRole::Runner);
-        let locals = (0..SLOTS).filter(|&s| role_for_slot(s) == ParticipantRole::Local).count();
+        let locals = (0..SLOTS)
+            .filter(|&s| role_for_slot(s) == ParticipantRole::Local)
+            .count();
         assert!(locals >= 10);
         assert_eq!(tier_for_slot(5), Tier::Middle);
         assert_eq!(tier_for_slot(12), Tier::Outer);
@@ -1761,13 +1999,40 @@ mod tests {
         let mut pit = PitMarket::new(Instrument::Gold, 7);
         pit.apply_params(preset_for(MarketScenario::Normal, Instrument::Gold).0, 0.0);
         run(&mut pit, 60.0, 0.6);
-        let bids = count_events(&pit, |k| matches!(k, PitEventKind::Quote { side: Side::Buy, .. }));
-        let asks = count_events(&pit, |k| matches!(k, PitEventKind::Quote { side: Side::Sell, .. }));
+        let bids = count_events(&pit, |k| {
+            matches!(
+                k,
+                PitEventKind::Quote {
+                    side: Side::Buy,
+                    ..
+                }
+            )
+        });
+        let asks = count_events(&pit, |k| {
+            matches!(
+                k,
+                PitEventKind::Quote {
+                    side: Side::Sell,
+                    ..
+                }
+            )
+        });
         let fills = count_events(&pit, |k| matches!(k, PitEventKind::Fill { .. }));
         assert!(bids > 0 && asks > 0, "bids {bids} asks {asks}");
         assert!(fills > 5, "fills {fills}");
-        let buy_fills = count_events(&pit, |k| matches!(k, PitEventKind::Fill { side: Side::Buy, .. }));
-        assert!(buy_fills > 0 && buy_fills < fills, "both sides should initiate trades");
+        let buy_fills = count_events(&pit, |k| {
+            matches!(
+                k,
+                PitEventKind::Fill {
+                    side: Side::Buy,
+                    ..
+                }
+            )
+        });
+        assert!(
+            buy_fills > 0 && buy_fills < fills,
+            "both sides should initiate trades"
+        );
     }
 
     #[test]
@@ -1779,14 +2044,25 @@ mod tests {
         for _ in 0..1200 {
             pit.begin_frame();
             pit.step(0.05, 0.8);
-            let buys = pit.participants.iter().filter(|p| p.phase.signalled_side() == Some(Side::Buy)).count();
-            let sells = pit.participants.iter().filter(|p| p.phase.signalled_side() == Some(Side::Sell)).count();
+            let buys = pit
+                .participants
+                .iter()
+                .filter(|p| p.phase.signalled_side() == Some(Side::Buy))
+                .count();
+            let sells = pit
+                .participants
+                .iter()
+                .filter(|p| p.phase.signalled_side() == Some(Side::Sell))
+                .count();
             if buys > 0 && sells > 0 {
                 both_seen = true;
                 break;
             }
         }
-        assert!(both_seen, "at some point bids and offers must be shown simultaneously");
+        assert!(
+            both_seen,
+            "at some point bids and offers must be shown simultaneously"
+        );
     }
 
     #[test]
@@ -1795,7 +2071,11 @@ mod tests {
         let (p, relax) = preset_for(MarketScenario::SilverSqueeze, Instrument::Silver);
         pit.apply_params(p, relax);
         run(&mut pit, 45.0, 0.95);
-        assert!(pit.signals.last_ticks > 3, "squeeze should lift price, got {}", pit.signals.last_ticks);
+        assert!(
+            pit.signals.last_ticks > 3,
+            "squeeze should lift price, got {}",
+            pit.signals.last_ticks
+        );
         assert!(pit.signals.imbalance > 0.0);
     }
 
@@ -1809,10 +2089,21 @@ mod tests {
         let fills_before = count_events(&pit, |k| matches!(k, PitEventKind::Fill { .. }));
         run(&mut pit, 2.8, 0.9);
         let fills_during = count_events(&pit, |k| matches!(k, PitEventKind::Fill { .. }));
-        assert_eq!(fills_before, fills_during, "no trades during the news pause");
-        assert!(pit.signals.sound < 0.15, "pit should be near silent, sound {}", pit.signals.sound);
+        assert_eq!(
+            fills_before, fills_during,
+            "no trades during the news pause"
+        );
+        assert!(
+            pit.signals.sound < 0.15,
+            "pit should be near silent, sound {}",
+            pit.signals.sound
+        );
         run(&mut pit, 12.0, 0.9);
-        assert!(pit.signals.sound > 0.35, "pit should be loud after the pause, sound {}", pit.signals.sound);
+        assert!(
+            pit.signals.sound > 0.35,
+            "pit should be loud after the pause, sound {}",
+            pit.signals.sound
+        );
         assert!(
             pit.signals.last_ticks < px_before - 2,
             "gold gets sold on the Fed: before {} after {}",
@@ -1825,7 +2116,10 @@ mod tests {
     fn sound_rises_before_price_moves() {
         // Coval & Shumway: the pit gets loud before the price moves.
         let mut pit = PitMarket::new(Instrument::Nasdaq, 9);
-        pit.apply_params(preset_for(MarketScenario::LunchChop, Instrument::Nasdaq).0, 0.0);
+        pit.apply_params(
+            preset_for(MarketScenario::LunchChop, Instrument::Nasdaq).0,
+            0.0,
+        );
         run(&mut pit, 20.0, 0.2);
         let quiet_sound = pit.signals.sound;
         pit.inject_shock(Side::Sell, 4);
@@ -1846,7 +2140,10 @@ mod tests {
                 break;
             }
         }
-        let (ts, tp) = (t_sound.expect("sound should rise"), t_price.expect("price should move"));
+        let (ts, tp) = (
+            t_sound.expect("sound should rise"),
+            t_price.expect("price should move"),
+        );
         assert!(ts <= tp, "sound at {ts}s must lead price at {tp}s");
     }
 
@@ -1869,8 +2166,17 @@ mod tests {
         let (p, relax) = preset_for(MarketScenario::SilverSqueeze, Instrument::Silver);
         pit.apply_params(p, relax);
         run(&mut pit, 120.0, 0.95);
-        for p in pit.participants.iter().filter(|p| p.role == ParticipantRole::Local) {
-            assert!(p.inventory.abs() <= p.max_inventory * 3, "slot {} inventory {}", p.slot, p.inventory);
+        for p in pit
+            .participants
+            .iter()
+            .filter(|p| p.role == ParticipantRole::Local)
+        {
+            assert!(
+                p.inventory.abs() <= p.max_inventory * 3,
+                "slot {} inventory {}",
+                p.slot,
+                p.inventory
+            );
         }
     }
 
@@ -1880,7 +2186,10 @@ mod tests {
         pit.set_active_count(7);
         run(&mut pit, 40.0, 0.5);
         for e in pit.events.iter() {
-            if let PitEventKind::Fill { aggressor, passive, .. } = e.kind {
+            if let PitEventKind::Fill {
+                aggressor, passive, ..
+            } = e.kind
+            {
                 assert!(aggressor < 7 && passive < 7);
                 assert_ne!(aggressor, passive);
             }
@@ -1905,7 +2214,10 @@ mod tests {
     #[test]
     fn lunch_chop_is_quiet() {
         let mut pit = PitMarket::new(Instrument::EurUsd, 23);
-        pit.apply_params(preset_for(MarketScenario::LunchChop, Instrument::EurUsd).0, 0.0);
+        pit.apply_params(
+            preset_for(MarketScenario::LunchChop, Instrument::EurUsd).0,
+            0.0,
+        );
         run(&mut pit, 60.0, 0.1);
         assert!(pit.signals.sound < 0.45, "sound {}", pit.signals.sound);
         assert!(pit.signals.fill_rate < 1.0);
@@ -1924,7 +2236,10 @@ mod tests {
     fn engines_default_covers_all_instruments() {
         let engines = PitEngines::default();
         assert_eq!(engines.pits.len(), Instrument::ALL.len());
-        assert_eq!(engines.pit(Instrument::Bitcoin).instrument, Instrument::Bitcoin);
+        assert_eq!(
+            engines.pit(Instrument::Bitcoin).instrument,
+            Instrument::Bitcoin
+        );
     }
 }
 
@@ -1935,43 +2250,144 @@ mod debug_probe {
     #[ignore]
     fn probe_fed_gold() {
         let mut pit = PitMarket::new(Instrument::Gold, 5);
-        for _ in 0..200 { pit.begin_frame(); pit.step(0.05, 0.6); }
+        for _ in 0..200 {
+            pit.begin_frame();
+            pit.step(0.05, 0.6);
+        }
         let (p, relax) = preset_for(MarketScenario::FedShock, Instrument::Gold);
-        println!("before: last {} fair {:.2}", pit.signals.last_ticks, pit.fair_ticks);
+        println!(
+            "before: last {} fair {:.2}",
+            pit.signals.last_ticks, pit.fair_ticks
+        );
         pit.apply_params(p, relax);
         let n0 = pit.events.len();
         let mut last_phase = format!("{:?}", pit.participants[0].phase);
         for i in 0..300 {
-            pit.begin_frame(); pit.step(0.05, 0.9);
+            pit.begin_frame();
+            pit.step(0.05, 0.9);
             let ph = format!("{:?}", pit.participants[0].phase);
-            let ph = ph.split(", age").next().unwrap_or(&ph).split(", remaining").next().unwrap_or(&ph).to_string();
-            if ph != last_phase { println!("  [{:6.2}] slot0 -> {} deck={:?} resume={:?}", 10.0 + i as f32 * 0.05, ph, pit.participants[0].deck, pit.participants[0].working_resume); last_phase = ph; }
+            let ph = ph
+                .split(", age")
+                .next()
+                .unwrap_or(&ph)
+                .split(", remaining")
+                .next()
+                .unwrap_or(&ph)
+                .to_string();
+            if ph != last_phase {
+                println!(
+                    "  [{:6.2}] slot0 -> {} deck={:?} resume={:?}",
+                    10.0 + i as f32 * 0.05,
+                    ph,
+                    pit.participants[0].deck,
+                    pit.participants[0].working_resume
+                );
+                last_phase = ph;
+            }
         }
-        for e in pit.events.iter().skip(n0.saturating_sub(pit.events.len().saturating_sub(EVENT_RING_CAP))) {
+        for e in pit
+            .events
+            .iter()
+            .skip(n0.saturating_sub(pit.events.len().saturating_sub(EVENT_RING_CAP)))
+        {
             match e.kind {
-                PitEventKind::Fill { aggressor, passive, side, price_ticks, qty } => println!("{:6.2} FILL agg{} pas{} {:?} px{} q{}", e.t, aggressor, passive, side, price_ticks, qty),
-                PitEventKind::Quote { slot, side, price_ticks, qty } => println!("{:6.2} quote s{} {:?} px{} q{}", e.t, slot, side, price_ticks, qty),
-                PitEventKind::OrderArrival { broker, side, qty } => println!("{:6.2} arrive b{} {:?} q{}", e.t, broker, side, qty),
+                PitEventKind::Fill {
+                    aggressor,
+                    passive,
+                    side,
+                    price_ticks,
+                    qty,
+                } => println!(
+                    "{:6.2} FILL agg{} pas{} {:?} px{} q{}",
+                    e.t, aggressor, passive, side, price_ticks, qty
+                ),
+                PitEventKind::Quote {
+                    slot,
+                    side,
+                    price_ticks,
+                    qty,
+                } => println!(
+                    "{:6.2} quote s{} {:?} px{} q{}",
+                    e.t, slot, side, price_ticks, qty
+                ),
+                PitEventKind::OrderArrival { broker, side, qty } => {
+                    println!("{:6.2} arrive b{} {:?} q{}", e.t, broker, side, qty)
+                }
                 other => println!("{:6.2} {:?}", e.t, other),
             }
         }
-        println!("after: last {} fair {:.2} imb {:.2} pressure {:.2} sound {:.2} depth {:.2} vacuum {:.2} arr {:.2}", pit.signals.last_ticks, pit.fair_ticks, pit.signals.imbalance, pit.signals.pressure, pit.signals.sound, pit.signals.unfilled_interest, pit.signals.vacuum, pit.signals.arrival_intensity);
+        println!(
+            "after: last {} fair {:.2} imb {:.2} pressure {:.2} sound {:.2} depth {:.2} vacuum {:.2} arr {:.2}",
+            pit.signals.last_ticks,
+            pit.fair_ticks,
+            pit.signals.imbalance,
+            pit.signals.pressure,
+            pit.signals.sound,
+            pit.signals.unfilled_interest,
+            pit.signals.vacuum,
+            pit.signals.arrival_intensity
+        );
         let since = pit.clock - 15.0;
-        let c = |f: &dyn Fn(&PitEventKind) -> bool| pit.events.iter().filter(|e| e.t >= since && f(&e.kind)).count();
-        println!("counts(last 15s): arrivals {} bids {} asks {} withdraws {} fills {} missed {} backaway {} outtrade {}",
-            c(&|k| matches!(k, PitEventKind::OrderArrival{..})),
-            c(&|k| matches!(k, PitEventKind::Quote{side: Side::Buy, ..})),
-            c(&|k| matches!(k, PitEventKind::Quote{side: Side::Sell, ..})),
-            c(&|k| matches!(k, PitEventKind::Withdraw{..})),
-            c(&|k| matches!(k, PitEventKind::Fill{..})),
-            c(&|k| matches!(k, PitEventKind::Missed{..})),
-            c(&|k| matches!(k, PitEventKind::BackAway{..})),
-            c(&|k| matches!(k, PitEventKind::OutTrade{..})));
-        for b in [0usize,4,8,13] { println!("broker {} phase {:?} deck {:?}", b, format!("{:?}", pit.participants[b].phase).split(", age").next().unwrap(), pit.participants[b].deck); }
+        let c = |f: &dyn Fn(&PitEventKind) -> bool| {
+            pit.events
+                .iter()
+                .filter(|e| e.t >= since && f(&e.kind))
+                .count()
+        };
+        println!(
+            "counts(last 15s): arrivals {} bids {} asks {} withdraws {} fills {} missed {} backaway {} outtrade {}",
+            c(&|k| matches!(k, PitEventKind::OrderArrival { .. })),
+            c(&|k| matches!(
+                k,
+                PitEventKind::Quote {
+                    side: Side::Buy,
+                    ..
+                }
+            )),
+            c(&|k| matches!(
+                k,
+                PitEventKind::Quote {
+                    side: Side::Sell,
+                    ..
+                }
+            )),
+            c(&|k| matches!(k, PitEventKind::Withdraw { .. })),
+            c(&|k| matches!(k, PitEventKind::Fill { .. })),
+            c(&|k| matches!(k, PitEventKind::Missed { .. })),
+            c(&|k| matches!(k, PitEventKind::BackAway { .. })),
+            c(&|k| matches!(k, PitEventKind::OutTrade { .. }))
+        );
+        for b in [0usize, 4, 8, 13] {
+            println!(
+                "broker {} phase {:?} deck {:?}",
+                b,
+                format!("{:?}", pit.participants[b].phase)
+                    .split(", age")
+                    .next()
+                    .unwrap(),
+                pit.participants[b].deck
+            );
+        }
         let mut hist = std::collections::BTreeMap::new();
-        for p in pit.participants.iter().take(pit.active_count) { *hist.entry(format!("{:?}", p.phase).split(' ').next().unwrap().to_string()).or_insert(0) += 1; }
+        for p in pit.participants.iter().take(pit.active_count) {
+            *hist
+                .entry(
+                    format!("{:?}", p.phase)
+                        .split(' ')
+                        .next()
+                        .unwrap()
+                        .to_string(),
+                )
+                .or_insert(0) += 1;
+        }
         println!("phase histogram now: {:?}", hist);
-        for p in pit.participants.iter().filter(|p| p.role == ParticipantRole::Local) { print!("s{}:{} ", p.slot, p.inventory); }
+        for p in pit
+            .participants
+            .iter()
+            .filter(|p| p.role == ParticipantRole::Local)
+        {
+            print!("s{}:{} ", p.slot, p.inventory);
+        }
         println!();
     }
     #[test]
@@ -1983,9 +2399,15 @@ mod debug_probe {
         let fills_after_jump = {
             pit.begin_frame();
             pit.step(0.5, 0.8);
-            pit.recent_events().iter().filter(|e| matches!(e.kind, PitEventKind::Fill { .. })).count()
+            pit.recent_events()
+                .iter()
+                .filter(|e| matches!(e.kind, PitEventKind::Fill { .. }))
+                .count()
         };
-        assert!(fills_after_jump <= 4, "a jump must not sweep a stale book: {fills_after_jump} fills");
+        assert!(
+            fills_after_jump <= 4,
+            "a jump must not sweep a stale book: {fills_after_jump} fills"
+        );
         // Walk the anchor up a tick a second; every deal must print within a few ticks of
         // the live price at the moment it trades (prints are sparse, so the last print may lag).
         let mut worst = 0;
@@ -1996,21 +2418,42 @@ mod debug_probe {
             pit.begin_frame();
             pit.step(0.25, 0.8);
             for e in pit.recent_events() {
-                if let PitEventKind::Fill { price_ticks, aggressor, passive, side, .. } = e.kind {
+                if let PitEventKind::Fill {
+                    price_ticks,
+                    aggressor,
+                    passive,
+                    side,
+                    ..
+                } = e.kind
+                {
                     fills += 1;
                     if (price_ticks - anchor).abs() > 4 {
                         println!(
                             "off-market fill: px {price_ticks} anchor {anchor} fair {:.1} side {side:?} agg {:?} pas {:?} bid {:?} ask {:?}",
-                            pit.fair_ticks, pit.participants[aggressor].role, pit.participants[passive].role, pit.signals.best_bid_ticks, pit.signals.best_ask_ticks
+                            pit.fair_ticks,
+                            pit.participants[aggressor].role,
+                            pit.participants[passive].role,
+                            pit.signals.best_bid_ticks,
+                            pit.signals.best_ask_ticks
                         );
                     }
                     worst = worst.max((price_ticks - anchor).abs());
                 }
             }
         }
-        assert!(fills >= 5, "pit should keep trading while anchored: {fills} fills");
-        assert!(worst <= 4, "a deal printed {worst} ticks off the live price");
-        assert!((pit.fair_ticks - 41_260.0).abs() < 2.0, "fair {}", pit.fair_ticks);
+        assert!(
+            fills >= 5,
+            "pit should keep trading while anchored: {fills} fills"
+        );
+        assert!(
+            worst <= 4,
+            "a deal printed {worst} ticks off the live price"
+        );
+        assert!(
+            (pit.fair_ticks - 41_260.0).abs() < 2.0,
+            "fair {}",
+            pit.fair_ticks
+        );
     }
 
     #[test]
@@ -2021,9 +2464,14 @@ mod debug_probe {
         pit.apply_params(FlowParams::baseline(Instrument::Nasdaq), 0.0);
         pit.set_active_count(14);
         pit.set_live_anchor(36_000);
-        pit.set_live_flow(Some(LiveFlow { arrivals_per_sec: 1.8, buy_prob: 0.88, block_prob: 0.08 }));
+        pit.set_live_flow(Some(LiveFlow {
+            arrivals_per_sec: 1.8,
+            buy_prob: 0.88,
+            block_prob: 0.08,
+        }));
         let (mut buys, mut sells) = (0, 0);
-        let (mut arrivals, mut missed, mut quotes, mut withdraws, mut broker_withdraws) = (0, 0, 0, 0, 0);
+        let (mut arrivals, mut missed, mut quotes, mut withdraws, mut broker_withdraws) =
+            (0, 0, 0, 0, 0);
         let mut imbalance_samples = Vec::new();
         for i in 1..=160 {
             pit.set_live_anchor(36_000 + i / 8);
@@ -2034,36 +2482,74 @@ mod debug_probe {
             }
             for e in pit.recent_events() {
                 match e.kind {
-                    PitEventKind::Fill { side, .. } => if side.is_buy() { buys += 1 } else { sells += 1 },
+                    PitEventKind::Fill { side, .. } => {
+                        if side.is_buy() {
+                            buys += 1
+                        } else {
+                            sells += 1
+                        }
+                    }
                     PitEventKind::OrderArrival { .. } => arrivals += 1,
                     PitEventKind::Missed { .. } => missed += 1,
                     PitEventKind::Quote { .. } => quotes += 1,
                     PitEventKind::Withdraw { slot } => {
                         withdraws += 1;
-                        if pit.participants[slot].can_broker() { broker_withdraws += 1 }
+                        if pit.participants[slot].can_broker() {
+                            broker_withdraws += 1
+                        }
                     }
                     _ => {}
                 }
             }
             if i % 40 == 0 {
-                let decks: usize = pit.participants.iter().filter(|p| p.can_broker()).map(|p| p.deck.len()).sum();
-                let working = pit.participants.iter().filter(|p| matches!(p.phase, Phase::Working { .. })).count();
-                println!("   decks queued {decks} working {working} broker withdraws {broker_withdraws}");
+                let decks: usize = pit
+                    .participants
+                    .iter()
+                    .filter(|p| p.can_broker())
+                    .map(|p| p.deck.len())
+                    .sum();
+                let working = pit
+                    .participants
+                    .iter()
+                    .filter(|p| matches!(p.phase, Phase::Working { .. }))
+                    .count();
+                println!(
+                    "   decks queued {decks} working {working} broker withdraws {broker_withdraws}"
+                );
                 println!(
                     "t={}s fills {}/{} arrivals {arrivals} missed {missed} quotes {quotes} withdraws {withdraws} | vacuum {:.2} depth {:.2} pressure {:.2} stress {:.2} bid {:?} ask {:?} fair {:.1}",
-                    i / 4, buys, sells, pit.signals.vacuum, pit.signals.unfilled_interest, pit.signals.pressure, pit.signals.inventory_stress, pit.signals.best_bid_ticks, pit.signals.best_ask_ticks, pit.fair_ticks
+                    i / 4,
+                    buys,
+                    sells,
+                    pit.signals.vacuum,
+                    pit.signals.unfilled_interest,
+                    pit.signals.pressure,
+                    pit.signals.inventory_stress,
+                    pit.signals.best_bid_ticks,
+                    pit.signals.best_ask_ticks,
+                    pit.fair_ticks
                 );
             }
         }
-        assert!(buys + sells >= 20, "pit traded too little: {buys} buys {sells} sells");
+        assert!(
+            buys + sells >= 20,
+            "pit traded too little: {buys} buys {sells} sells"
+        );
         let share = buys as f32 / (buys + sells) as f32;
-        assert!(share > 0.7, "buy share of fills {share:.2} ({buys}/{sells})");
+        assert!(
+            share > 0.7,
+            "buy share of fills {share:.2} ({buys}/{sells})"
+        );
         // The nameplate's imbalance is a short-memory signal, so judge it over the run, not
         // at one instant: it should lean the way the tape leans most of the time.
         let mean = imbalance_samples.iter().sum::<f32>() / imbalance_samples.len() as f32;
-        let positive = imbalance_samples.iter().filter(|v| **v > 0.0).count() as f32 / imbalance_samples.len() as f32;
+        let positive = imbalance_samples.iter().filter(|v| **v > 0.0).count() as f32
+            / imbalance_samples.len() as f32;
         assert!(mean > 0.08, "mean imbalance {mean:.3}");
-        assert!(positive > 0.6, "imbalance positive {positive:.2} of the time");
+        assert!(
+            positive > 0.6,
+            "imbalance positive {positive:.2} of the time"
+        );
 
         // Taking the flow away hands control back to the generator (balanced baseline),
         // once the brokers have worked off the buy paper still on their decks.
@@ -2083,7 +2569,10 @@ mod debug_probe {
             }
         }
         let share = buys as f32 / (buys + sells).max(1) as f32;
-        assert!((0.3..=0.7).contains(&share), "generator share {share:.2} ({buys}/{sells})");
+        assert!(
+            (0.3..=0.7).contains(&share),
+            "generator share {share:.2} ({buys}/{sells})"
+        );
     }
 
     #[test]
@@ -2097,7 +2586,10 @@ mod debug_probe {
         ] {
             let pit = PitMarket::new(inst, 1);
             let back = pit.price_of(pit.ticks_for_price(price));
-            assert!((back - price).abs() <= tick_size(inst) * 0.51, "{inst:?}: {price} -> {back}");
+            assert!(
+                (back - price).abs() <= tick_size(inst) * 0.51,
+                "{inst:?}: {price} -> {back}"
+            );
         }
     }
 
@@ -2115,10 +2607,13 @@ mod debug_probe {
         assert_eq!(pit.signals.last_ticks, 41_500);
         pit.begin_frame();
         pit.step(0.5, 0.8);
-        let fills = pit.recent_events().iter().filter(|e| matches!(e.kind, PitEventKind::Fill { .. })).count();
+        let fills = pit
+            .recent_events()
+            .iter()
+            .filter(|e| matches!(e.kind, PitEventKind::Fill { .. }))
+            .count();
         assert!(fills <= 4, "{fills} fills right after a 300-tick jump");
         pit.clear_live_anchor();
         assert!(pit.live_anchor.is_none());
     }
-
 }

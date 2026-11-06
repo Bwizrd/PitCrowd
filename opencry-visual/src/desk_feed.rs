@@ -105,7 +105,10 @@ pub struct DeskPass {
 
 impl DeskPass {
     pub fn new(symbol: &str, why: &str) -> Self {
-        DeskPass { symbol: symbol.to_string(), why: cut(why, WHY_WIRE_CHARS) }
+        DeskPass {
+            symbol: symbol.to_string(),
+            why: cut(why, WHY_WIRE_CHARS),
+        }
     }
 }
 
@@ -156,11 +159,18 @@ pub struct DeskTrader {
 impl DeskTrader {
     pub fn win_rate(&self) -> f32 {
         let n = self.wins + self.losses;
-        if n == 0 { 0.0 } else { self.wins as f32 / n as f32 }
+        if n == 0 {
+            0.0
+        } else {
+            self.wins as f32 / n as f32
+        }
     }
 
     pub fn archetype(&self) -> Option<Archetype> {
-        Archetype::ALL.iter().copied().find(|a| a.name() == self.trader)
+        Archetype::ALL
+            .iter()
+            .copied()
+            .find(|a| a.name() == self.trader)
     }
 
     /// Traded today (since 00:00 UTC) or holding a position now. Only these are listed and
@@ -171,14 +181,21 @@ impl DeskTrader {
 
     pub fn day_win_rate(&self) -> f32 {
         let n = self.day_wins + self.day_losses;
-        if n == 0 { 0.0 } else { self.day_wins as f32 / n as f32 }
+        if n == 0 {
+            0.0
+        } else {
+            self.day_wins as f32 / n as f32
+        }
     }
 
     /// A trader from the evolving pit, by its board label (`genome::tag_of`). Genomes come
     /// and go, so no build knows them by name, and an unknown genome never means the page is
     /// out of date.
     pub fn is_genome(&self) -> bool {
-        matches!(self.archetype.as_str(), "genome" | "show" | "holder" | "adapter" | "adapter+J" | "manual")
+        matches!(
+            self.archetype.as_str(),
+            "genome" | "show" | "holder" | "adapter" | "adapter+J" | "manual"
+        )
     }
 }
 
@@ -236,8 +253,15 @@ impl DeskBoard {
 
     /// Best realised R today first; active traders only.
     pub fn ranking(&self) -> Vec<usize> {
-        let mut idx: Vec<usize> = (0..self.traders.len()).filter(|&t| self.traders[t].is_active()).collect();
-        idx.sort_by(|a, b| self.traders[*b].day_r.partial_cmp(&self.traders[*a].day_r).unwrap_or(std::cmp::Ordering::Equal));
+        let mut idx: Vec<usize> = (0..self.traders.len())
+            .filter(|&t| self.traders[t].is_active())
+            .collect();
+        idx.sort_by(|a, b| {
+            self.traders[*b]
+                .day_r
+                .partial_cmp(&self.traders[*a].day_r)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         idx
     }
 
@@ -247,16 +271,26 @@ impl DeskBoard {
 
     /// The panel header while the desk is showing.
     pub fn header_line(&self) -> String {
-        let age = self.heartbeat_age_ms.map(|ms| format!("heartbeat {}s ago", ms / 1000)).unwrap_or_else(|| "no heartbeat".into());
+        let age = self
+            .heartbeat_age_ms
+            .map(|ms| format!("heartbeat {}s ago", ms / 1000))
+            .unwrap_or_else(|| "no heartbeat".into());
         let idle = self.traders.iter().filter(|t| !t.is_active()).count();
-        format!("DESK TODAY (since 00:00 UTC, all pits)  |  realised R (profit / initial stop), spread paid  |  {age}  |  {idle} more waiting for a signal, not shown  |  T hides")
+        format!(
+            "DESK TODAY (since 00:00 UTC, all pits)  |  realised R (profit / initial stop), spread paid  |  {age}  |  {idle} more waiting for a signal, not shown  |  T hides"
+        )
     }
 
     /// One leaderboard row, same columns as the in-tab book. `live_open_r` is the open
     /// position marked at the tab's own feed, fresher than the heartbeat's number.
     pub fn row_line(&self, rank: usize, t: &DeskTrader, live_open_r: Option<f32>) -> String {
         let open = match &t.open {
-            Some(p) => format!("{} {} {:+.2}R", p.symbol, p.side, live_open_r.unwrap_or(p.open_r)),
+            Some(p) => format!(
+                "{} {} {:+.2}R",
+                p.symbol,
+                p.side,
+                live_open_r.unwrap_or(p.open_r)
+            ),
             None => "flat".to_string(),
         };
         // Compact enough that 29 rows fit the panel one line each: "12. Jo     breaker      +1.51R   1t 100% dd 0.0 sp 0.1 | GBP/USD long -0.17R".
@@ -282,8 +316,16 @@ impl DeskBoard {
             Some(seat) => {
                 let mut l = vec![self.detail_lines(focus)[0].clone()];
                 l.extend(seat.lines());
-                if let Some(p) = self.traders.iter().find(|t| t.trader == seat.name).and_then(|t| t.open.as_ref()) {
-                    l.push(format!("OPEN {} {} from {}  {:+.2}R  |  {}", p.symbol, p.side, p.entry, p.open_r, p.why));
+                if let Some(p) = self
+                    .traders
+                    .iter()
+                    .find(|t| t.trader == seat.name)
+                    .and_then(|t| t.open.as_ref())
+                {
+                    l.push(format!(
+                        "OPEN {} {} from {}  {:+.2}R  |  {}",
+                        p.symbol, p.side, p.entry, p.open_r, p.why
+                    ));
                 }
                 l
             }
@@ -292,7 +334,10 @@ impl DeskBoard {
         if let Some(p) = &self.pit {
             lines.push(p.summary_line());
             if !p.recent_retired.is_empty() {
-                lines.push(format!("retired lately: {}", p.recent_retired.join("  |  ")));
+                lines.push(format!(
+                    "retired lately: {}",
+                    p.recent_retired.join("  |  ")
+                ));
             }
         }
         lines
@@ -310,9 +355,17 @@ impl DeskBoard {
             self.jev_failures,
             self.feed
         )];
-        lines.push(format!("{} ({}): {}", focus.name(), focus.label(), focus.describe()));
+        lines.push(format!(
+            "{} ({}): {}",
+            focus.name(),
+            focus.label(),
+            focus.describe()
+        ));
         if let Some(p) = self.trader(focus).and_then(|t| t.open.as_ref()) {
-            lines.push(format!("OPEN {} {} from {}  {:+.2}R  |  {}", p.symbol, p.side, p.entry, p.open_r, p.why));
+            lines.push(format!(
+                "OPEN {} {} from {}  {:+.2}R  |  {}",
+                p.symbol, p.side, p.entry, p.open_r, p.why
+            ));
         }
         lines
     }
@@ -396,13 +449,25 @@ impl DeskPit {
         format!(
             "EVOLVING PIT  {} genomes tried, {} seated by the gate now ({} ever) plus {} Jev twins, {} retired  |  SHOW FLOOR {} genomes, {} holders, {} adapters (unproven, never graduate)  |  cut: sequential test, or t<=-3 at 30 trades, idle 21d  |  graduate: 300 trades, +0.05R, deflated Sharpe 0.95",
             self.n_tried,
-            self.seats.iter().filter(|s| s.twin_of.is_none() && s.floor.is_none()).count(),
+            self.seats
+                .iter()
+                .filter(|s| s.twin_of.is_none() && s.floor.is_none())
+                .count(),
             self.seated_ever,
             self.seats.iter().filter(|s| s.twin_of.is_some()).count(),
             self.retired,
-            self.seats.iter().filter(|s| s.floor.is_some() && s.tag.as_deref() == Some("show")).count(),
-            self.seats.iter().filter(|s| s.tag.as_deref() == Some("holder")).count(),
-            self.seats.iter().filter(|s| s.tag.as_deref().is_some_and(|t| t.starts_with("adapter"))).count(),
+            self.seats
+                .iter()
+                .filter(|s| s.floor.is_some() && s.tag.as_deref() == Some("show"))
+                .count(),
+            self.seats
+                .iter()
+                .filter(|s| s.tag.as_deref() == Some("holder"))
+                .count(),
+            self.seats
+                .iter()
+                .filter(|s| s.tag.as_deref().is_some_and(|t| t.starts_with("adapter")))
+                .count(),
         )
     }
 
@@ -413,7 +478,11 @@ impl DeskPit {
 
 impl DeskSeat {
     pub fn lines(&self) -> Vec<String> {
-        let next = PIT_CHECKS.iter().find(|&&c| c > self.fwd_n).map(|c| format!("next check at {c} trades")).unwrap_or_else(|| "past every checkpoint".into());
+        let next = PIT_CHECKS
+            .iter()
+            .find(|&&c| c > self.fwd_n)
+            .map(|c| format!("next check at {c} trades"))
+            .unwrap_or_else(|| "past every checkpoint".into());
         let mut lines = self.base_lines(&next);
         if let Some(j) = &self.jev {
             lines.push(format!(
@@ -433,8 +502,14 @@ impl DeskSeat {
     fn base_lines(&self, next: &str) -> Vec<String> {
         if let Some(of) = &self.twin_of {
             return vec![
-                format!("{} (Jev twin of {}): takes {}'s entries only when Jev says yes. {}", self.name, of, of, self.creed),
-                format!("its own forward record: {} trades {:+.3}R (t {:.1}); shown, not judged: the test is the split below", self.fwd_n, self.fwd_mean, self.fwd_t),
+                format!(
+                    "{} (Jev twin of {}): takes {}'s entries only when Jev says yes. {}",
+                    self.name, of, of, self.creed
+                ),
+                format!(
+                    "its own forward record: {} trades {:+.3}R (t {:.1}); shown, not judged: the test is the split below",
+                    self.fwd_n, self.fwd_mean, self.fwd_t
+                ),
             ];
         }
         let what = match self.tag.as_deref() {
@@ -455,7 +530,11 @@ impl DeskSeat {
                 self.fwd_mean,
                 self.fwd_t,
                 next,
-                if self.graduated { "  |  GRADUATED: a live-book candidate (Paul's call)" } else { "" }
+                if self.graduated {
+                    "  |  GRADUATED: a live-book candidate (Paul's call)"
+                } else {
+                    ""
+                }
             ),
         ]
     }
@@ -496,11 +575,16 @@ impl Default for DeskFeed {
 impl DeskFeed {
     /// The desk is running and the relay has told us so recently.
     pub fn alive(&self, now: f64) -> bool {
-        self.board.as_ref().is_some_and(|b| b.desk_alive) && now - self.last_ok_at <= DESK_LOST_AFTER_SECS
+        self.board.as_ref().is_some_and(|b| b.desk_alive)
+            && now - self.last_ok_at <= DESK_LOST_AFTER_SECS
     }
 
     pub fn live_board(&self, now: f64) -> Option<&DeskBoard> {
-        if self.alive(now) { self.board.as_ref() } else { None }
+        if self.alive(now) {
+            self.board.as_ref()
+        } else {
+            None
+        }
     }
 
     /// Fold a finished poll in. Pure apart from the clock, so it is testable.
@@ -529,7 +613,10 @@ pub fn poll_desk_board(time: Res<Time>, mut feed: ResMut<DeskFeed>) {
     if let Some(res) = done {
         feed.settle(res, now);
     }
-    if feed.in_flight_since.is_some_and(|since| now - since > POLL_TIMEOUT_SECS) {
+    if feed
+        .in_flight_since
+        .is_some_and(|since| now - since > POLL_TIMEOUT_SECS)
+    {
         feed.in_flight_since = None;
         feed.last_error = "board poll timed out".into();
     }
@@ -590,7 +677,11 @@ mod tests {
         assert!(b.desk_alive);
         assert_eq!(b.heartbeat_age_ms, Some(4200));
         assert_eq!(b.traders.len(), 2);
-        assert_eq!(b.ranking(), vec![1], "Grace traded today; Colin did not, so he is not listed");
+        assert_eq!(
+            b.ranking(),
+            vec![1],
+            "Grace traded today; Colin did not, so he is not listed"
+        );
         let grace = &b.traders[1];
         assert_eq!(grace.archetype(), Some(Archetype::TrendRider));
         assert_eq!(grace.win_rate(), 1.0);
@@ -602,7 +693,10 @@ mod tests {
     fn the_day_block_last_trades_and_stop_target_ride_along_and_default_when_absent() {
         let b = parse_board(SAMPLE).unwrap();
         let grace = b.trader(Archetype::TrendRider).unwrap();
-        assert_eq!((grace.day_trades, grace.day_wins, grace.day_losses), (1, 1, 0));
+        assert_eq!(
+            (grace.day_trades, grace.day_wins, grace.day_losses),
+            (1, 1, 0)
+        );
         assert!((grace.day_r - 1.3).abs() < 1e-6);
         assert_eq!(grace.last_trades.len(), 1);
         assert_eq!(grace.last_trades[0].why_out, "target");
@@ -612,8 +706,10 @@ mod tests {
         let colin = b.trader(Archetype::Control).unwrap();
         assert_eq!(colin.day_trades, 0);
         assert!(colin.last_trades.is_empty() && colin.day_r == 0.0);
-        let old_open: DeskOpen =
-            serde_json::from_str(r#"{"symbol":"US30","side":"short","entry":1.0,"open_r":0.0,"opened_ms":1,"why":"x"}"#).unwrap();
+        let old_open: DeskOpen = serde_json::from_str(
+            r#"{"symbol":"US30","side":"short","entry":1.0,"open_r":0.0,"opened_ms":1,"why":"x"}"#,
+        )
+        .unwrap();
         assert_eq!((old_open.stop, old_open.target), (0.0, None));
         // And the whole thing survives a serialise / parse cycle with the new fields intact.
         let again = parse_board(&serde_json::to_string(&b).unwrap()).unwrap();
@@ -643,15 +739,23 @@ mod tests {
             genome: None,
         };
         let d = DeskTrade::from_trade(&t);
-        assert_eq!((d.symbol.as_str(), d.side.as_str(), d.opened_ms, d.closed_ms), ("US30", "short", 10, 20));
-        assert_eq!(d.why_in.chars().count(), WHY_WIRE_CHARS, "cut to the wire length including the ellipsis");
+        assert_eq!(
+            (d.symbol.as_str(), d.side.as_str(), d.opened_ms, d.closed_ms),
+            ("US30", "short", 10, 20)
+        );
+        assert_eq!(
+            d.why_in.chars().count(),
+            WHY_WIRE_CHARS,
+            "cut to the wire length including the ellipsis"
+        );
         assert!(d.why_in.ends_with('\u{2026}'));
         assert_eq!(d.why_out, "stop");
     }
 
     #[test]
     fn a_dead_board_from_a_relay_without_a_desk_still_parses() {
-        let b = parse_board(r#"{"desk_alive":false,"heartbeat_age_ms":null,"traders":[]}"#).unwrap();
+        let b =
+            parse_board(r#"{"desk_alive":false,"heartbeat_age_ms":null,"traders":[]}"#).unwrap();
         assert!(!b.desk_alive && b.traders.is_empty() && b.heartbeat_age_ms.is_none());
         assert!(parse_board("not json").is_err());
         assert!(parse_board("42").is_err());
@@ -669,8 +773,21 @@ mod tests {
     #[test]
     fn waiting_reasons_ride_the_heartbeat_and_default_to_empty() {
         let board: DeskBoard = serde_json::from_str(SAMPLE).unwrap();
-        assert!(board.trader(Archetype::TrendRider).unwrap().waiting.is_empty(), "an older desk sends none");
-        let t = DeskTrader { waiting: vec![DeskPass::new("XAU/USD", &"x".repeat(300)), DeskPass::new("GBP/USD", "outside session hours")], ..Default::default() };
+        assert!(
+            board
+                .trader(Archetype::TrendRider)
+                .unwrap()
+                .waiting
+                .is_empty(),
+            "an older desk sends none"
+        );
+        let t = DeskTrader {
+            waiting: vec![
+                DeskPass::new("XAU/USD", &"x".repeat(300)),
+                DeskPass::new("GBP/USD", "outside session hours"),
+            ],
+            ..Default::default()
+        };
         let back: DeskTrader = serde_json::from_str(&serde_json::to_string(&t).unwrap()).unwrap();
         assert_eq!(back.waiting.len(), 2);
         assert_eq!(back.waiting[0].why.chars().count(), WHY_WIRE_CHARS);
@@ -681,18 +798,38 @@ mod tests {
     fn panel_lines_carry_the_window_the_open_position_and_the_desk_stats() {
         let b = parse_board(SAMPLE).unwrap();
         let header = b.header_line();
-        assert!(header.starts_with("DESK TODAY (since 00:00 UTC, all pits)") && header.contains("1 more waiting"), "{header}");
+        assert!(
+            header.starts_with("DESK TODAY (since 00:00 UTC, all pits)")
+                && header.contains("1 more waiting"),
+            "{header}"
+        );
         assert!(header.contains("heartbeat 4s ago"), "{header}");
         let row = b.row_line(0, &b.traders[1], None);
-        assert!(row.starts_with(" 1. Grace  trend         +1.30R   1t 100% dd 0.0 sp"), "today's figures, not the 24 h ones: {row}");
+        assert!(
+            row.starts_with(" 1. Grace  trend         +1.30R   1t 100% dd 0.0 sp"),
+            "today's figures, not the 24 h ones: {row}"
+        );
         assert!(row.ends_with("XAG/USD long +0.35R"), "{row}");
-        assert!(b.row_line(0, &b.traders[1], Some(1.25)).ends_with("XAG/USD long +1.25R"), "a live mark overrides the heartbeat's");
+        assert!(
+            b.row_line(0, &b.traders[1], Some(1.25))
+                .ends_with("XAG/USD long +1.25R"),
+            "a live mark overrides the heartbeat's"
+        );
         let flat = b.row_line(1, &b.traders[0], None);
         assert!(flat.ends_with("flat") && flat.contains("CONTROL"), "{flat}");
         let detail = b.detail_lines(Archetype::TrendRider);
-        assert!(detail[0].contains("Jev live every 60s on 2 pits") && detail[0].contains("42 Jev calls (2 failed)"), "{}", detail[0]);
+        assert!(
+            detail[0].contains("Jev live every 60s on 2 pits")
+                && detail[0].contains("42 Jev calls (2 failed)"),
+            "{}",
+            detail[0]
+        );
         assert!(detail[2].starts_with("OPEN XAG/USD long"), "{:?}", detail);
-        assert_eq!(b.detail_lines(Archetype::Control).len(), 2, "no open line for a flat trader");
+        assert_eq!(
+            b.detail_lines(Archetype::Control).len(),
+            2,
+            "no open line for a flat trader"
+        );
     }
 
     #[test]
@@ -701,15 +838,24 @@ mod tests {
         assert!(!f.alive(0.0));
         f.settle(Ok((200, SAMPLE.to_string())), 10.0);
         assert!(f.alive(10.0) && f.alive(10.0 + DESK_LOST_AFTER_SECS));
-        assert!(!f.alive(10.0 + DESK_LOST_AFTER_SECS + 0.1), "the relay went quiet");
+        assert!(
+            !f.alive(10.0 + DESK_LOST_AFTER_SECS + 0.1),
+            "the relay went quiet"
+        );
         assert!(f.live_board(12.0).is_some() && f.live_board(60.0).is_none());
 
         f.settle(Ok((404, "{}".into())), 11.0);
         assert_eq!(f.last_error, "HTTP 404");
-        assert!(f.alive(12.0), "an old board stays until it ages out, the error is just noted");
+        assert!(
+            f.alive(12.0),
+            "an old board stays until it ages out, the error is just noted"
+        );
 
         let mut g = DeskFeed::default();
-        g.settle(Ok((200, r#"{"desk_alive":false,"traders":[]}"#.into())), 5.0);
+        g.settle(
+            Ok((200, r#"{"desk_alive":false,"traders":[]}"#.into())),
+            5.0,
+        );
         assert!(!g.alive(5.0), "the relay says the desk is gone");
         g.settle(Err("connection refused".into()), 6.0);
         assert_eq!(g.last_error, "connection refused");

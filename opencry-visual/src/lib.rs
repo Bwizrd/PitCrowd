@@ -3,36 +3,35 @@
 
 pub mod camera;
 pub mod candles;
+pub mod depth;
 pub mod desk_feed;
+pub mod endpoints;
 pub mod genome;
 pub mod influx;
 pub mod jev;
 pub mod levels;
-pub mod paper;
-pub mod paper_avatars;
 pub mod live_feed;
 pub mod market;
 pub mod panels;
+pub mod paper;
+pub mod paper_avatars;
 #[cfg_attr(not(feature = "legacy_2d_floor"), allow(dead_code))]
 pub mod pit;
 pub mod pit_3d;
 pub mod pit_3d_overlay;
 pub mod pit_engine;
+pub mod positions;
 pub mod reaction;
 pub mod report;
 pub mod scenario;
 pub mod tape_chart;
 pub mod ticket;
-pub mod positions;
-pub mod depth;
-pub mod endpoints;
 #[cfg_attr(not(feature = "legacy_2d_floor"), allow(dead_code))]
 pub mod trader;
 pub mod ui;
+pub mod unimate;
 pub mod wall_board;
 pub mod web_chart;
-pub mod unimate;
-
 
 /// Where the 15m bar history (`ctrader_<SYM>_SB_15m.json`, rows `[t_ms, o, h, l, c, ticks]`)
 /// lives: `$OPENCRY_EDGE_CACHE`, else `$EDGE_LAB_DIR/data_cache` (an external strategy lab's

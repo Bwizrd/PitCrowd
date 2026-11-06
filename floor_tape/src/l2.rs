@@ -9,7 +9,7 @@
 
 use std::collections::BTreeMap;
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::rng::Rng;
 
@@ -45,12 +45,23 @@ fn iso(t_ms: i64) -> String {
     let d = doy - (153 * mp + 2) / 5 + 1;
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let y = yoe + era * 400 + if m <= 2 { 1 } else { 0 };
-    format!("{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}.{:03}Z", rem / 3600, rem % 3600 / 60, rem % 60, t_ms.rem_euclid(1000))
+    format!(
+        "{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}.{:03}Z",
+        rem / 3600,
+        rem % 3600 / 60,
+        rem % 60,
+        t_ms.rem_euclid(1000)
+    )
 }
 
 impl L2 {
     pub fn new(seed: u64, bid: f64, ask: f64) -> Self {
-        let mut l2 = L2 { bids: BTreeMap::new(), asks: BTreeMap::new(), rng: Rng::new(seed ^ 0x12),  trade_id: 0 };
+        let mut l2 = L2 {
+            bids: BTreeMap::new(),
+            asks: BTreeMap::new(),
+            rng: Rng::new(seed ^ 0x12),
+            trade_id: 0,
+        };
         let (kb, ka) = (key(bid), key(ask).max(key(bid) + 1));
         for (is_bid, touch) in [(true, kb), (false, ka)] {
             let mut k = touch;
@@ -63,7 +74,9 @@ impl L2 {
             // Walls at some round $50s.
             for n in 1..=12 {
                 if l2.rng.unit() < 0.35 {
-                    let p = ((price(touch) / 50.0).round() + if is_bid { -(n as f64) } else { n as f64 }) * 50.0;
+                    let p = ((price(touch) / 50.0).round()
+                        + if is_bid { -(n as f64) } else { n as f64 })
+                        * 50.0;
                     let q = WALL_MIN + 15.0 * l2.rng.unit();
                     l2.side(is_bid).insert(key(p), q);
                 }
@@ -81,8 +94,14 @@ impl L2 {
     }
 
     fn levels(map: &BTreeMap<i64, f64>, bid: bool, n: usize) -> Vec<Value> {
-        let it: Box<dyn Iterator<Item = (&i64, &f64)>> = if bid { Box::new(map.iter().rev()) } else { Box::new(map.iter()) };
-        it.take(n).map(|(k, q)| json!({"price": price(*k), "qty": q})).collect()
+        let it: Box<dyn Iterator<Item = (&i64, &f64)>> = if bid {
+            Box::new(map.iter().rev())
+        } else {
+            Box::new(map.iter())
+        };
+        it.take(n)
+            .map(|(k, q)| json!({"price": price(*k), "qty": q}))
+            .collect()
     }
 
     pub fn snapshot(&self, t_ms: i64) -> String {
@@ -107,7 +126,8 @@ impl L2 {
             self.asks.remove(&k);
             achg.insert(k, 0.0);
         }
-        let crossed_bids: Vec<(i64, f64)> = self.bids.range(kb + 1..).map(|(k, q)| (*k, *q)).collect();
+        let crossed_bids: Vec<(i64, f64)> =
+            self.bids.range(kb + 1..).map(|(k, q)| (*k, *q)).collect();
         for (k, q) in crossed_bids {
             self.trade_id += 1;
             trades.push(json!({"symbol": "BTC/USD", "side": "sell", "price": price(k), "qty": q, "ord_type": "market", "trade_id": self.trade_id, "timestamp": ts}));
@@ -132,7 +152,11 @@ impl L2 {
             for _ in 0..40 {
                 let gap = 1 + (-(self.rng.unit().max(1e-9)).ln() * 11.0) as i64;
                 k += if is_bid { -gap } else { gap };
-                let next = if is_bid { self.bids.range(..touch).next_back().map(|(k, _)| *k) } else { self.asks.range(touch + 1..).next().map(|(k, _)| *k) };
+                let next = if is_bid {
+                    self.bids.range(..touch).next_back().map(|(k, _)| *k)
+                } else {
+                    self.asks.range(touch + 1..).next().map(|(k, _)| *k)
+                };
                 let exists = self.side(is_bid).contains_key(&k);
                 if next.is_some_and(|n| if is_bid { n >= k } else { n <= k }) {
                     break;
@@ -167,14 +191,25 @@ impl L2 {
         if self.rng.unit() < 0.01 {
             let is_bid = self.rng.unit() < 0.5;
             let dist = 40.0 + 360.0 * self.rng.unit();
-            let p = ((if is_bid { price(kb) - dist } else { price(ka) + dist }) / 10.0).round() * 10.0;
+            let p = ((if is_bid {
+                price(kb) - dist
+            } else {
+                price(ka) + dist
+            }) / 10.0)
+                .round()
+                * 10.0;
             let q = ((WALL_MIN + 1.0 + 19.0 * self.rng.unit()) * 1000.0).round() / 1000.0;
             self.side(is_bid).insert(key(p), q);
             (if is_bid { &mut bchg } else { &mut achg }).insert(key(p), q);
         }
         if self.rng.unit() < 0.004 {
             let is_bid = self.rng.unit() < 0.5;
-            let walls: Vec<i64> = self.side(is_bid).iter().filter(|(_, q)| **q >= WALL_MIN).map(|(k, _)| *k).collect();
+            let walls: Vec<i64> = self
+                .side(is_bid)
+                .iter()
+                .filter(|(_, q)| **q >= WALL_MIN)
+                .map(|(k, _)| *k)
+                .collect();
             if !walls.is_empty() {
                 let k = walls[(self.rng.unit() * walls.len() as f64) as usize % walls.len()];
                 self.side(is_bid).remove(&k);
@@ -194,14 +229,21 @@ impl L2 {
         if !trades.is_empty() {
             out.push(json!({"channel": "trade", "type": "update", "data": trades}).to_string());
         }
-        let row = |m: &BTreeMap<i64, f64>| m.iter().map(|(k, q)| json!({"price": price(*k), "qty": q})).collect::<Vec<_>>();
+        let row = |m: &BTreeMap<i64, f64>| {
+            m.iter()
+                .map(|(k, q)| json!({"price": price(*k), "qty": q}))
+                .collect::<Vec<_>>()
+        };
         out.push(json!({"channel": "book", "type": "update", "data": [{"symbol": "BTC/USD", "bids": row(&bchg), "asks": row(&achg), "checksum": 0, "timestamp": ts}]}).to_string());
         out
     }
 
     #[cfg(test)]
     fn best(&self) -> (f64, f64) {
-        (price(*self.bids.keys().next_back().unwrap()), price(*self.asks.keys().next().unwrap()))
+        (
+            price(*self.bids.keys().next_back().unwrap()),
+            price(*self.asks.keys().next().unwrap()),
+        )
     }
 }
 
@@ -217,9 +259,18 @@ mod tests {
         assert_eq!(l2.best(), (100_030.0, 100_031.0));
         let first: Value = serde_json::from_str(&msgs[0]).unwrap();
         assert_eq!(first["channel"], "trade");
-        assert!(first["data"].as_array().unwrap().iter().any(|t| t["side"] == "buy" && t["price"].as_f64().unwrap() < 100_031.0));
+        assert!(
+            first["data"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|t| t["side"] == "buy" && t["price"].as_f64().unwrap() < 100_031.0)
+        );
         let last: Value = serde_json::from_str(msgs.last().unwrap()).unwrap();
-        assert_eq!((last["channel"].as_str(), last["type"].as_str()), (Some("book"), Some("update")));
+        assert_eq!(
+            (last["channel"].as_str(), last["type"].as_str()),
+            (Some("book"), Some("update"))
+        );
     }
 
     #[test]
@@ -228,8 +279,14 @@ mod tests {
         let v: Value = serde_json::from_str(&l2.snapshot(0)).unwrap();
         let d = &v["data"][0];
         assert_eq!(d["bids"].as_array().unwrap().len(), DEPTH);
-        assert!(d["bids"][0]["price"].as_f64() > d["bids"][1]["price"].as_f64(), "bids best first");
-        assert!(d["asks"][0]["price"].as_f64() < d["asks"][1]["price"].as_f64(), "asks best first");
+        assert!(
+            d["bids"][0]["price"].as_f64() > d["bids"][1]["price"].as_f64(),
+            "bids best first"
+        );
+        assert!(
+            d["asks"][0]["price"].as_f64() < d["asks"][1]["price"].as_f64(),
+            "asks best first"
+        );
         let lo = d["bids"][DEPTH - 1]["price"].as_f64().unwrap();
         assert!(100_000.0 - lo > 400.0, "500 levels reach {lo}");
     }

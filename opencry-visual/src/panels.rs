@@ -30,8 +30,11 @@ use crate::camera::{FloorViewMode, OrbitCamera, PitCamera3d};
 use crate::candles::ChartSettings;
 use crate::paper::PaperBook;
 use crate::scenario::MarketScenarioController;
-use crate::tape_chart::{ChartLayout, BOARD_PANEL_W};
-use crate::ui::{DebugOverlayState, HudDetailsContainer, HudExpandedState, RoleKeyVisibleState, TouchButtonAction};
+use crate::tape_chart::{BOARD_PANEL_W, ChartLayout};
+use crate::ui::{
+    DebugOverlayState, HudDetailsContainer, HudExpandedState, RoleKeyVisibleState,
+    TouchButtonAction,
+};
 
 /// The columns start under the top bar...
 pub const COLUMN_TOP: f32 = 58.0;
@@ -68,7 +71,13 @@ pub enum PanelId {
 }
 
 impl PanelId {
-    pub const RIGHT: [PanelId; 5] = [PanelId::Board, PanelId::Ticket, PanelId::Positions, PanelId::Details, PanelId::RoleKey];
+    pub const RIGHT: [PanelId; 5] = [
+        PanelId::Board,
+        PanelId::Ticket,
+        PanelId::Positions,
+        PanelId::Details,
+        PanelId::RoleKey,
+    ];
     pub const LEFT: [PanelId; 3] = [PanelId::Traders, PanelId::Status, PanelId::Depth];
 }
 
@@ -108,18 +117,32 @@ pub struct PanelState {
 
 impl Default for PanelState {
     fn default() -> Self {
-        Self { status: true, expanded: false, ticket: true, positions: true, depth: true }
+        Self {
+            status: true,
+            expanded: false,
+            ticket: true,
+            positions: true,
+            depth: true,
+        }
     }
 }
 
 impl PanelState {
     /// E / the board's button: expand or restore. Expanding a closed board opens it first.
-    pub fn toggle_expanded(&mut self, settings: &mut ChartSettings, controller: &mut MarketScenarioController) {
+    pub fn toggle_expanded(
+        &mut self,
+        settings: &mut ChartSettings,
+        controller: &mut MarketScenarioController,
+    ) {
         self.expanded = !self.expanded;
         if self.expanded && !settings.board_chart {
             settings.board_chart = true;
         }
-        controller.announcement_banner = if self.expanded { "BOARD EXPANDED  (E / ESC restores)".into() } else { "BOARD RESTORED".into() };
+        controller.announcement_banner = if self.expanded {
+            "BOARD EXPANDED  (E / ESC restores)".into()
+        } else {
+            "BOARD RESTORED".into()
+        };
         controller.banner_timer = 1.5;
     }
 }
@@ -146,12 +169,28 @@ pub struct PanelPrefs {
 
 impl Default for PanelPrefs {
     fn default() -> Self {
-        Self { board: true, traders: true, details: false, role_key: true, status: true, expanded: false, ticket: true, positions: true, depth: true }
+        Self {
+            board: true,
+            traders: true,
+            details: false,
+            role_key: true,
+            status: true,
+            expanded: false,
+            ticket: true,
+            positions: true,
+            depth: true,
+        }
     }
 }
 
 impl PanelPrefs {
-    pub fn capture(settings: &ChartSettings, book: &PaperBook, debug: &DebugOverlayState, key: &RoleKeyVisibleState, state: &PanelState) -> Self {
+    pub fn capture(
+        settings: &ChartSettings,
+        book: &PaperBook,
+        debug: &DebugOverlayState,
+        key: &RoleKeyVisibleState,
+        state: &PanelState,
+    ) -> Self {
         Self {
             board: settings.board_chart,
             traders: book.show,
@@ -167,7 +206,14 @@ impl PanelPrefs {
 
     /// Write the snapshot back into the live flags. An expanded board that is closed makes
     /// no sense (nothing would show), so `expanded` only survives with `board`.
-    pub fn apply(&self, settings: &mut ChartSettings, book: &mut PaperBook, debug: &mut DebugOverlayState, key: &mut RoleKeyVisibleState, state: &mut PanelState) {
+    pub fn apply(
+        &self,
+        settings: &mut ChartSettings,
+        book: &mut PaperBook,
+        debug: &mut DebugOverlayState,
+        key: &mut RoleKeyVisibleState,
+        state: &mut PanelState,
+    ) {
         settings.board_chart = self.board;
         book.show = self.traders;
         debug.visible = self.details;
@@ -261,7 +307,10 @@ pub fn spawn_close_button(parent: &mut ChildSpawnerCommands, target: Entity) {
         .with_children(|b| {
             b.spawn((
                 Text::new("X"),
-                TextFont { font_size: 9.5, ..default() },
+                TextFont {
+                    font_size: 9.5,
+                    ..default()
+                },
                 TextColor(Color::srgb(0.85, 0.90, 0.98)),
             ));
         });
@@ -269,7 +318,13 @@ pub fn spawn_close_button(parent: &mut ChildSpawnerCommands, target: Entity) {
 
 /// A panel header row: a title on the left, the close button on the right, and room for
 /// extra buttons between them (spawned by `extra`).
-pub fn spawn_panel_header(parent: &mut ChildSpawnerCommands, target: Entity, title: impl Into<String>, color: Color, extra: impl FnOnce(&mut ChildSpawnerCommands)) {
+pub fn spawn_panel_header(
+    parent: &mut ChildSpawnerCommands,
+    target: Entity,
+    title: impl Into<String>,
+    color: Color,
+    extra: impl FnOnce(&mut ChildSpawnerCommands),
+) {
     parent
         .spawn(Node {
             flex_direction: FlexDirection::Row,
@@ -283,9 +338,17 @@ pub fn spawn_panel_header(parent: &mut ChildSpawnerCommands, target: Entity, tit
         .with_children(|row| {
             row.spawn((
                 Text::new(title),
-                TextFont { font_size: 11.0, ..default() },
+                TextFont {
+                    font_size: 11.0,
+                    ..default()
+                },
                 TextColor(color),
-                Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: Val::Px(0.0), ..default() },
+                Node {
+                    flex_grow: 1.0,
+                    flex_shrink: 1.0,
+                    min_width: Val::Px(0.0),
+                    ..default()
+                },
             ));
             extra(row);
             spawn_close_button(row, target);
@@ -324,14 +387,21 @@ pub fn setup_panel_columns(mut commands: Commands) {
         commands.spawn((
             PanelColumn(side),
             column_node(side),
-            Pickable { should_block_lower: false, is_hoverable: false },
+            Pickable {
+                should_block_lower: false,
+                is_hoverable: false,
+            },
             GlobalZIndex(z),
         ));
     }
 }
 
 /// PostStartup: parent every `Panel` root into its column, top to bottom in `PanelId` order.
-pub fn assemble_panel_columns(mut commands: Commands, columns: Query<(Entity, &PanelColumn)>, panels: Query<(Entity, &Panel)>) {
+pub fn assemble_panel_columns(
+    mut commands: Commands,
+    columns: Query<(Entity, &PanelColumn)>,
+    panels: Query<(Entity, &Panel)>,
+) {
     for (column, side) in columns.iter() {
         let order: &[PanelId] = match side.0 {
             ColumnSide::Left => &PanelId::LEFT,
@@ -366,7 +436,11 @@ pub fn load_panel_prefs(
 // ---------------------------------------------------------------------------
 
 /// System: the chart's pixel size from the window and the expanded flag.
-pub fn update_chart_layout(windows: Query<&Window>, state: Res<PanelState>, mut layout: ResMut<ChartLayout>) {
+pub fn update_chart_layout(
+    windows: Query<&Window>,
+    state: Res<PanelState>,
+    mut layout: ResMut<ChartLayout>,
+) {
     let Ok(window) = windows.single() else { return };
     let want = ChartLayout::for_viewport(window.width(), window.height(), state.expanded);
     if *layout != want {
@@ -396,7 +470,14 @@ pub fn sync_panels(
     layout: Res<ChartLayout>,
     mut panels: Query<(&Panel, &mut Node), (Without<PanelColumn>, Without<HudDetailsContainer>)>,
     mut columns: Query<(&PanelColumn, &mut Node), (Without<Panel>, Without<HudDetailsContainer>)>,
-    mut drawer: Query<&mut Node, (With<HudDetailsContainer>, Without<Panel>, Without<PanelColumn>)>,
+    mut drawer: Query<
+        &mut Node,
+        (
+            With<HudDetailsContainer>,
+            Without<Panel>,
+            Without<PanelColumn>,
+        ),
+    >,
 ) {
     let prefs = PanelPrefs::capture(&settings, &book, &debug, &key, &state);
     let market_view = camera.single().map(|o| o.market_view).unwrap_or(false);
@@ -408,7 +489,10 @@ pub fn sync_panels(
             // `update_paper_panel` owns this one's display from `PaperBook::show`.
             PanelId::Traders => {}
             PanelId::Board => {
-                set_display(&mut node, panel_shown(PanelId::Board, &prefs, board_in_view));
+                set_display(
+                    &mut node,
+                    panel_shown(PanelId::Board, &prefs, board_in_view),
+                );
                 let want = Val::Px(layout.panel_w());
                 if node.width != want {
                     node.width = want;
@@ -421,7 +505,11 @@ pub fn sync_panels(
         match column.0 {
             ColumnSide::Left => set_display(&mut node, !expanded),
             ColumnSide::Right => {
-                let (left, width) = if expanded { (Val::Px(COLUMN_SIDE), Val::Auto) } else { (Val::Auto, Val::Px(BOARD_PANEL_W)) };
+                let (left, width) = if expanded {
+                    (Val::Px(COLUMN_SIDE), Val::Auto)
+                } else {
+                    (Val::Auto, Val::Px(BOARD_PANEL_W))
+                };
                 if node.left != left || node.width != width {
                     node.left = left;
                     node.width = width;
@@ -547,7 +635,14 @@ pub fn update_panel_button_styles(
         }
     }
     for mut text in labels.iter_mut() {
-        crate::pit::set_ui_text(&mut text, if state.expanded { "RESTORE [E]".to_string() } else { "EXPAND [E]".to_string() });
+        crate::pit::set_ui_text(
+            &mut text,
+            if state.expanded {
+                "RESTORE [E]".to_string()
+            } else {
+                "EXPAND [E]".to_string()
+            },
+        );
     }
 }
 
@@ -560,7 +655,12 @@ pub fn persist_panel_prefs(
     state: Res<PanelState>,
     mut last: Local<Option<PanelPrefs>>,
 ) {
-    if !(settings.is_changed() || book.is_changed() || debug.is_changed() || key.is_changed() || state.is_changed()) {
+    if !(settings.is_changed()
+        || book.is_changed()
+        || debug.is_changed()
+        || key.is_changed()
+        || state.is_changed())
+    {
         return;
     }
     let prefs = PanelPrefs::capture(&settings, &book, &debug, &key, &state);
@@ -577,14 +677,30 @@ mod tests {
 
     #[test]
     fn prefs_round_trip_through_json_and_missing_fields_take_defaults() {
-        let p = PanelPrefs { board: false, traders: true, details: true, role_key: false, status: false, expanded: true, ticket: false, positions: false, depth: false };
+        let p = PanelPrefs {
+            board: false,
+            traders: true,
+            details: true,
+            role_key: false,
+            status: false,
+            expanded: true,
+            ticket: false,
+            positions: false,
+            depth: false,
+        };
         let json = serde_json::to_string(&p).unwrap();
         assert!(json.contains("\"role_key\":false"));
         let back: PanelPrefs = serde_json::from_str(&json).unwrap();
         assert_eq!(back, p);
 
         let partial: PanelPrefs = serde_json::from_str(r#"{"details":true}"#).unwrap();
-        assert_eq!(partial, PanelPrefs { details: true, ..PanelPrefs::default() });
+        assert_eq!(
+            partial,
+            PanelPrefs {
+                details: true,
+                ..PanelPrefs::default()
+            }
+        );
         let empty: PanelPrefs = serde_json::from_str("{}").unwrap();
         assert_eq!(empty, PanelPrefs::default());
         assert!(serde_json::from_str::<PanelPrefs>("not json").is_err());
@@ -598,37 +714,86 @@ mod tests {
         let mut debug = DebugOverlayState::default();
         let mut key = RoleKeyVisibleState::default();
         let mut state = PanelState::default();
-        assert_eq!(PanelPrefs::capture(&settings, &book, &debug, &key, &state), PanelPrefs::default(), "defaults agree with the resources");
+        assert_eq!(
+            PanelPrefs::capture(&settings, &book, &debug, &key, &state),
+            PanelPrefs::default(),
+            "defaults agree with the resources"
+        );
 
-        let saved = PanelPrefs { board: false, traders: false, details: true, role_key: false, status: false, expanded: true, ticket: false, positions: false, depth: false };
+        let saved = PanelPrefs {
+            board: false,
+            traders: false,
+            details: true,
+            role_key: false,
+            status: false,
+            expanded: true,
+            ticket: false,
+            positions: false,
+            depth: false,
+        };
         saved.apply(&mut settings, &mut book, &mut debug, &mut key, &mut state);
-        assert!(!settings.board_chart && !book.show && debug.visible && !key.visible && !state.status);
-        assert!(!state.expanded, "an expanded but closed board is not restored as expanded");
+        assert!(
+            !settings.board_chart && !book.show && debug.visible && !key.visible && !state.status
+        );
+        assert!(
+            !state.expanded,
+            "an expanded but closed board is not restored as expanded"
+        );
         let mut again = saved;
         again.board = true;
         again.apply(&mut settings, &mut book, &mut debug, &mut key, &mut state);
         assert!(state.expanded);
-        assert_eq!(PanelPrefs::capture(&settings, &book, &debug, &key, &state), again);
+        assert_eq!(
+            PanelPrefs::capture(&settings, &book, &debug, &key, &state),
+            again
+        );
     }
 
     #[test]
     fn panel_visibility_follows_the_flags_the_view_and_the_expanded_board() {
         let d = PanelPrefs::default();
         assert!(panel_shown(PanelId::Board, &d, true));
-        assert!(!panel_shown(PanelId::Board, &d, false), "no board in the market view");
-        assert!(panel_shown(PanelId::RoleKey, &d, false), "the key stays in the market view");
-        assert!(!panel_shown(PanelId::Details, &d, true), "details closed by default");
+        assert!(
+            !panel_shown(PanelId::Board, &d, false),
+            "no board in the market view"
+        );
+        assert!(
+            panel_shown(PanelId::RoleKey, &d, false),
+            "the key stays in the market view"
+        );
+        assert!(
+            !panel_shown(PanelId::Details, &d, true),
+            "details closed by default"
+        );
         assert!(panel_shown(PanelId::Traders, &d, true) && panel_shown(PanelId::Status, &d, true));
 
-        let e = PanelPrefs { expanded: true, details: true, ..d };
-        for id in [PanelId::Details, PanelId::RoleKey, PanelId::Traders, PanelId::Status] {
-            assert!(!panel_shown(id, &e, true), "{id:?} hides under the expanded board");
-            assert!(panel_shown(id, &e, false), "{id:?} comes back in the market view");
+        let e = PanelPrefs {
+            expanded: true,
+            details: true,
+            ..d
+        };
+        for id in [
+            PanelId::Details,
+            PanelId::RoleKey,
+            PanelId::Traders,
+            PanelId::Status,
+        ] {
+            assert!(
+                !panel_shown(id, &e, true),
+                "{id:?} hides under the expanded board"
+            );
+            assert!(
+                panel_shown(id, &e, false),
+                "{id:?} comes back in the market view"
+            );
         }
         assert!(panel_shown(PanelId::Board, &e, true));
         let closed = PanelPrefs { board: false, ..e };
         assert!(!panel_shown(PanelId::Board, &closed, true));
-        assert!(panel_shown(PanelId::RoleKey, &closed, true), "a closed board cannot hide anything");
+        assert!(
+            panel_shown(PanelId::RoleKey, &closed, true),
+            "a closed board cannot hide anything"
+        );
     }
 
     #[test]
@@ -641,18 +806,44 @@ mod tests {
         assert!(state.expanded && settings.board_chart);
         assert!(controller.announcement_banner.contains("EXPANDED"));
         state.toggle_expanded(&mut settings, &mut controller);
-        assert!(!state.expanded && settings.board_chart, "restoring leaves the board open");
+        assert!(
+            !state.expanded && settings.board_chart,
+            "restoring leaves the board open"
+        );
     }
 
     #[test]
     fn column_order_is_traders_over_status_and_board_over_details_over_key() {
-        assert_eq!(PanelId::LEFT, [PanelId::Traders, PanelId::Status, PanelId::Depth]);
-        assert_eq!(PanelId::RIGHT, [PanelId::Board, PanelId::Ticket, PanelId::Positions, PanelId::Details, PanelId::RoleKey]);
+        assert_eq!(
+            PanelId::LEFT,
+            [PanelId::Traders, PanelId::Status, PanelId::Depth]
+        );
+        assert_eq!(
+            PanelId::RIGHT,
+            [
+                PanelId::Board,
+                PanelId::Ticket,
+                PanelId::Positions,
+                PanelId::Details,
+                PanelId::RoleKey
+            ]
+        );
         let right = column_node(ColumnSide::Right);
-        assert_eq!((right.top, right.bottom, right.right), (Val::Px(COLUMN_TOP), Val::Px(COLUMN_BOTTOM), Val::Px(COLUMN_SIDE)));
+        assert_eq!(
+            (right.top, right.bottom, right.right),
+            (
+                Val::Px(COLUMN_TOP),
+                Val::Px(COLUMN_BOTTOM),
+                Val::Px(COLUMN_SIDE)
+            )
+        );
         assert_eq!(right.width, Val::Px(BOARD_PANEL_W));
         let left = column_node(ColumnSide::Left);
         assert_eq!(left.left, Val::Px(COLUMN_SIDE));
-        assert_eq!(left.overflow, Overflow::clip(), "columns clip above the bottom buttons");
+        assert_eq!(
+            left.overflow,
+            Overflow::clip(),
+            "columns clip above the bottom buttons"
+        );
     }
 }

@@ -4,9 +4,9 @@
 
 use std::collections::VecDeque;
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
-use crate::sim::{Tick, MINUTE_MS};
+use crate::sim::{MINUTE_MS, Tick};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Bar {
@@ -26,7 +26,18 @@ pub struct Bar {
 
 impl Bar {
     fn open(t: i64, tick: &Tick) -> Self {
-        Bar { t, o: tick.bid, h: tick.bid, l: tick.bid, c: tick.bid, n: 0, up: 0, down: 0, spread_sum: 0.0, spread_n: 0 }
+        Bar {
+            t,
+            o: tick.bid,
+            h: tick.bid,
+            l: tick.bid,
+            c: tick.bid,
+            n: 0,
+            up: 0,
+            down: 0,
+            spread_sum: 0.0,
+            spread_n: 0,
+        }
     }
 }
 
@@ -131,12 +142,14 @@ impl Series {
 pub fn parse_timeframe(s: &str) -> Option<i64> {
     let (n, unit) = s.split_at(s.find(|c: char| !c.is_ascii_digit())?);
     let n: i64 = n.parse().ok().filter(|n| *n > 0)?;
-    Some(n * match unit {
-        "m" => MINUTE_MS,
-        "h" => 60 * MINUTE_MS,
-        "d" => 1440 * MINUTE_MS,
-        _ => return None,
-    })
+    Some(
+        n * match unit {
+            "m" => MINUTE_MS,
+            "h" => 60 * MINUTE_MS,
+            "d" => 1440 * MINUTE_MS,
+            _ => return None,
+        },
+    )
 }
 
 /// `-6h`, `-2d`, `-1w`, `-90m` → milliseconds back from now.
@@ -144,13 +157,15 @@ pub fn parse_range(s: &str) -> Option<i64> {
     let s = s.strip_prefix('-')?;
     let (n, unit) = s.split_at(s.find(|c: char| !c.is_ascii_digit())?);
     let n: i64 = n.parse().ok().filter(|n| *n > 0)?;
-    Some(n * match unit {
-        "m" => MINUTE_MS,
-        "h" => 60 * MINUTE_MS,
-        "d" => 1440 * MINUTE_MS,
-        "w" => 7 * 1440 * MINUTE_MS,
-        _ => return None,
-    })
+    Some(
+        n * match unit {
+            "m" => MINUTE_MS,
+            "h" => 60 * MINUTE_MS,
+            "d" => 1440 * MINUTE_MS,
+            "w" => 7 * 1440 * MINUTE_MS,
+            _ => return None,
+        },
+    )
 }
 
 #[cfg(test)]
@@ -158,7 +173,11 @@ mod tests {
     use super::*;
 
     fn tick(t: i64, bid: f64) -> Tick {
-        Tick { t, bid, ask: bid + 0.5 }
+        Tick {
+            t,
+            bid,
+            ask: bid + 0.5,
+        }
     }
 
     #[test]
@@ -171,9 +190,20 @@ mod tests {
         let rows = s.query(0, 3 * MINUTE_MS, true);
         assert_eq!(rows.len(), 1);
         let r = &rows[0];
-        assert_eq!((r["open"].as_f64(), r["high"].as_f64(), r["low"].as_f64(), r["close"].as_f64()), (Some(10.0), Some(12.0), Some(9.0), Some(11.0)));
+        assert_eq!(
+            (
+                r["open"].as_f64(),
+                r["high"].as_f64(),
+                r["low"].as_f64(),
+                r["close"].as_f64()
+            ),
+            (Some(10.0), Some(12.0), Some(9.0), Some(11.0))
+        );
         assert_eq!(r["volume"].as_f64(), Some(6.0));
-        assert_eq!((r["upticks"].as_f64(), r["downticks"].as_f64()), (Some(3.0), Some(2.0)));
+        assert_eq!(
+            (r["upticks"].as_f64(), r["downticks"].as_f64()),
+            (Some(3.0), Some(2.0))
+        );
         assert_eq!(r["spread_mean"].as_f64(), Some(0.5));
     }
 
@@ -182,9 +212,26 @@ mod tests {
         let mut s = Series::default();
         s.add_tick(&tick(120_000, 5.0));
         assert!(!s.add_tick(&tick(10_000, 4.0)));
-        s.add_bars(vec![Bar { t: 0, o: 1.0, h: 2.0, l: 0.5, c: 1.5, n: 3, up: 0, down: 0, spread_sum: 0.0, spread_n: 0 }]);
-        assert_eq!(s.bars.iter().map(|b| b.t).collect::<Vec<_>>(), vec![0, 120_000]);
-        assert!(s.query(0, MINUTE_MS, true)[0].get("upticks").is_none(), "bars loaded as bars carry no delta");
+        s.add_bars(vec![Bar {
+            t: 0,
+            o: 1.0,
+            h: 2.0,
+            l: 0.5,
+            c: 1.5,
+            n: 3,
+            up: 0,
+            down: 0,
+            spread_sum: 0.0,
+            spread_n: 0,
+        }]);
+        assert_eq!(
+            s.bars.iter().map(|b| b.t).collect::<Vec<_>>(),
+            vec![0, 120_000]
+        );
+        assert!(
+            s.query(0, MINUTE_MS, true)[0].get("upticks").is_none(),
+            "bars loaded as bars carry no delta"
+        );
     }
 
     #[test]

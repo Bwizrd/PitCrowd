@@ -1,12 +1,14 @@
-use bevy::prelude::*;
-use crate::camera::{CameraGoal, CameraRequest, FloorViewMode, MainCamera, OrbitCamera, LEGACY_2D_FLOOR};
+use crate::camera::{
+    CameraGoal, CameraRequest, FloorViewMode, LEGACY_2D_FLOOR, MainCamera, OrbitCamera,
+};
+use crate::live_feed::{FeedMode, LiveFeed, sim_only_guard};
 use crate::market::{Instrument, MarketActivitySim};
-use crate::panels::{spawn_panel_header, Panel, PanelId, PanelState};
-use crate::pit::{pit_state_label, set_ui_text, Pit, PitBounds};
-use crate::live_feed::{sim_only_guard, FeedMode, LiveFeed};
+use crate::panels::{Panel, PanelId, PanelState, spawn_panel_header};
+use crate::pit::{Pit, PitBounds, pit_state_label, set_ui_text};
 use crate::pit_engine::{PitEngines, Side};
 use crate::scenario::{MarketScenario, MarketScenarioController};
 use crate::trader::Trader;
+use bevy::prelude::*;
 
 /// Resource tracking currently clicked/inspected pit
 #[derive(Resource, Debug, Clone)]
@@ -40,27 +42,15 @@ impl Selection {
 }
 
 /// Resource controlling developer F1 diagnostic overlay (default false on mobile for clean screen)
-#[derive(Resource, Debug, Clone)]
+#[derive(Resource, Debug, Clone, Default)]
 pub struct DebugOverlayState {
     pub visible: bool,
 }
 
-impl Default for DebugOverlayState {
-    fn default() -> Self {
-        Self { visible: false }
-    }
-}
-
 /// Resource controlling whether the detailed HUD metrics drawer is expanded or collapsed
-#[derive(Resource, Debug, Clone)]
+#[derive(Resource, Debug, Clone, Default)]
 pub struct HudExpandedState {
     pub visible: bool,
-}
-
-impl Default for HudExpandedState {
-    fn default() -> Self {
-        Self { visible: false }
-    }
 }
 
 /// Resource controlling whether the participant Role Key / Legend is visible
@@ -80,10 +70,11 @@ impl Default for RoleKeyVisibleState {
 pub fn open_guide() {
     #[cfg(target_arch = "wasm32")]
     {
-        if let Some(w) = web_sys::window() {
-            if w.open_with_url_and_target("explainer.html", "_blank").is_err() {
-                warn!("guide: the browser blocked the new tab; open /explainer.html by hand");
-            }
+        if let Some(w) = web_sys::window()
+            && w.open_with_url_and_target("explainer.html", "_blank")
+                .is_err()
+        {
+            warn!("guide: the browser blocked the new tab; open /explainer.html by hand");
         }
     }
     #[cfg(not(target_arch = "wasm32"))]
@@ -319,34 +310,40 @@ pub fn setup_ui(mut commands: Commands) {
         ))
         .with_children(|parent| {
             let me = parent.target_entity();
-            spawn_panel_header(parent, me, "PIT STATUS", Color::srgb(0.70, 0.82, 0.95), |row| {
-                // Details expand/collapse button
-                row.spawn((
-                    Button,
-                    TouchButtonAction::ToggleHudDetails,
-                    Node {
-                        padding: UiRect::axes(Val::Px(8.0), Val::Px(1.5)),
-                        border: UiRect::all(Val::Px(1.0)),
-                        border_radius: BorderRadius::all(Val::Px(4.0)),
-                        justify_content: JustifyContent::Center,
-                        align_items: AlignItems::Center,
-                        flex_shrink: 0.0,
-                        ..default()
-                    },
-                    BackgroundColor(Color::srgba(0.08, 0.14, 0.22, 0.90)),
-                    BorderColor::all(Color::srgba(0.30, 0.45, 0.65, 0.70)),
-                ))
-                .with_children(|btn| {
-                    btn.spawn((
-                        Text::new("Details v"),
-                        TextFont {
-                            font_size: 10.5,
+            spawn_panel_header(
+                parent,
+                me,
+                "PIT STATUS",
+                Color::srgb(0.70, 0.82, 0.95),
+                |row| {
+                    // Details expand/collapse button
+                    row.spawn((
+                        Button,
+                        TouchButtonAction::ToggleHudDetails,
+                        Node {
+                            padding: UiRect::axes(Val::Px(8.0), Val::Px(1.5)),
+                            border: UiRect::all(Val::Px(1.0)),
+                            border_radius: BorderRadius::all(Val::Px(4.0)),
+                            justify_content: JustifyContent::Center,
+                            align_items: AlignItems::Center,
+                            flex_shrink: 0.0,
                             ..default()
                         },
-                        TextColor(Color::srgb(0.70, 0.82, 0.95)),
-                    ));
-                });
-            });
+                        BackgroundColor(Color::srgba(0.08, 0.14, 0.22, 0.90)),
+                        BorderColor::all(Color::srgba(0.30, 0.45, 0.65, 0.70)),
+                    ))
+                    .with_children(|btn| {
+                        btn.spawn((
+                            Text::new("Details v"),
+                            TextFont {
+                                font_size: 10.5,
+                                ..default()
+                            },
+                            TextColor(Color::srgb(0.70, 0.82, 0.95)),
+                        ));
+                    });
+                },
+            );
 
             // Compact 1-line summary
             parent.spawn((
@@ -418,7 +415,13 @@ pub fn setup_ui(mut commands: Commands) {
         ))
         .with_children(|parent| {
             let me = parent.target_entity();
-            spawn_panel_header(parent, me, "DIAGNOSTICS / DETAILS (F1)", Color::srgb(0.40, 0.85, 0.95), |_| {});
+            spawn_panel_header(
+                parent,
+                me,
+                "DIAGNOSTICS / DETAILS (F1)",
+                Color::srgb(0.40, 0.85, 0.95),
+                |_| {},
+            );
 
             parent.spawn((
                 DebugOverlayText,
@@ -453,7 +456,13 @@ pub fn setup_ui(mut commands: Commands) {
         .with_children(|parent| {
             // Header with Close Button
             let me = parent.target_entity();
-            spawn_panel_header(parent, me, "PARTICIPANT ROLE KEY [K]", Color::srgb(0.96, 0.85, 0.30), |_| {});
+            spawn_panel_header(
+                parent,
+                me,
+                "PARTICIPANT ROLE KEY [K]",
+                Color::srgb(0.96, 0.85, 0.30),
+                |_| {},
+            );
 
             // 1. Lead Floor Broker
             parent.spawn((
@@ -465,7 +474,9 @@ pub fn setup_ui(mut commands: Commands) {
                 TextColor(Color::srgb(0.40, 0.72, 1.0)),
             ));
             parent.spawn((
-                Text::new("  • PALMS IN (Green) = Buy Imbalance\n  • PALMS OUT (Red)  = Sell Imbalance"),
+                Text::new(
+                    "  • PALMS IN (Green) = Buy Imbalance\n  • PALMS OUT (Red)  = Sell Imbalance",
+                ),
                 TextFont {
                     font_size: 9.0,
                     ..default()
@@ -660,13 +671,41 @@ pub fn setup_ui(mut commands: Commands) {
                 })
                 .with_children(|row| {
                     let actions = [
-                        (TouchButtonAction::Shock(Instrument::Silver), "Ag", Color::srgb(0.98, 0.90, 0.45)),
-                        (TouchButtonAction::Shock(Instrument::Gold), "Au", Color::srgb(0.98, 0.85, 0.35)),
-                        (TouchButtonAction::Shock(Instrument::Nasdaq), "NQ", Color::srgb(0.98, 0.55, 0.45)),
-                        (TouchButtonAction::ToggleViewMode, "3D", Color::srgb(0.98, 0.75, 0.25)),
-                        (TouchButtonAction::ZoomOut, "-", Color::srgb(0.85, 0.90, 0.98)),
-                        (TouchButtonAction::ZoomIn, "+", Color::srgb(0.85, 0.90, 0.98)),
-                        (TouchButtonAction::ResetCamera, "Ctr", Color::srgb(0.38, 0.85, 0.98)),
+                        (
+                            TouchButtonAction::Shock(Instrument::Silver),
+                            "Ag",
+                            Color::srgb(0.98, 0.90, 0.45),
+                        ),
+                        (
+                            TouchButtonAction::Shock(Instrument::Gold),
+                            "Au",
+                            Color::srgb(0.98, 0.85, 0.35),
+                        ),
+                        (
+                            TouchButtonAction::Shock(Instrument::Nasdaq),
+                            "NQ",
+                            Color::srgb(0.98, 0.55, 0.45),
+                        ),
+                        (
+                            TouchButtonAction::ToggleViewMode,
+                            "3D",
+                            Color::srgb(0.98, 0.75, 0.25),
+                        ),
+                        (
+                            TouchButtonAction::ZoomOut,
+                            "-",
+                            Color::srgb(0.85, 0.90, 0.98),
+                        ),
+                        (
+                            TouchButtonAction::ZoomIn,
+                            "+",
+                            Color::srgb(0.85, 0.90, 0.98),
+                        ),
+                        (
+                            TouchButtonAction::ResetCamera,
+                            "Ctr",
+                            Color::srgb(0.38, 0.85, 0.98),
+                        ),
                     ];
 
                     for (action, label, text_color) in actions {
@@ -714,21 +753,81 @@ pub fn setup_ui(mut commands: Commands) {
                 })
                 .with_children(|row| {
                     let actions = [
-                        (TouchButtonAction::ChartBoard, "Board chart", Color::srgb(0.92, 0.96, 1.0)),
-                        (TouchButtonAction::ChartWeb, "Web chart", Color::srgb(0.92, 0.96, 1.0)),
-                        (TouchButtonAction::ChartWall, "Wall board", Color::srgb(0.92, 0.96, 1.0)),
-                        (TouchButtonAction::ChartTimeframe, "5m", Color::srgb(0.98, 0.85, 0.35)),
-                        (TouchButtonAction::ChartDeals, "Pit deals", Color::srgb(0.75, 0.80, 0.88)),
-                        (TouchButtonAction::ChartLevels, "Levels", Color::srgb(0.92, 0.96, 1.0)),
-                        (TouchButtonAction::JevToggle, "Jev read", Color::srgb(0.98, 0.85, 0.35)),
-                        (TouchButtonAction::Guide, "Guide [G]", Color::srgb(0.98, 0.85, 0.35)),
-                        (TouchButtonAction::TradersToggle, "Traders", Color::srgb(0.92, 0.96, 1.0)),
-                        (TouchButtonAction::ToggleTicket, "Trade", Color::srgb(0.55, 1.0, 0.65)),
-                        (TouchButtonAction::TogglePositions, "Positions", Color::srgb(0.55, 1.0, 0.65)),
-                        (TouchButtonAction::ToggleDepth, "Level 2", Color::srgb(0.55, 0.85, 1.0)),
-                        (TouchButtonAction::ToggleStatus, "Status", Color::srgb(0.92, 0.96, 1.0)),
-                        (TouchButtonAction::ToggleDiagnostics, "Details", Color::srgb(0.65, 0.75, 0.85)),
-                        (TouchButtonAction::ToggleRoleKey, "Role key", Color::srgb(0.95, 0.88, 0.35)),
+                        (
+                            TouchButtonAction::ChartBoard,
+                            "Board chart",
+                            Color::srgb(0.92, 0.96, 1.0),
+                        ),
+                        (
+                            TouchButtonAction::ChartWeb,
+                            "Web chart",
+                            Color::srgb(0.92, 0.96, 1.0),
+                        ),
+                        (
+                            TouchButtonAction::ChartWall,
+                            "Wall board",
+                            Color::srgb(0.92, 0.96, 1.0),
+                        ),
+                        (
+                            TouchButtonAction::ChartTimeframe,
+                            "5m",
+                            Color::srgb(0.98, 0.85, 0.35),
+                        ),
+                        (
+                            TouchButtonAction::ChartDeals,
+                            "Pit deals",
+                            Color::srgb(0.75, 0.80, 0.88),
+                        ),
+                        (
+                            TouchButtonAction::ChartLevels,
+                            "Levels",
+                            Color::srgb(0.92, 0.96, 1.0),
+                        ),
+                        (
+                            TouchButtonAction::JevToggle,
+                            "Jev read",
+                            Color::srgb(0.98, 0.85, 0.35),
+                        ),
+                        (
+                            TouchButtonAction::Guide,
+                            "Guide [G]",
+                            Color::srgb(0.98, 0.85, 0.35),
+                        ),
+                        (
+                            TouchButtonAction::TradersToggle,
+                            "Traders",
+                            Color::srgb(0.92, 0.96, 1.0),
+                        ),
+                        (
+                            TouchButtonAction::ToggleTicket,
+                            "Trade",
+                            Color::srgb(0.55, 1.0, 0.65),
+                        ),
+                        (
+                            TouchButtonAction::TogglePositions,
+                            "Positions",
+                            Color::srgb(0.55, 1.0, 0.65),
+                        ),
+                        (
+                            TouchButtonAction::ToggleDepth,
+                            "Level 2",
+                            Color::srgb(0.55, 0.85, 1.0),
+                        ),
+                        (
+                            TouchButtonAction::ToggleStatus,
+                            "Status",
+                            Color::srgb(0.92, 0.96, 1.0),
+                        ),
+                        (
+                            TouchButtonAction::ToggleDiagnostics,
+                            "Details",
+                            Color::srgb(0.65, 0.75, 0.85),
+                        ),
+                        (
+                            TouchButtonAction::ToggleRoleKey,
+                            "Role key",
+                            Color::srgb(0.95, 0.88, 0.35),
+                        ),
                     ];
                     for (action, label, text_color) in actions {
                         row.spawn((
@@ -750,7 +849,10 @@ pub fn setup_ui(mut commands: Commands) {
                         .with_children(|btn| {
                             btn.spawn((
                                 Text::new(label),
-                                TextFont { font_size: 11.0, ..default() },
+                                TextFont {
+                                    font_size: 11.0,
+                                    ..default()
+                                },
                                 TextColor(text_color),
                             ));
                         });
@@ -783,10 +885,10 @@ pub fn handle_pit_selection_clicks(
     let mut click_pos = None;
 
     // 1. Desktop mouse click
-    if mouse_button.just_pressed(MouseButton::Left) {
-        if let Some(cursor_pos) = window.cursor_position() {
-            click_pos = Some(cursor_pos);
-        }
+    if mouse_button.just_pressed(MouseButton::Left)
+        && let Some(cursor_pos) = window.cursor_position()
+    {
+        click_pos = Some(cursor_pos);
     }
 
     // 2. Mobile touch tap: detect tap release with minimal finger movement (< 15px)
@@ -854,7 +956,13 @@ pub fn handle_touch_buttons(
                 }
                 TouchButtonAction::Shock(inst) => {
                     if sim_only_guard(&feed, &mut controller) {
-                        trigger_manual_shock(*inst, &mut sim, &mut engines, &mut controller, &mut selection);
+                        trigger_manual_shock(
+                            *inst,
+                            &mut sim,
+                            &mut engines,
+                            &mut controller,
+                            &mut selection,
+                        );
                     }
                     *view_mode = FloorViewMode::PitDeepDive3D;
                 }
@@ -868,19 +976,19 @@ pub fn handle_touch_buttons(
                 TouchButtonAction::ZoomIn => {
                     if view_mode.is_3d() {
                         camera_request.zoom(0.8);
-                    } else if let Ok((_, mut projection)) = camera_query.single_mut() {
-                        if let Projection::Orthographic(ref mut ortho) = *projection {
-                            ortho.scale = (ortho.scale - 0.20).clamp(0.40, 4.20);
-                        }
+                    } else if let Ok((_, mut projection)) = camera_query.single_mut()
+                        && let Projection::Orthographic(ref mut ortho) = *projection
+                    {
+                        ortho.scale = (ortho.scale - 0.20).clamp(0.40, 4.20);
                     }
                 }
                 TouchButtonAction::ZoomOut => {
                     if view_mode.is_3d() {
                         camera_request.zoom(1.25);
-                    } else if let Ok((_, mut projection)) = camera_query.single_mut() {
-                        if let Projection::Orthographic(ref mut ortho) = *projection {
-                            ortho.scale = (ortho.scale + 0.20).clamp(0.40, 4.20);
-                        }
+                    } else if let Ok((_, mut projection)) = camera_query.single_mut()
+                        && let Projection::Orthographic(ref mut ortho) = *projection
+                    {
+                        ortho.scale = (ortho.scale + 0.20).clamp(0.40, 4.20);
                     }
                 }
                 TouchButtonAction::ResetCamera => {
@@ -894,11 +1002,26 @@ pub fn handle_touch_buttons(
                     }
                 }
                 // Handled by their own modules (candles, jev, paper, panels).
-                TouchButtonAction::ChartBoard | TouchButtonAction::ChartWeb | TouchButtonAction::ChartWall | TouchButtonAction::ChartTimeframe | TouchButtonAction::ChartDeals | TouchButtonAction::ChartLevels | TouchButtonAction::JevToggle | TouchButtonAction::TradersToggle | TouchButtonAction::ToggleStatus | TouchButtonAction::BoardExpand | TouchButtonAction::Guide | TouchButtonAction::ToggleTicket | TouchButtonAction::TogglePositions | TouchButtonAction::ToggleDepth => {}
+                TouchButtonAction::ChartBoard
+                | TouchButtonAction::ChartWeb
+                | TouchButtonAction::ChartWall
+                | TouchButtonAction::ChartTimeframe
+                | TouchButtonAction::ChartDeals
+                | TouchButtonAction::ChartLevels
+                | TouchButtonAction::JevToggle
+                | TouchButtonAction::TradersToggle
+                | TouchButtonAction::ToggleStatus
+                | TouchButtonAction::BoardExpand
+                | TouchButtonAction::Guide
+                | TouchButtonAction::ToggleTicket
+                | TouchButtonAction::TogglePositions
+                | TouchButtonAction::ToggleDepth => {}
                 // Flags only: `panels::sync_panels` applies them to the nodes.
                 TouchButtonAction::ToggleDiagnostics => debug_state.visible = !debug_state.visible,
                 TouchButtonAction::ToggleHudDetails => hud_expanded.visible = !hud_expanded.visible,
-                TouchButtonAction::ToggleRoleKey => role_key_state.visible = !role_key_state.visible,
+                TouchButtonAction::ToggleRoleKey => {
+                    role_key_state.visible = !role_key_state.visible
+                }
             }
         }
     }
@@ -982,35 +1105,83 @@ pub fn handle_keyboard_actions(
     }
 
     if shocks_allowed && keyboard.just_pressed(KeyCode::Digit1) {
-        trigger_manual_shock(Instrument::Silver, &mut sim, &mut engines, &mut controller, &mut selection);
+        trigger_manual_shock(
+            Instrument::Silver,
+            &mut sim,
+            &mut engines,
+            &mut controller,
+            &mut selection,
+        );
         *view_mode = FloorViewMode::PitDeepDive3D;
     }
     if shocks_allowed && keyboard.just_pressed(KeyCode::Digit2) {
-        trigger_manual_shock(Instrument::Gold, &mut sim, &mut engines, &mut controller, &mut selection);
+        trigger_manual_shock(
+            Instrument::Gold,
+            &mut sim,
+            &mut engines,
+            &mut controller,
+            &mut selection,
+        );
         *view_mode = FloorViewMode::PitDeepDive3D;
     }
     if shocks_allowed && keyboard.just_pressed(KeyCode::Digit3) {
-        trigger_manual_shock(Instrument::Nasdaq, &mut sim, &mut engines, &mut controller, &mut selection);
+        trigger_manual_shock(
+            Instrument::Nasdaq,
+            &mut sim,
+            &mut engines,
+            &mut controller,
+            &mut selection,
+        );
         *view_mode = FloorViewMode::PitDeepDive3D;
     }
     if shocks_allowed && keyboard.just_pressed(KeyCode::Digit4) {
-        trigger_manual_shock(Instrument::Sp500, &mut sim, &mut engines, &mut controller, &mut selection);
+        trigger_manual_shock(
+            Instrument::Sp500,
+            &mut sim,
+            &mut engines,
+            &mut controller,
+            &mut selection,
+        );
         *view_mode = FloorViewMode::PitDeepDive3D;
     }
     if shocks_allowed && keyboard.just_pressed(KeyCode::Digit5) {
-        trigger_manual_shock(Instrument::Us30, &mut sim, &mut engines, &mut controller, &mut selection);
+        trigger_manual_shock(
+            Instrument::Us30,
+            &mut sim,
+            &mut engines,
+            &mut controller,
+            &mut selection,
+        );
         *view_mode = FloorViewMode::PitDeepDive3D;
     }
     if shocks_allowed && keyboard.just_pressed(KeyCode::Digit6) {
-        trigger_manual_shock(Instrument::Uk100, &mut sim, &mut engines, &mut controller, &mut selection);
+        trigger_manual_shock(
+            Instrument::Uk100,
+            &mut sim,
+            &mut engines,
+            &mut controller,
+            &mut selection,
+        );
         *view_mode = FloorViewMode::PitDeepDive3D;
     }
     if shocks_allowed && keyboard.just_pressed(KeyCode::Digit7) {
-        trigger_manual_shock(Instrument::EurUsd, &mut sim, &mut engines, &mut controller, &mut selection);
+        trigger_manual_shock(
+            Instrument::EurUsd,
+            &mut sim,
+            &mut engines,
+            &mut controller,
+            &mut selection,
+        );
         *view_mode = FloorViewMode::PitDeepDive3D;
     }
     if shocks_allowed && keyboard.just_pressed(KeyCode::Digit8) {
-        trigger_manual_shock(Instrument::Bitcoin, &mut sim, &mut engines, &mut controller, &mut selection);
+        trigger_manual_shock(
+            Instrument::Bitcoin,
+            &mut sim,
+            &mut engines,
+            &mut controller,
+            &mut selection,
+        );
         *view_mode = FloorViewMode::PitDeepDive3D;
     }
 
@@ -1034,9 +1205,30 @@ pub fn update_hud_info(
     feed: Res<LiveFeed>,
     time: Res<Time>,
     panel_state: Res<PanelState>,
-    mut hud_text: Query<&mut Text, (With<HudInfoText>, Without<ScenarioHeaderText>, Without<HudCompactSummaryText>)>,
-    mut compact_text: Query<&mut Text, (With<HudCompactSummaryText>, Without<ScenarioHeaderText>, Without<HudInfoText>)>,
-    mut scenario_text: Query<&mut Text, (With<ScenarioHeaderText>, Without<HudInfoText>, Without<HudCompactSummaryText>)>,
+    mut hud_text: Query<
+        &mut Text,
+        (
+            With<HudInfoText>,
+            Without<ScenarioHeaderText>,
+            Without<HudCompactSummaryText>,
+        ),
+    >,
+    mut compact_text: Query<
+        &mut Text,
+        (
+            With<HudCompactSummaryText>,
+            Without<ScenarioHeaderText>,
+            Without<HudInfoText>,
+        ),
+    >,
+    mut scenario_text: Query<
+        &mut Text,
+        (
+            With<ScenarioHeaderText>,
+            Without<HudInfoText>,
+            Without<HudCompactSummaryText>,
+        ),
+    >,
 ) {
     for mut text in scenario_text.iter_mut() {
         set_ui_text(&mut text, controller.active_scenario.name().to_string());
@@ -1050,7 +1242,8 @@ pub fn update_hud_info(
         let pit = engines.pit(inst);
         let sig = &pit.signals;
         let decimals = crate::pit::instrument_decimals(inst);
-        let fmt = |ticks: i32| crate::pit::format_price_with_commas(pit.price_of(ticks) as f64, decimals);
+        let fmt =
+            |ticks: i32| crate::pit::format_price_with_commas(pit.price_of(ticks) as f64, decimals);
         let last = fmt(sig.last_ticks);
         let touch = match (sig.best_bid_ticks, sig.best_ask_ticks) {
             (Some(b), Some(a)) => format!("{} / {}", fmt(b), fmt(a)),
@@ -1079,47 +1272,60 @@ pub fn update_hud_info(
                 _ => String::new(),
             };
             let _ = view_mode.is_3d();
-            set_ui_text(&mut ctext, format!(
-                "{}{} {} | {} in | {}Sound {}% | Paper {:+}% | Filled {:+}% | {}",
-                prefix,
-                inst.symbol(),
-                last,
-                pit.active_count,
-                tape,
-                sound,
-                pressure,
-                flow,
-                state
-            ));
+            set_ui_text(
+                &mut ctext,
+                format!(
+                    "{}{} {} | {} in | {}Sound {}% | Paper {:+}% | Filled {:+}% | {}",
+                    prefix,
+                    inst.symbol(),
+                    last,
+                    pit.active_count,
+                    tape,
+                    sound,
+                    pressure,
+                    flow,
+                    state
+                ),
+            );
         }
 
         for mut dtext in hud_text.iter_mut() {
-            set_ui_text(&mut dtext, format!(
-                "INSPECTED: {} ({}) | District: {}\nLast {} | Bid / Ask {} | {}\nSound {}% | Paper working {:+}% | Flow filled {:+}% | Depth {}% | Vacuum {}%\nHeadcount {} / {} | Inventory stress {}% | Arrivals {:.1}/s | Fills {:.1}/s",
-                inst.name(),
-                inst.symbol(),
-                inst.district().label(),
-                last,
-                touch,
-                state,
-                sound,
-                pressure,
-                flow,
-                depth,
-                (sig.vacuum * 100.0).round() as i32,
-                pit.active_count,
-                crate::pit_engine::SLOTS,
-                (sig.inventory_stress * 100.0).round() as i32,
-                sig.arrival_intensity,
-                sig.fill_rate
-            ));
+            set_ui_text(
+                &mut dtext,
+                format!(
+                    "INSPECTED: {} ({}) | District: {}\nLast {} | Bid / Ask {} | {}\nSound {}% | Paper working {:+}% | Flow filled {:+}% | Depth {}% | Vacuum {}%\nHeadcount {} / {} | Inventory stress {}% | Arrivals {:.1}/s | Fills {:.1}/s",
+                    inst.name(),
+                    inst.symbol(),
+                    inst.district().label(),
+                    last,
+                    touch,
+                    state,
+                    sound,
+                    pressure,
+                    flow,
+                    depth,
+                    (sig.vacuum * 100.0).round() as i32,
+                    pit.active_count,
+                    crate::pit_engine::SLOTS,
+                    (sig.inventory_stress * 100.0).round() as i32,
+                    sig.arrival_intensity,
+                    sig.fill_rate
+                ),
+            );
         }
     } else {
         for mut ctext in compact_text.iter_mut() {
-            set_ui_text(&mut ctext, "Tap or click any trading pit to inspect order flow".to_string());
+            set_ui_text(
+                &mut ctext,
+                "Tap or click any trading pit to inspect order flow".to_string(),
+            );
         }
         for mut dtext in hud_text.iter_mut() {
-            set_ui_text(&mut dtext, "Tap or click any trading pit on the floor to inspect order flow metrics.".to_string());
+            set_ui_text(
+                &mut dtext,
+                "Tap or click any trading pit on the floor to inspect order flow metrics."
+                    .to_string(),
+            );
         }
     }
 }
@@ -1147,14 +1353,30 @@ pub fn update_view_mode_button(
     let market_view = orbit.single().map(|o| o.market_view).unwrap_or(false);
     let (label, bg_color, border_color) = if !LEGACY_2D_FLOOR {
         if market_view {
-            (format!("INSPECT {} PIT [SPACE]", selected_label), Color::srgba(0.08, 0.32, 0.50, 0.95), Color::srgb(0.22, 0.78, 0.98))
+            (
+                format!("INSPECT {} PIT [SPACE]", selected_label),
+                Color::srgba(0.08, 0.32, 0.50, 0.95),
+                Color::srgb(0.22, 0.78, 0.98),
+            )
         } else {
-            ("<- MARKET VIEW [ESC / M]".to_string(), Color::srgba(0.50, 0.22, 0.05, 0.95), Color::srgb(0.98, 0.68, 0.15))
+            (
+                "<- MARKET VIEW [ESC / M]".to_string(),
+                Color::srgba(0.50, 0.22, 0.05, 0.95),
+                Color::srgb(0.98, 0.68, 0.15),
+            )
         }
     } else if view_mode.is_3d() {
-        (format!("<- FLOOR OVERVIEW [ESC] ({})", selected_label), Color::srgba(0.50, 0.22, 0.05, 0.95), Color::srgb(0.98, 0.68, 0.15))
+        (
+            format!("<- FLOOR OVERVIEW [ESC] ({})", selected_label),
+            Color::srgba(0.50, 0.22, 0.05, 0.95),
+            Color::srgb(0.98, 0.68, 0.15),
+        )
     } else {
-        (format!("3D {} PIT [SPACE]", selected_label), Color::srgba(0.08, 0.32, 0.50, 0.95), Color::srgb(0.22, 0.78, 0.98))
+        (
+            format!("3D {} PIT [SPACE]", selected_label),
+            Color::srgba(0.08, 0.32, 0.50, 0.95),
+            Color::srgb(0.22, 0.78, 0.98),
+        )
     };
     set_ui_text(&mut text, label);
     if bg.0 != bg_color {
@@ -1257,7 +1479,11 @@ mod tests {
         assert!(!sel.wall_board_dismissed);
         sel.click_away();
         assert!(sel.wall_board_dismissed);
-        assert_eq!(sel.selected_instrument, Some(Instrument::Silver), "the panels keep showing the last pit");
+        assert_eq!(
+            sel.selected_instrument,
+            Some(Instrument::Silver),
+            "the panels keep showing the last pit"
+        );
         sel.pick(Instrument::Gold);
         assert!(!sel.wall_board_dismissed);
         assert_eq!(sel.selected_instrument, Some(Instrument::Gold));
@@ -1288,10 +1514,18 @@ mod tests {
         let mut controller = MarketScenarioController::default();
         let mut selection = Selection::default();
 
-        trigger_manual_shock(Instrument::Gold, &mut sim, &mut engines, &mut controller, &mut selection);
+        trigger_manual_shock(
+            Instrument::Gold,
+            &mut sim,
+            &mut engines,
+            &mut controller,
+            &mut selection,
+        );
         assert_eq!(selection.selected_instrument, Some(Instrument::Gold));
-        assert!(!engines.pit(Instrument::Gold).participant(0).deck.is_empty(), "block paper lands on the rail");
+        assert!(
+            !engines.pit(Instrument::Gold).participant(0).deck.is_empty(),
+            "block paper lands on the rail"
+        );
         assert!(controller.announcement_banner.contains("GOLD"));
     }
 }
-

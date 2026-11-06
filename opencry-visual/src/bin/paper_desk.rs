@@ -58,22 +58,28 @@ mod desk {
     use std::io::Write;
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicU64, Ordering};
-    use std::sync::{mpsc, Arc};
+    use std::sync::{Arc, mpsc};
     use std::time::{Duration, Instant};
 
-    use opencry_visual::candles::{parse_backfill, wall_clock_ms, Candle, CandleStore, Timeframe};
-    use opencry_visual::desk_feed::{DeskBoard, DeskJevSplit, DeskOpen, DeskPass, DeskPit, DeskRead, DeskSeat, DeskTrade, DeskTrader, BOARD_WINDOW_HOURS, LAST_TRADES_KEEP};
-    use opencry_visual::jev::{
-        all_questions, relay_url, system_one_request, system_one_result, DeterministicModel, JevDesk, JevQuestion, MarketInterpretation,
-        MarketObservation, ModelError, ObsTrigger, ReadSource,
+    use opencry_visual::candles::{Candle, CandleStore, Timeframe, parse_backfill, wall_clock_ms};
+    use opencry_visual::desk_feed::{
+        BOARD_WINDOW_HOURS, DeskBoard, DeskJevSplit, DeskOpen, DeskPass, DeskPit, DeskRead,
+        DeskSeat, DeskTrade, DeskTrader, LAST_TRADES_KEEP,
     };
-    use opencry_visual::levels::{tape_symbol, tape_url, LevelStore};
-    use opencry_visual::live_feed::{parse_tape, FeedMode, FeedState, LiveFeed, PitFeedStatus, TapeMessage};
+    use opencry_visual::genome::{self, BAR_MS, Bar, Features, Genome};
+    use opencry_visual::jev::{
+        DeterministicModel, JevDesk, JevQuestion, MarketInterpretation, MarketObservation,
+        ModelError, ObsTrigger, ReadSource, all_questions, relay_url, system_one_request,
+        system_one_result,
+    };
+    use opencry_visual::levels::{LevelStore, tape_symbol, tape_url};
+    use opencry_visual::live_feed::{
+        FeedMode, FeedState, LiveFeed, PitFeedStatus, TapeMessage, parse_tape,
+    };
     use opencry_visual::market::Instrument;
-    use opencry_visual::genome::{self, Bar, Features, Genome, BAR_MS};
-    use opencry_visual::paper::{Archetype, Entry, PaperBook, Trade, View, READ_FRESH_SECS};
+    use opencry_visual::paper::{Archetype, Entry, PaperBook, READ_FRESH_SECS, Trade, View};
     use opencry_visual::pit_engine::tick_size;
-    use opencry_visual::reaction::{unit_ticks, Step, Touch, TouchTracker};
+    use opencry_visual::reaction::{Step, Touch, TouchTracker, unit_ticks};
     use opencry_visual::tape_chart::BOARD_BARS;
 
     /// Marks every row this process writes, so the app's rows (no source) can be told apart.
@@ -146,7 +152,9 @@ mod desk {
 
     fn arg(name: &str) -> Option<String> {
         let args: Vec<String> = std::env::args().collect();
-        args.iter().position(|a| a == name).and_then(|i| args.get(i + 1).cloned())
+        args.iter()
+            .position(|a| a == name)
+            .and_then(|i| args.get(i + 1).cloned())
     }
 
     fn flag(name: &str) -> bool {
@@ -160,7 +168,11 @@ mod desk {
                 .split(',')
                 .map(|s| {
                     let want = s.trim().to_uppercase().replace('/', "");
-                    Instrument::ALL.iter().copied().find(|i| tape_symbol(*i) == want).ok_or(format!("unknown symbol {s}"))
+                    Instrument::ALL
+                        .iter()
+                        .copied()
+                        .find(|i| tape_symbol(*i) == want)
+                        .ok_or(format!("unknown symbol {s}"))
                 })
                 .collect(),
         }
@@ -174,24 +186,55 @@ mod desk {
             "live" => JevMode::Live,
             other => return Err(format!("--jev {other}: none | rule | live")),
         };
-        let jev_every = arg("--jev-every").and_then(|v| v.parse().ok()).unwrap_or(60.0f64).max(10.0);
+        let jev_every = arg("--jev-every")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(60.0f64)
+            .max(10.0);
         let seed = arg("--seed").and_then(|v| v.parse().ok()).unwrap_or(42);
         let log_dir = arg("--log-dir")
             .or_else(|| std::env::var("OPENCRY_DESK_LOG_DIR").ok())
             .map(PathBuf::from)
             .unwrap_or_else(|| default_log_dir(std::env::current_exe().ok()));
-        let heartbeat_every = arg("--heartbeat-every").and_then(|v| v.parse().ok()).unwrap_or(3.0f64).max(1.0);
+        let heartbeat_every = arg("--heartbeat-every")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(3.0f64)
+            .max(1.0);
         let backfill = arg("--backfill").unwrap_or_else(|| "-6h".into());
         let touch_reads = match arg("--touch-reads").as_deref().unwrap_or("on") {
             "on" => true,
             "off" => false,
             other => return Err(format!("--touch-reads {other}: on | off")),
         };
-        let touch_follow = arg("--touch-follow").and_then(|v| v.parse().ok()).unwrap_or(30.0f64).max(0.0);
-        let touch_cooldown = arg("--touch-cooldown").and_then(|v| v.parse().ok()).unwrap_or(60.0f64).max(5.0);
-        let keep = arg("--keep").map(|v| v.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect());
+        let touch_follow = arg("--touch-follow")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(30.0f64)
+            .max(0.0);
+        let touch_cooldown = arg("--touch-cooldown")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(60.0f64)
+            .max(5.0);
+        let keep = arg("--keep").map(|v| {
+            v.split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        });
         let pit = arg("--pit").map(PathBuf::from);
-        Ok(Args { symbols, jev, jev_every, seed, log_dir, heartbeat_every, backfill, relay_log: !flag("--no-relay-log"), touch_reads, touch_follow, touch_cooldown, keep, pit })
+        Ok(Args {
+            symbols,
+            jev,
+            jev_every,
+            seed,
+            log_dir,
+            heartbeat_every,
+            backfill,
+            relay_log: !flag("--no-relay-log"),
+            touch_reads,
+            touch_follow,
+            touch_cooldown,
+            keep,
+            pit,
+        })
     }
 
     /// `ws://` address of the tape from its `http://` one.
@@ -206,7 +249,10 @@ mod desk {
     }
 
     fn feed_ws_url() -> String {
-        std::env::var("OPENCRY_FEED_URL").ok().filter(|v| !v.is_empty()).unwrap_or_else(|| ws_from_http(&tape_url()))
+        std::env::var("OPENCRY_FEED_URL")
+            .ok()
+            .filter(|v| !v.is_empty())
+            .unwrap_or_else(|| ws_from_http(&tape_url()))
     }
 
     fn fmt_ms(ms: i64) -> String {
@@ -223,7 +269,12 @@ mod desk {
         let d = doy - (153 * mp + 2) / 5 + 1;
         let m = if mp < 10 { mp + 3 } else { mp - 9 };
         let y = if m <= 2 { y + 1 } else { y };
-        format!("{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z", day / 3600, (day % 3600) / 60, day % 60)
+        format!(
+            "{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z",
+            day / 3600,
+            (day % 3600) / 60,
+            day % 60
+        )
     }
 
     fn log_line(msg: &str) {
@@ -265,7 +316,8 @@ mod desk {
             trader: v.get("trader")?.as_str()?.to_string(),
             closed_ms,
             pnl_r,
-            spread_r: (f("spread_ticks_in").unwrap_or(0.0) / f("stop_ticks").unwrap_or(1.0).max(1.0)) as f32,
+            spread_r: (f("spread_ticks_in").unwrap_or(0.0)
+                / f("stop_ticks").unwrap_or(1.0).max(1.0)) as f32,
             shown: DeskTrade {
                 symbol: s("symbol"),
                 side: s("side"),
@@ -284,28 +336,55 @@ mod desk {
     pub fn last_trades(history: &[Closed], trader: &str) -> Vec<DeskTrade> {
         let mut mine: Vec<&Closed> = history.iter().filter(|c| c.trader == trader).collect();
         mine.sort_by_key(|c| std::cmp::Reverse(c.closed_ms));
-        mine.iter().take(LAST_TRADES_KEEP).map(|c| c.shown.clone()).collect()
+        mine.iter()
+            .take(LAST_TRADES_KEEP)
+            .map(|c| c.shown.clone())
+            .collect()
     }
 
     /// Per-trader totals over the trades closed in the window, in `Archetype::ALL` order.
     /// Drawdown is measured over the window's own sequence from zero, like `Trader::settle`.
     #[cfg_attr(not(test), allow(dead_code))]
     pub fn leaderboard(history: &[Closed], now_ms: i64, window_ms: i64) -> Vec<DeskTrader> {
-        let roster: Vec<(&str, &str)> = Archetype::ALL.iter().map(|a| (a.name(), a.label())).collect();
+        let roster: Vec<(&str, &str)> = Archetype::ALL
+            .iter()
+            .map(|a| (a.name(), a.label()))
+            .collect();
         leaderboard_for(&roster, history, now_ms, window_ms)
     }
 
     /// The board for these traders, in this order: (name, label) per row.
-    pub fn leaderboard_for(roster: &[(&str, &str)], history: &[Closed], now_ms: i64, window_ms: i64) -> Vec<DeskTrader> {
-        let mut rows: Vec<DeskTrader> = roster.iter().map(|(n, l)| DeskTrader { trader: n.to_string(), archetype: l.to_string(), ..Default::default() }).collect();
+    pub fn leaderboard_for(
+        roster: &[(&str, &str)],
+        history: &[Closed],
+        now_ms: i64,
+        window_ms: i64,
+    ) -> Vec<DeskTrader> {
+        let mut rows: Vec<DeskTrader> = roster
+            .iter()
+            .map(|(n, l)| DeskTrader {
+                trader: n.to_string(),
+                archetype: l.to_string(),
+                ..Default::default()
+            })
+            .collect();
         let mut peaks = vec![0.0f32; rows.len()];
-        let mut window: Vec<&Closed> = history.iter().filter(|c| c.closed_ms > now_ms - window_ms && c.closed_ms <= now_ms).collect();
+        let mut window: Vec<&Closed> = history
+            .iter()
+            .filter(|c| c.closed_ms > now_ms - window_ms && c.closed_ms <= now_ms)
+            .collect();
         window.sort_by_key(|c| c.closed_ms);
         for c in window {
-            let Some(i) = roster.iter().position(|(n, _)| *n == c.trader) else { continue };
+            let Some(i) = roster.iter().position(|(n, _)| *n == c.trader) else {
+                continue;
+            };
             let r = &mut rows[i];
             r.trades += 1;
-            if c.pnl_r > 0.0 { r.wins += 1 } else { r.losses += 1 }
+            if c.pnl_r > 0.0 {
+                r.wins += 1
+            } else {
+                r.losses += 1
+            }
             r.net_r += c.pnl_r;
             r.spread_paid_r += c.spread_r;
             peaks[i] = peaks[i].max(r.net_r);
@@ -315,7 +394,9 @@ mod desk {
     }
 
     fn load_history(path: &PathBuf, now_ms: i64, window_ms: i64) -> Vec<Closed> {
-        let Ok(text) = fs::read_to_string(path) else { return Vec::new() };
+        let Ok(text) = fs::read_to_string(path) else {
+            return Vec::new();
+        };
         text.lines()
             .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
             .filter_map(|v| closed_from_json(&v))
@@ -371,7 +452,11 @@ mod desk {
         pub fn of(book: &PaperBook) -> Self {
             Self {
                 trades: book.traders.iter().map(|t| t.trades.len()).collect(),
-                open: book.traders.iter().map(|t| t.position.as_ref().map(|p| (p.inst, p.opened_ms))).collect(),
+                open: book
+                    .traders
+                    .iter()
+                    .map(|t| t.position.as_ref().map(|p| (p.inst, p.opened_ms)))
+                    .collect(),
             }
         }
 
@@ -413,14 +498,22 @@ mod desk {
             if !self.enabled {
                 return;
             }
-            let Ok(body) = serde_json::to_vec(value) else { return };
+            let Ok(body) = serde_json::to_vec(value) else {
+                return;
+            };
             let mut req = ehttp::Request::post(format!("{}{path}", self.relay), body);
-            req.headers = ehttp::Headers::new(&[("Accept", "application/json"), ("Content-Type", "application/json")]);
+            req.headers = ehttp::Headers::new(&[
+                ("Accept", "application/json"),
+                ("Content-Type", "application/json"),
+            ]);
             let failures = self.failures.clone();
             let posted = self.posted.clone();
             ehttp::fetch(req, move |res| {
                 if let Some(s) = status_out {
-                    s.store(res.as_ref().map(|r| r.status as u64).unwrap_or(1), Ordering::Relaxed);
+                    s.store(
+                        res.as_ref().map(|r| r.status as u64).unwrap_or(1),
+                        Ordering::Relaxed,
+                    );
                     return;
                 }
                 match res {
@@ -468,7 +561,16 @@ mod desk {
     }
 
     /// Send an observation for a read in the configured mode. Returns whether it went.
-    fn dispatch(mode: JevMode, desk: &mut JevDesk, job_tx: &mpsc::Sender<JevJob>, queued: &mut [bool], n_reads: &mut u64, inst: Instrument, obs: MarketObservation, now: f64) -> bool {
+    fn dispatch(
+        mode: JevMode,
+        desk: &mut JevDesk,
+        job_tx: &mpsc::Sender<JevJob>,
+        queued: &mut [bool],
+        n_reads: &mut u64,
+        inst: Instrument,
+        obs: MarketObservation,
+        now: f64,
+    ) -> bool {
         match mode {
             JevMode::Rule => {
                 let mut r = DeterministicModel::read(&obs);
@@ -490,10 +592,20 @@ mod desk {
     }
 
     fn trigger_for(t: &Touch, kind: &str, secs_since: f64) -> ObsTrigger {
-        ObsTrigger { kind: kind.into(), level: t.kind.tag().into(), lo: t.lo, hi: t.hi, side: t.side.label().into(), secs_since: secs_since as f32 }
+        ObsTrigger {
+            kind: kind.into(),
+            level: t.kind.tag().into(),
+            lo: t.lo,
+            hi: t.hi,
+            side: t.side.label().into(),
+            secs_since: secs_since as f32,
+        }
     }
 
-    fn spawn_jev_worker(relay: String, questions: HashMap<String, JevQuestion>) -> (mpsc::Sender<JevJob>, mpsc::Receiver<JevDone>) {
+    fn spawn_jev_worker(
+        relay: String,
+        questions: HashMap<String, JevQuestion>,
+    ) -> (mpsc::Sender<JevJob>, mpsc::Receiver<JevDone>) {
         let (job_tx, job_rx) = mpsc::channel::<JevJob>();
         let (done_tx, done_rx) = mpsc::channel::<JevDone>();
         std::thread::Builder::new()
@@ -524,7 +636,15 @@ mod desk {
                             other => break other,
                         }
                     };
-                    if done_tx.send(JevDone { inst: job.inst, res, calls, trigger }).is_err() {
+                    if done_tx
+                        .send(JevDone {
+                            inst: job.inst,
+                            res,
+                            calls,
+                            trigger,
+                        })
+                        .is_err()
+                    {
                         return;
                     }
                 }
@@ -549,7 +669,14 @@ mod desk {
 
     impl Socket {
         fn new(url: String) -> Self {
-            Self { url, pair: None, next_connect_at: 0.0, backoff: RECONNECT_MIN_SECS, down_since: Some(0.0), reconnects: 0 }
+            Self {
+                url,
+                pair: None,
+                next_connect_at: 0.0,
+                backoff: RECONNECT_MIN_SECS,
+                down_since: Some(0.0),
+                reconnects: 0,
+            }
         }
 
         fn ensure_connected(&mut self, now: f64) {
@@ -562,7 +689,10 @@ mod desk {
                     log_line(&format!("connecting to {}", self.url));
                 }
                 Err(e) => {
-                    log_line(&format!("connect failed: {e}; retry in {:.0}s", self.backoff));
+                    log_line(&format!(
+                        "connect failed: {e}; retry in {:.0}s",
+                        self.backoff
+                    ));
                     self.next_connect_at = now + self.backoff;
                     self.backoff = (self.backoff * 2.0).min(RECONNECT_MAX_SECS);
                 }
@@ -598,10 +728,23 @@ mod desk {
     // -----------------------------------------------------------------------
 
     fn backfill(store: &mut CandleStore, inst: Instrument, range: &str) -> Result<usize, String> {
-        let url = format!("{}/bars?symbol={}&timeframe=1m&range={range}", tape_url(), tape_symbol(inst));
-        let res = ehttp::fetch_blocking(&ehttp::Request::get(url)).map_err(|e| format!("tape: {e}"))?;
+        let url = format!(
+            "{}/bars?symbol={}&timeframe=1m&range={range}",
+            tape_url(),
+            tape_symbol(inst)
+        );
+        let res =
+            ehttp::fetch_blocking(&ehttp::Request::get(url)).map_err(|e| format!("tape: {e}"))?;
         if !res.ok {
-            return Err(format!("tape HTTP {} {}", res.status, res.text().unwrap_or("").chars().take(120).collect::<String>()));
+            return Err(format!(
+                "tape HTTP {} {}",
+                res.status,
+                res.text()
+                    .unwrap_or("")
+                    .chars()
+                    .take(120)
+                    .collect::<String>()
+            ));
         }
         let bars = parse_backfill(res.text().unwrap_or(""));
         let s = store.live_mut(inst, Timeframe::M1);
@@ -615,8 +758,14 @@ mod desk {
     fn backfill_all(store: &mut CandleStore, symbols: &[Instrument], range: &str) {
         for inst in symbols {
             match backfill(store, *inst, range) {
-                Ok(n) => log_line(&format!("backfilled {} 1m from the tape ({n} bars)", tape_symbol(*inst))),
-                Err(e) => log_line(&format!("backfill {} failed: {e} (bars will build from ticks)", tape_symbol(*inst))),
+                Ok(n) => log_line(&format!(
+                    "backfilled {} 1m from the tape ({n} bars)",
+                    tape_symbol(*inst)
+                )),
+                Err(e) => log_line(&format!(
+                    "backfill {} failed: {e} (bars will build from ticks)",
+                    tape_symbol(*inst)
+                )),
             }
         }
     }
@@ -638,7 +787,10 @@ mod desk {
     fn edge_lab_entry(pit: &std::path::Path, key: &str, tf: u32, bars: &[Bar]) -> Option<i8> {
         use std::io::Write as _;
         let script = pit.parent()?.join("edge_lab.py");
-        let rows: Vec<[f64; 5]> = bars.iter().map(|b| [b.t as f64, b.o, b.h, b.l, b.c]).collect();
+        let rows: Vec<[f64; 5]> = bars
+            .iter()
+            .map(|b| [b.t as f64, b.o, b.h, b.l, b.c])
+            .collect();
         let mut child = std::process::Command::new("python3")
             .arg("-I")
             .arg(&script)
@@ -650,12 +802,18 @@ mod desk {
             .stderr(std::process::Stdio::null())
             .spawn()
             .ok()?;
-        child.stdin.take()?.write_all(serde_json::to_string(&rows).ok()?.as_bytes()).ok()?;
+        child
+            .stdin
+            .take()?
+            .write_all(serde_json::to_string(&rows).ok()?.as_bytes())
+            .ok()?;
         let t0 = std::time::Instant::now();
         loop {
             match child.try_wait() {
                 Ok(Some(_)) => break,
-                Ok(None) if t0.elapsed().as_secs_f64() < 10.0 => std::thread::sleep(std::time::Duration::from_millis(20)),
+                Ok(None) if t0.elapsed().as_secs_f64() < 10.0 => {
+                    std::thread::sleep(std::time::Duration::from_millis(20))
+                }
                 _ => {
                     let _ = child.kill();
                     let _ = child.wait();
@@ -671,14 +829,45 @@ mod desk {
     /// Ask edge-lab's Python (`evolve/holders.py live`, next to the pit file) for each holder's
     /// position at the end of its last finished bar, on a thread: one process for every holder
     /// of one pit, given the desk's 15m bars (it reads the older history from edge-lab's cache).
-    fn ask_holders(tx: mpsc::Sender<Vec<HolderAnswer>>, pit: PathBuf, jobs: Vec<(u16, String, String, u32, Instrument)>, bars: Vec<Bar>, asked_ms: i64) {
+    fn ask_holders(
+        tx: mpsc::Sender<Vec<HolderAnswer>>,
+        pit: PathBuf,
+        jobs: Vec<(u16, String, String, u32, Instrument)>,
+        bars: Vec<Bar>,
+        asked_ms: i64,
+    ) {
         std::thread::spawn(move || {
             use std::io::Write as _;
-            let rows: Vec<[f64; 5]> = bars.iter().map(|b| [b.t as f64, b.o, b.h, b.l, b.c]).collect();
+            let rows: Vec<[f64; 5]> = bars
+                .iter()
+                .map(|b| [b.t as f64, b.o, b.h, b.l, b.c])
+                .collect();
             let input: Vec<serde_json::Value> = jobs.iter().map(|(_, _, key, tf, inst)| serde_json::json!({"key": key, "tf": tf, "symbol": tape_symbol(*inst), "bars": rows})).collect();
-            let fail = |e: String| jobs.iter().map(|(seat, id, _, _, inst)| HolderAnswer { seat: *seat, id: id.clone(), inst: *inst, asked_ms, g: 0, pos: 0, unit: 0.0, error: Some(e.clone()) }).collect::<Vec<_>>();
-            let Some(script) = pit.parent().map(|d| d.join("holders.py")) else { return };
-            let child = std::process::Command::new("python3").arg("-I").arg(&script).arg("live").stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null()).spawn();
+            let fail = |e: String| {
+                jobs.iter()
+                    .map(|(seat, id, _, _, inst)| HolderAnswer {
+                        seat: *seat,
+                        id: id.clone(),
+                        inst: *inst,
+                        asked_ms,
+                        g: 0,
+                        pos: 0,
+                        unit: 0.0,
+                        error: Some(e.clone()),
+                    })
+                    .collect::<Vec<_>>()
+            };
+            let Some(script) = pit.parent().map(|d| d.join("holders.py")) else {
+                return;
+            };
+            let child = std::process::Command::new("python3")
+                .arg("-I")
+                .arg(&script)
+                .arg("live")
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::null())
+                .spawn();
             let mut child = match child {
                 Ok(c) => c,
                 Err(e) => {
@@ -693,7 +882,9 @@ mod desk {
             loop {
                 match child.try_wait() {
                     Ok(Some(_)) => break,
-                    Ok(None) if t0.elapsed() < Duration::from_secs(120) => std::thread::sleep(Duration::from_millis(50)),
+                    Ok(None) if t0.elapsed() < Duration::from_secs(120) => {
+                        std::thread::sleep(Duration::from_millis(50))
+                    }
                     _ => {
                         let _ = child.kill();
                         let _ = child.wait();
@@ -702,9 +893,18 @@ mod desk {
                     }
                 }
             }
-            let out = child.wait_with_output().map(|o| o.stdout).unwrap_or_default();
+            let out = child
+                .wait_with_output()
+                .map(|o| o.stdout)
+                .unwrap_or_default();
             let Ok(v) = serde_json::from_slice::<Vec<serde_json::Value>>(&out) else {
-                let _ = tx.send(fail(format!("holders.py: {}", String::from_utf8_lossy(&out).chars().take(120).collect::<String>())));
+                let _ = tx.send(fail(format!(
+                    "holders.py: {}",
+                    String::from_utf8_lossy(&out)
+                        .chars()
+                        .take(120)
+                        .collect::<String>()
+                )));
                 return;
             };
             let answers = jobs
@@ -716,7 +916,11 @@ mod desk {
                     inst: *inst,
                     asked_ms,
                     g: a.get("g").and_then(|x| x.as_i64()).unwrap_or(0),
-                    pos: a.get("pos").and_then(|x| x.as_i64()).unwrap_or(0).clamp(-1, 1) as i8,
+                    pos: a
+                        .get("pos")
+                        .and_then(|x| x.as_i64())
+                        .unwrap_or(0)
+                        .clamp(-1, 1) as i8,
                     unit: a.get("unit").and_then(|x| x.as_f64()).unwrap_or(0.0),
                     error: a.get("error").and_then(|x| x.as_str()).map(str::to_string),
                 })
@@ -727,7 +931,11 @@ mod desk {
 
     /// An adapter's tactics scored on the desk's own bars: (tactic, trades, mean R) over the last
     /// `ADAPT_DAYS` days, and the code's pick (the best mean with 3 or more trades).
-    fn score_tactics(g: &Genome, bars: &[Vec<Bar>], wall_ms: i64) -> (Vec<(usize, usize, f64)>, Option<usize>) {
+    fn score_tactics(
+        g: &Genome,
+        bars: &[Vec<Bar>],
+        wall_ms: i64,
+    ) -> (Vec<(usize, usize, f64)>, Option<usize>) {
         let from = wall_ms - genome::ADAPT_DAYS * 86_400_000;
         let mut data: HashMap<String, Features> = HashMap::new();
         for t in &g.tactics {
@@ -748,12 +956,24 @@ mod desk {
             .iter()
             .enumerate()
             .map(|(k, t)| {
-                let r: Vec<f64> = genome::backtest(t, &mut data).into_iter().filter(|x| x.t >= from).map(|x| x.r).collect();
-                let m = if r.is_empty() { 0.0 } else { r.iter().sum::<f64>() / r.len() as f64 };
+                let r: Vec<f64> = genome::backtest(t, &mut data)
+                    .into_iter()
+                    .filter(|x| x.t >= from)
+                    .map(|x| x.r)
+                    .collect();
+                let m = if r.is_empty() {
+                    0.0
+                } else {
+                    r.iter().sum::<f64>() / r.len() as f64
+                };
                 (k, r.len(), m)
             })
             .collect();
-        let pick = scores.iter().filter(|s| s.1 >= 3).max_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal)).map(|s| s.0);
+        let pick = scores
+            .iter()
+            .filter(|s| s.1 >= 3)
+            .max_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal))
+            .map(|s| s.0);
         (scores, pick)
     }
 
@@ -765,7 +985,9 @@ mod desk {
         syms.dedup();
         let mut lines = vec!["A trading bot chooses ONE tactic to trade today, on 15-minute charts. The markets, from their last 20 trading days of 15-minute bars:".to_string()];
         for sym in syms {
-            let Some(inst) = genome::instrument_of(sym) else { continue };
+            let Some(inst) = genome::instrument_of(sym) else {
+                continue;
+            };
             let b = &bars[inst as usize];
             // Daily closes and ranges from the 15m bars, by UTC day.
             let mut days: Vec<(i64, f64, f64, f64)> = Vec::new();
@@ -788,7 +1010,10 @@ mod desk {
             let rng = |d: &(i64, f64, f64, f64)| (d.2 - d.3) / d.1;
             let avg20 = days[n - 21..n - 1].iter().map(rng).sum::<f64>() / 20.0;
             let last5 = days[n - 5..].iter().map(rng).sum::<f64>() / 5.0;
-            let ups = days[n - 20..].windows(2).filter(|w| w[1].1 > w[0].1).count();
+            let ups = days[n - 20..]
+                .windows(2)
+                .filter(|w| w[1].1 > w[0].1)
+                .count();
             lines.push(format!(
                 "- {sym}: last day {:+.2}%, 5 days {:+.2}%, 20 days {:+.2}%; up on {ups} of the last 19 days; daily range over the last 5 days {:.1}x its 20-day average",
                 ch(1),
@@ -799,8 +1024,18 @@ mod desk {
         }
         lines.push("The tactics, each with its record over the last 20 days of these same bars (R = multiples of the risk taken):".into());
         for (k, t) in g.tactics.iter().enumerate() {
-            let (n, m) = scores.iter().find(|s| s.0 == k).map(|s| (s.1, s.2)).unwrap_or((0, 0.0));
-            lines.push(format!("{}. {}  |  last 20 days: {n} trades, {:+.2}R a trade, {:+.1}R in all", k + 1, t.rule_text(), m, m * n as f64));
+            let (n, m) = scores
+                .iter()
+                .find(|s| s.0 == k)
+                .map(|s| (s.1, s.2))
+                .unwrap_or((0, 0.0));
+            lines.push(format!(
+                "{}. {}  |  last 20 days: {n} trades, {:+.2}R a trade, {:+.1}R in all",
+                k + 1,
+                t.rule_text(),
+                m,
+                m * n as f64
+            ));
         }
         lines.join("\n")
     }
@@ -814,18 +1049,42 @@ mod desk {
             let body = serde_json::json!({"state": state, "questions": qs});
             let started = Instant::now();
             loop {
-                let mut req = ehttp::Request::post(format!("{}/jev", relay_url()), serde_json::to_vec(&body).unwrap_or_default());
-                req.headers = ehttp::Headers::new(&[("Accept", "application/json"), ("Content-Type", "application/json")]);
+                let mut req = ehttp::Request::post(
+                    format!("{}/jev", relay_url()),
+                    serde_json::to_vec(&body).unwrap_or_default(),
+                );
+                req.headers = ehttp::Headers::new(&[
+                    ("Accept", "application/json"),
+                    ("Content-Type", "application/json"),
+                ]);
                 match ehttp::fetch_blocking(&req) {
-                    Ok(res) if res.status == 429 && started.elapsed() < Duration::from_secs(120) => {
-                        let wait = serde_json::from_slice::<serde_json::Value>(&res.bytes).ok().and_then(|v| v.get("retry_after_ms").and_then(|x| x.as_u64())).unwrap_or(2000);
+                    Ok(res)
+                        if res.status == 429 && started.elapsed() < Duration::from_secs(120) =>
+                    {
+                        let wait = serde_json::from_slice::<serde_json::Value>(&res.bytes)
+                            .ok()
+                            .and_then(|v| v.get("retry_after_ms").and_then(|x| x.as_u64()))
+                            .unwrap_or(2000);
                         std::thread::sleep(Duration::from_millis(wait + 200));
                     }
                     Ok(res) if res.ok => {
-                        let v: serde_json::Value = serde_json::from_slice(&res.bytes).unwrap_or_default();
-                        let ps: Option<Vec<f32>> = (0..k).map(|i| v.pointer(&format!("/answers/tactic_{}/noul", i + 1)).and_then(|x| x.as_f64()).map(|x| x as f32)).collect();
+                        let v: serde_json::Value =
+                            serde_json::from_slice(&res.bytes).unwrap_or_default();
+                        let ps: Option<Vec<f32>> = (0..k)
+                            .map(|i| {
+                                v.pointer(&format!("/answers/tactic_{}/noul", i + 1))
+                                    .and_then(|x| x.as_f64())
+                                    .map(|x| x as f32)
+                            })
+                            .collect();
                         if ps.is_none() {
-                            a.error = Some(format!("no answer in {}", String::from_utf8_lossy(&res.bytes).chars().take(160).collect::<String>()));
+                            a.error = Some(format!(
+                                "no answer in {}",
+                                String::from_utf8_lossy(&res.bytes)
+                                    .chars()
+                                    .take(160)
+                                    .collect::<String>()
+                            ));
                         }
                         a.jev = ps;
                         break;
@@ -910,26 +1169,47 @@ mod desk {
             let mut after: Option<u64> = None;
             loop {
                 let url = format!("{}/paper/orders?after={}", relay_url(), after.unwrap_or(0));
-                if let Ok(res) = ehttp::fetch_blocking(&ehttp::Request::get(url)) {
-                    if let Ok(v) = serde_json::from_slice::<serde_json::Value>(&res.bytes) {
-                        let last = v.get("last_seq").and_then(|x| x.as_u64()).unwrap_or(0);
-                        if after.is_some() {
-                            for o in v.get("orders").and_then(|x| x.as_array()).into_iter().flatten() {
-                                let f = |k: &str, d: f64| o.get(k).and_then(|x| x.as_f64()).unwrap_or(d);
-                                let _ = tx.send(ManualOrder {
-                                    seq: o.get("seq").and_then(|x| x.as_u64()).unwrap_or(0),
-                                    action: o.get("action").and_then(|x| x.as_str()).unwrap_or("").to_string(),
-                                    symbol: o.get("symbol").and_then(|x| x.as_str()).unwrap_or("").to_string(),
-                                    stop_atr: f("stop_atr", 1.0).clamp(0.25, 10.0),
-                                    target_r: f("target_r", 2.0).clamp(0.5, 20.0),
-                                    placed_ms: o.get("placed_ms").and_then(|x| x.as_i64()).unwrap_or(0),
-                                    account: o.get("account").and_then(|x| x.as_str()).unwrap_or("paper").to_string(),
-                                    trader: o.get("trader").and_then(|x| x.as_str()).map(str::to_string),
-                                });
-                            }
+                if let Ok(res) = ehttp::fetch_blocking(&ehttp::Request::get(url))
+                    && let Ok(v) = serde_json::from_slice::<serde_json::Value>(&res.bytes)
+                {
+                    let last = v.get("last_seq").and_then(|x| x.as_u64()).unwrap_or(0);
+                    if after.is_some() {
+                        for o in v
+                            .get("orders")
+                            .and_then(|x| x.as_array())
+                            .into_iter()
+                            .flatten()
+                        {
+                            let f =
+                                |k: &str, d: f64| o.get(k).and_then(|x| x.as_f64()).unwrap_or(d);
+                            let _ = tx.send(ManualOrder {
+                                seq: o.get("seq").and_then(|x| x.as_u64()).unwrap_or(0),
+                                action: o
+                                    .get("action")
+                                    .and_then(|x| x.as_str())
+                                    .unwrap_or("")
+                                    .to_string(),
+                                symbol: o
+                                    .get("symbol")
+                                    .and_then(|x| x.as_str())
+                                    .unwrap_or("")
+                                    .to_string(),
+                                stop_atr: f("stop_atr", 1.0).clamp(0.25, 10.0),
+                                target_r: f("target_r", 2.0).clamp(0.5, 20.0),
+                                placed_ms: o.get("placed_ms").and_then(|x| x.as_i64()).unwrap_or(0),
+                                account: o
+                                    .get("account")
+                                    .and_then(|x| x.as_str())
+                                    .unwrap_or("paper")
+                                    .to_string(),
+                                trader: o
+                                    .get("trader")
+                                    .and_then(|x| x.as_str())
+                                    .map(str::to_string),
+                            });
                         }
-                        after = Some(last.max(after.unwrap_or(0)));
                     }
+                    after = Some(last.max(after.unwrap_or(0)));
                 }
                 std::thread::sleep(Duration::from_secs(1));
             }
@@ -942,7 +1222,14 @@ mod desk {
         if n < 15 {
             return None;
         }
-        Some(bars[n - 14..].iter().zip(&bars[n - 15..n - 1]).map(|(b, p)| b.h.max(p.c) - b.l.min(p.c)).sum::<f64>() / 14.0)
+        Some(
+            bars[n - 14..]
+                .iter()
+                .zip(&bars[n - 15..n - 1])
+                .map(|(b, p)| b.h.max(p.c) - b.l.min(p.c))
+                .sum::<f64>()
+                / 14.0,
+        )
     }
 
     /// The trader the trade ticket trades as. The ticket's Change name button sets it (an order with
@@ -950,19 +1237,29 @@ mod desk {
     /// that, `OPENCRY_TRADER_NAME`, else the author's name. The seat's id stays "manual", so
     /// renaming never splits its trade log.
     const MANUAL_ID: &str = "manual";
-    static MANUAL_NAME: std::sync::Mutex<Option<(String, Option<PathBuf>)>> = std::sync::Mutex::new(None);
+    static MANUAL_NAME: std::sync::Mutex<Option<(String, Option<PathBuf>)>> =
+        std::sync::Mutex::new(None);
 
     fn init_manual_name(log_dir: &std::path::Path) {
         let file = log_dir.join("ticket_trader.txt");
-        let saved = fs::read_to_string(&file).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
-        let name = opencry_visual::ticket::trader_name_from(saved.as_deref().or(std::env::var("OPENCRY_TRADER_NAME").ok().as_deref()));
+        let saved = fs::read_to_string(&file)
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        let name = opencry_visual::ticket::trader_name_from(
+            saved
+                .as_deref()
+                .or(std::env::var("OPENCRY_TRADER_NAME").ok().as_deref()),
+        );
         *MANUAL_NAME.lock().unwrap_or_else(|e| e.into_inner()) = Some((name, Some(file)));
     }
 
     fn manual_name() -> String {
         match &*MANUAL_NAME.lock().unwrap_or_else(|e| e.into_inner()) {
             Some((n, _)) => n.clone(),
-            None => opencry_visual::ticket::trader_name_from(std::env::var("OPENCRY_TRADER_NAME").ok().as_deref()),
+            None => opencry_visual::ticket::trader_name_from(
+                std::env::var("OPENCRY_TRADER_NAME").ok().as_deref(),
+            ),
         }
     }
 
@@ -1026,19 +1323,38 @@ mod desk {
             let body = serde_json::json!({"state": state, "questions": {"twin_gate": {"type": "noul", "instructions": question}}});
             let started = Instant::now();
             loop {
-                let mut req = ehttp::Request::post(format!("{}/jev", relay_url()), serde_json::to_vec(&body).unwrap_or_default());
-                req.headers = ehttp::Headers::new(&[("Accept", "application/json"), ("Content-Type", "application/json")]);
+                let mut req = ehttp::Request::post(
+                    format!("{}/jev", relay_url()),
+                    serde_json::to_vec(&body).unwrap_or_default(),
+                );
+                req.headers = ehttp::Headers::new(&[
+                    ("Accept", "application/json"),
+                    ("Content-Type", "application/json"),
+                ]);
                 match ehttp::fetch_blocking(&req) {
                     Ok(res) if res.status == 429 && started.elapsed() < Duration::from_secs(60) => {
-                        let wait = serde_json::from_slice::<serde_json::Value>(&res.bytes).ok().and_then(|v| v.get("retry_after_ms").and_then(|x| x.as_u64())).unwrap_or(2000);
+                        let wait = serde_json::from_slice::<serde_json::Value>(&res.bytes)
+                            .ok()
+                            .and_then(|v| v.get("retry_after_ms").and_then(|x| x.as_u64()))
+                            .unwrap_or(2000);
                         std::thread::sleep(Duration::from_millis(wait + 200));
                     }
                     Ok(res) if res.ok => {
-                        let v: serde_json::Value = serde_json::from_slice(&res.bytes).unwrap_or_default();
-                        a.p = v.pointer("/answers/twin_gate/noul").and_then(|x| x.as_f64()).map(|x| x as f32);
+                        let v: serde_json::Value =
+                            serde_json::from_slice(&res.bytes).unwrap_or_default();
+                        a.p = v
+                            .pointer("/answers/twin_gate/noul")
+                            .and_then(|x| x.as_f64())
+                            .map(|x| x as f32);
                         a.model = v.get("model").and_then(|m| m.as_str()).map(str::to_string);
                         if a.p.is_none() {
-                            a.error = Some(format!("no answer in {}", String::from_utf8_lossy(&res.bytes).chars().take(160).collect::<String>()));
+                            a.error = Some(format!(
+                                "no answer in {}",
+                                String::from_utf8_lossy(&res.bytes)
+                                    .chars()
+                                    .take(160)
+                                    .collect::<String>()
+                            ));
                         }
                         break;
                     }
@@ -1066,7 +1382,10 @@ mod desk {
             if !cfg!(test) {
                 poll_orders(manual_tx.clone());
             }
-            let dir = jev_log.parent().map(|d| d.to_path_buf()).unwrap_or_default();
+            let dir = jev_log
+                .parent()
+                .map(|d| d.to_path_buf())
+                .unwrap_or_default();
             GenomePit {
                 path,
                 next_reload: 0.0,
@@ -1109,22 +1428,53 @@ mod desk {
                 // first fill comes from edge-lab's cache on disk (the backtest's own history,
                 // no API call), and the tape tops it up from where the cache stops.
                 if self.bars[*inst as usize].is_empty() {
-                    let path = format!("{}/ctrader_{}_SB_15m.json", edge_cache(), tape_symbol(*inst));
-                    if let Ok(rows) = fs::read_to_string(&path).map_err(|e| e.to_string()).and_then(|t| serde_json::from_str::<Vec<Vec<f64>>>(&t).map_err(|e| e.to_string())) {
-                        let mut bars: Vec<Bar> = rows.iter().filter(|r| r.len() >= 5).map(|r| Bar { t: r[0] as i64, o: r[1], h: r[2], l: r[3], c: r[4] }).filter(|b| b.t + BAR_MS <= wall_ms).collect();
+                    let path = format!(
+                        "{}/ctrader_{}_SB_15m.json",
+                        edge_cache(),
+                        tape_symbol(*inst)
+                    );
+                    if let Ok(rows) = fs::read_to_string(&path)
+                        .map_err(|e| e.to_string())
+                        .and_then(|t| {
+                            serde_json::from_str::<Vec<Vec<f64>>>(&t).map_err(|e| e.to_string())
+                        })
+                    {
+                        let mut bars: Vec<Bar> = rows
+                            .iter()
+                            .filter(|r| r.len() >= 5)
+                            .map(|r| Bar {
+                                t: r[0] as i64,
+                                o: r[1],
+                                h: r[2],
+                                l: r[3],
+                                c: r[4],
+                            })
+                            .filter(|b| b.t + BAR_MS <= wall_ms)
+                            .collect();
                         bars.sort_by_key(|b| b.t);
                         bars.dedup_by_key(|b| b.t);
                         let n = bars.len();
-                        self.bars[*inst as usize] = bars.split_off(n.saturating_sub(GENOME_BARS_KEEP));
+                        self.bars[*inst as usize] =
+                            bars.split_off(n.saturating_sub(GENOME_BARS_KEEP));
                     }
                 }
-                let url = format!("{}/bars?symbol={}&timeframe=15m&range=-21d", tape_url(), tape_symbol(*inst));
+                let url = format!(
+                    "{}/bars?symbol={}&timeframe=15m&range=-21d",
+                    tape_url(),
+                    tape_symbol(*inst)
+                );
                 match ehttp::fetch_blocking(&ehttp::Request::get(url)) {
                     Ok(res) if res.ok => {
                         let mut bars: Vec<Bar> = parse_backfill(res.text().unwrap_or(""))
                             .into_iter()
                             .filter(|c| c.time_ms + BAR_MS <= wall_ms)
-                            .map(|c| Bar { t: c.time_ms, o: c.open as f64, h: c.high as f64, l: c.low as f64, c: c.close as f64 })
+                            .map(|c| Bar {
+                                t: c.time_ms,
+                                o: c.open as f64,
+                                h: c.high as f64,
+                                l: c.low as f64,
+                                c: c.close as f64,
+                            })
                             .collect();
                         bars.sort_by_key(|b| b.t);
                         bars.dedup_by_key(|b| b.t);
@@ -1135,9 +1485,17 @@ mod desk {
                         } else {
                             keep.extend(bars.into_iter().filter(|b| b.t > newest));
                         }
-                        log_line(&format!("backfilled {} 15m from the tape ({} bars)", tape_symbol(*inst), keep.len()));
+                        log_line(&format!(
+                            "backfilled {} 15m from the tape ({} bars)",
+                            tape_symbol(*inst),
+                            keep.len()
+                        ));
                     }
-                    Ok(res) => log_line(&format!("15m backfill {} failed: HTTP {}", tape_symbol(*inst), res.status)),
+                    Ok(res) => log_line(&format!(
+                        "15m backfill {} failed: HTTP {}",
+                        tape_symbol(*inst),
+                        res.status
+                    )),
                     Err(e) => log_line(&format!("15m backfill {} failed: {e}", tape_symbol(*inst))),
                 }
                 std::thread::sleep(Duration::from_millis(500));
@@ -1150,28 +1508,54 @@ mod desk {
                 return;
             }
             self.next_reload = now + PIT_RELOAD_SECS;
-            let Ok(text) = fs::read_to_string(&self.path) else { return };
+            let Ok(text) = fs::read_to_string(&self.path) else {
+                return;
+            };
             let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
-                log_line(&format!("pit: {} is not JSON; keeping the seats as they are", self.path.display()));
+                log_line(&format!(
+                    "pit: {} is not JSON; keeping the seats as they are",
+                    self.path.display()
+                ));
                 return;
             };
             self.last = Some(v.clone());
             let mut want = std::collections::HashSet::new();
-            let show = v.get("show").and_then(|s| s.as_array()).into_iter().flatten();
-            for seat in v.get("seats").and_then(|s| s.as_array()).into_iter().flatten().chain(show) {
-                let Some(mut g) = seat.get("genome").and_then(|g| serde_json::from_value::<Genome>(g.clone()).ok()) else { continue };
+            let show = v
+                .get("show")
+                .and_then(|s| s.as_array())
+                .into_iter()
+                .flatten();
+            for seat in v
+                .get("seats")
+                .and_then(|s| s.as_array())
+                .into_iter()
+                .flatten()
+                .chain(show)
+            {
+                let Some(mut g) = seat
+                    .get("genome")
+                    .and_then(|g| serde_json::from_value::<Genome>(g.clone()).ok())
+                else {
+                    continue;
+                };
                 g.jev = None; // the genome never asks; its twin does
                 let with_twin = seat.get("twin").and_then(|t| t.as_bool()).unwrap_or(false);
-                let seat_one = |g: &Genome, book: &mut PaperBook, seated: &mut HashMap<String, u16>| -> u16 {
-                    if let Some(i) = seated.get(&g.id) {
-                        return *i;
-                    }
-                    let idx = genome::register(g);
-                    seated.insert(g.id.clone(), idx);
-                    book.add_trader(Archetype::Genome(idx));
-                    log_line(&format!("pit: seated {} ({}): {}", g.name, g.id, g.describe()));
-                    idx
-                };
+                let seat_one =
+                    |g: &Genome, book: &mut PaperBook, seated: &mut HashMap<String, u16>| -> u16 {
+                        if let Some(i) = seated.get(&g.id) {
+                            return *i;
+                        }
+                        let idx = genome::register(g);
+                        seated.insert(g.id.clone(), idx);
+                        book.add_trader(Archetype::Genome(idx));
+                        log_line(&format!(
+                            "pit: seated {} ({}): {}",
+                            g.name,
+                            g.id,
+                            g.describe()
+                        ));
+                        idx
+                    };
                 want.insert(g.id.clone());
                 let base = seat_one(&g, book, &mut self.seated);
                 if with_twin {
@@ -1183,7 +1567,10 @@ mod desk {
             }
             for (id, idx) in &self.seated {
                 if !want.contains(id) && self.retiring.insert(*idx) {
-                    log_line(&format!("pit: {} ({id}) retires once flat", genome::seat_name(*idx)));
+                    log_line(&format!(
+                        "pit: {} ({id}) retires once flat",
+                        genome::seat_name(*idx)
+                    ));
                 }
             }
             if !self.restored {
@@ -1198,7 +1585,11 @@ mod desk {
                     mode: genome::Mode::Follow,
                     filters: vec![],
                     window: genome::Window::All,
-                    exit: genome::Exit { stop_atr: 1.0, target_r: 2.0, max_bars: 0 },
+                    exit: genome::Exit {
+                        stop_atr: 1.0,
+                        target_r: 2.0,
+                        max_bars: 0,
+                    },
                     symbols: vec![],
                     jev: None,
                     parent: None,
@@ -1217,22 +1608,60 @@ mod desk {
 
         /// Holder state and open positions from the last run.
         fn restore_holders(&mut self, book: &mut PaperBook, now: f64) {
-            let Ok(v) = fs::read_to_string(&self.holder_file).map_err(|e| e.to_string()).and_then(|t| serde_json::from_str::<serde_json::Value>(&t).map_err(|e| e.to_string())) else { return };
-            for (k, x) in v.get("state").and_then(|s| s.as_object()).into_iter().flatten() {
-                if let (Some(g), Some(p)) = (x.get(0).and_then(|g| g.as_i64()), x.get(1).and_then(|p| p.as_i64())) {
+            let Ok(v) = fs::read_to_string(&self.holder_file)
+                .map_err(|e| e.to_string())
+                .and_then(|t| {
+                    serde_json::from_str::<serde_json::Value>(&t).map_err(|e| e.to_string())
+                })
+            else {
+                return;
+            };
+            for (k, x) in v
+                .get("state")
+                .and_then(|s| s.as_object())
+                .into_iter()
+                .flatten()
+            {
+                if let (Some(g), Some(p)) = (
+                    x.get(0).and_then(|g| g.as_i64()),
+                    x.get(1).and_then(|p| p.as_i64()),
+                ) {
                     self.holder_state.insert(k.clone(), (g, p as i8));
                 }
             }
             let mut n = 0;
-            for o in v.get("open").and_then(|s| s.as_array()).into_iter().flatten() {
-                let (Some(id), Some(sym)) = (o.get("id").and_then(|x| x.as_str()), o.get("symbol").and_then(|x| x.as_str())) else { continue };
-                let (Some(&idx), Some(inst)) = (self.seated.get(id), genome::instrument_of(sym)) else { continue };
-                let Some(t) = book.traders.iter().position(|tr| tr.archetype == Archetype::Genome(idx)) else { continue };
+            for o in v
+                .get("open")
+                .and_then(|s| s.as_array())
+                .into_iter()
+                .flatten()
+            {
+                let (Some(id), Some(sym)) = (
+                    o.get("id").and_then(|x| x.as_str()),
+                    o.get("symbol").and_then(|x| x.as_str()),
+                ) else {
+                    continue;
+                };
+                let (Some(&idx), Some(inst)) = (self.seated.get(id), genome::instrument_of(sym))
+                else {
+                    continue;
+                };
+                let Some(t) = book
+                    .traders
+                    .iter()
+                    .position(|tr| tr.archetype == Archetype::Genome(idx))
+                else {
+                    continue;
+                };
                 if book.traders[t].position.is_some() {
                     continue;
                 }
                 let f = |k: &str| o.get(k).and_then(|x| x.as_f64()).unwrap_or(0.0);
-                let side = if o.get("side").and_then(|x| x.as_str()) == Some("buy") { opencry_visual::pit_engine::Side::Buy } else { opencry_visual::pit_engine::Side::Sell };
+                let side = if o.get("side").and_then(|x| x.as_str()) == Some("buy") {
+                    opencry_visual::pit_engine::Side::Buy
+                } else {
+                    opencry_visual::pit_engine::Side::Sell
+                };
                 book.traders[t].position = Some(opencry_visual::paper::Position {
                     inst,
                     side,
@@ -1246,14 +1675,21 @@ mod desk {
                     best: f("entry") as f32,
                     stop_ticks: f("stop_ticks") as f32,
                     spread_ticks_in: f("spread_ticks_in") as f32,
-                    why: o.get("why").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+                    why: o
+                        .get("why")
+                        .and_then(|x| x.as_str())
+                        .unwrap_or("")
+                        .to_string(),
                     observation_hash: String::new(),
                     read_source: None,
                     overnight: true,
                 });
                 n += 1;
             }
-            log_line(&format!("pit: holders restored: {} states, {n} open positions", self.holder_state.len()));
+            log_line(&format!(
+                "pit: holders restored: {} states, {n} open positions",
+                self.holder_state.len()
+            ));
         }
 
         fn save_holders(&self, book: &PaperBook) {
@@ -1270,9 +1706,18 @@ mod desk {
                         "stop_ticks": p.stop_ticks, "opened_ms": p.opened_ms, "spread_ticks_in": p.spread_ticks_in, "why": p.why}))
                 })
                 .collect();
-            let state: serde_json::Map<String, serde_json::Value> = self.holder_state.iter().map(|(k, (g, p))| (k.clone(), serde_json::json!([g, p]))).collect();
+            let state: serde_json::Map<String, serde_json::Value> = self
+                .holder_state
+                .iter()
+                .map(|(k, (g, p))| (k.clone(), serde_json::json!([g, p])))
+                .collect();
             let tmp = self.holder_file.with_extension("json.tmp");
-            if fs::write(&tmp, serde_json::json!({"state": state, "open": open}).to_string()).is_ok() {
+            if fs::write(
+                &tmp,
+                serde_json::json!({"state": state, "open": open}).to_string(),
+            )
+            .is_ok()
+            {
                 let _ = fs::rename(&tmp, &self.holder_file);
             }
         }
@@ -1282,11 +1727,20 @@ mod desk {
         /// any older than 90 s are logged and dropped (the moment has gone).
         fn take_answers(&mut self, book: &mut PaperBook, v: &View) {
             while let Ok(a) = self.answers_rx.try_recv() {
-                append_jsonl(&self.jev_log, &serde_json::json!({
-                    "genome": a.genome_id, "twin": genome::seat_id(a.twin), "symbol": a.inst.symbol(), "decided_ms": a.decided_ms,
-                    "answered_ms": v.wall_ms, "side": side_str(a.side), "p": a.p, "model": a.model, "error": a.error, "source": SOURCE,
-                }));
-                log_line(&format!("pit: Jev for {} on {}: {}", genome::seat_name(a.twin), a.inst.symbol(), a.p.map(|p| format!("{:.0}%", p * 100.0)).unwrap_or_else(|| a.error.clone().unwrap_or_default())));
+                append_jsonl(
+                    &self.jev_log,
+                    &serde_json::json!({
+                        "genome": a.genome_id, "twin": genome::seat_id(a.twin), "symbol": a.inst.symbol(), "decided_ms": a.decided_ms,
+                        "answered_ms": v.wall_ms, "side": side_str(a.side), "p": a.p, "model": a.model, "error": a.error, "source": SOURCE,
+                    }),
+                );
+                log_line(&format!(
+                    "pit: Jev for {} on {}: {}",
+                    genome::seat_name(a.twin),
+                    a.inst.symbol(),
+                    a.p.map(|p| format!("{:.0}%", p * 100.0))
+                        .unwrap_or_else(|| a.error.clone().unwrap_or_default())
+                ));
                 self.ready.push(a);
             }
             let ready = std::mem::take(&mut self.ready);
@@ -1301,26 +1755,51 @@ mod desk {
                 if a.p.is_none_or(|p| p < 0.5) || self.retiring.contains(&a.twin) {
                     continue;
                 }
-                let Some(t) = book.traders.iter().position(|tr| tr.archetype == Archetype::Genome(a.twin)) else { continue };
+                let Some(t) = book
+                    .traders
+                    .iter()
+                    .position(|tr| tr.archetype == Archetype::Genome(a.twin))
+                else {
+                    continue;
+                };
                 if book.traders[t].position.is_some() {
                     continue;
                 }
-                let Some(g) = genome::seat(a.twin).and_then(|s| s.genome) else { continue };
+                let Some(g) = genome::seat(a.twin).and_then(|s| s.genome) else {
+                    continue;
+                };
                 let tick = v.tick as f64;
-                let (d, reach) = genome::stop_and_target(&g, a.stop, v.spread_ticks as f64 * tick, tick);
-                let entry = if a.side.is_buy() { v.ask as f64 } else { v.bid as f64 };
+                let (d, reach) =
+                    genome::stop_and_target(&g, a.stop, v.spread_ticks as f64 * tick, tick);
+                let entry = if a.side.is_buy() {
+                    v.ask as f64
+                } else {
+                    v.bid as f64
+                };
                 let e = Entry {
                     side: a.side,
                     stop_ticks: (d / tick) as f32,
-                    target: Some((if a.side.is_buy() { entry + reach } else { entry - reach }) as f32),
+                    target: Some(
+                        (if a.side.is_buy() {
+                            entry + reach
+                        } else {
+                            entry - reach
+                        }) as f32,
+                    ),
                     trail: None,
                     // Out when the genome's own time stop would take it: the clock started at the decision.
-                    time_stop_secs: (g.exit.max_bars as f64 * BAR_MS as f64 - (v.wall_ms - a.decided_ms) as f64) / 1000.0,
+                    time_stop_secs: (g.exit.max_bars as f64 * BAR_MS as f64
+                        - (v.wall_ms - a.decided_ms) as f64)
+                        / 1000.0,
                     cooldown_secs: 0.0,
                     why: format!("{} | Jev yes {:.0}%", a.why, a.p.unwrap_or(0.0) * 100.0),
                 };
                 if let Err(e) = book.enter_genome(t, v, e, false) {
-                    log_line(&format!("pit: {} passed on {}: {e}", genome::seat_name(a.twin), a.inst.symbol()));
+                    log_line(&format!(
+                        "pit: {} passed on {}: {e}",
+                        genome::seat_name(a.twin),
+                        a.inst.symbol()
+                    ));
                 }
             }
         }
@@ -1328,12 +1807,22 @@ mod desk {
         /// At a 15m close on this pit: ask the strategy of every holder of this pit whose own bar has
         /// just finished (the 15m bar closed it, or a gap means it ended earlier), and of any
         /// not asked since start. A retiring holder in a position closes here.
-        fn holders_at_close(&mut self, book: &mut PaperBook, v: &View, bar_t: i64, prev_t: Option<i64>) {
+        fn holders_at_close(
+            &mut self,
+            book: &mut PaperBook,
+            v: &View,
+            bar_t: i64,
+            prev_t: Option<i64>,
+        ) {
             let sym = tape_symbol(v.inst);
             let mut jobs = Vec::new();
             for t in 0..book.traders.len() {
-                let Archetype::Genome(idx) = book.traders[t].archetype else { continue };
-                let Some(g) = genome::seat(idx).and_then(|s| s.genome) else { continue };
+                let Archetype::Genome(idx) = book.traders[t].archetype else {
+                    continue;
+                };
+                let Some(g) = genome::seat(idx).and_then(|s| s.genome) else {
+                    continue;
+                };
                 if !g.holds || g.symbols.first() != Some(&sym) {
                     continue;
                 }
@@ -1343,10 +1832,15 @@ mod desk {
                     }
                     continue;
                 }
-                let genome::Signal::EdgeLab { key, tf } = &g.signal else { continue };
+                let genome::Signal::EdgeLab { key, tf } = &g.signal else {
+                    continue;
+                };
                 let tf_ms = *tf as i64 * 60_000;
                 let closes = (bar_t + BAR_MS).rem_euclid(tf_ms) == 0;
-                let gap = prev_t.is_some_and(|p| p.div_euclid(tf_ms) != bar_t.div_euclid(tf_ms) && (p + BAR_MS).rem_euclid(tf_ms) != 0);
+                let gap = prev_t.is_some_and(|p| {
+                    p.div_euclid(tf_ms) != bar_t.div_euclid(tf_ms)
+                        && (p + BAR_MS).rem_euclid(tf_ms) != 0
+                });
                 let k = format!("{}@{sym}", g.id);
                 let first = self.holder_asked.insert(k);
                 if closes || gap || first {
@@ -1354,7 +1848,13 @@ mod desk {
                 }
             }
             if !jobs.is_empty() {
-                ask_holders(self.holder_tx.clone(), self.path.clone(), jobs, self.bars[v.inst as usize].clone(), v.wall_ms);
+                ask_holders(
+                    self.holder_tx.clone(),
+                    self.path.clone(),
+                    jobs,
+                    self.bars[v.inst as usize].clone(),
+                    v.wall_ms,
+                );
             }
         }
 
@@ -1370,7 +1870,11 @@ mod desk {
             let mut changed = false;
             for a in ready {
                 if v.wall_ms - a.asked_ms > 4 * 3_600_000 {
-                    log_line(&format!("pit: holder {} on {}: answer dropped, over 4 h old", a.id, a.inst.symbol()));
+                    log_line(&format!(
+                        "pit: holder {} on {}: answer dropped, over 4 h old",
+                        a.id,
+                        a.inst.symbol()
+                    ));
                     continue;
                 }
                 if a.inst != v.inst {
@@ -1384,7 +1888,10 @@ mod desk {
                     continue;
                 }
                 let Some(&(g0, p0)) = self.holder_state.get(&k) else {
-                    log_line(&format!("pit: holder {k}: strategy at {} (bar {}); joins at its next change", a.pos, a.g));
+                    log_line(&format!(
+                        "pit: holder {k}: strategy at {} (bar {}); joins at its next change",
+                        a.pos, a.g
+                    ));
                     self.holder_state.insert(k, (a.g, a.pos));
                     changed = true;
                     continue;
@@ -1401,15 +1908,38 @@ mod desk {
                     self.holder_ready.push(a);
                     continue;
                 }
-                let Some(t) = book.traders.iter().position(|tr| tr.archetype == Archetype::Genome(a.seat)) else { continue };
+                let Some(t) = book
+                    .traders
+                    .iter()
+                    .position(|tr| tr.archetype == Archetype::Genome(a.seat))
+                else {
+                    continue;
+                };
                 let name = genome::seat_name(a.seat);
                 book.close_now(t, v, false);
                 if a.pos != 0 && !self.retiring.contains(&a.seat) {
-                    let side = if a.pos > 0 { opencry_visual::pit_engine::Side::Buy } else { opencry_visual::pit_engine::Side::Sell };
+                    let side = if a.pos > 0 {
+                        opencry_visual::pit_engine::Side::Buy
+                    } else {
+                        opencry_visual::pit_engine::Side::Sell
+                    };
                     let unit = (a.unit / v.tick as f64) as f32;
-                    let key = genome::seat(a.seat).and_then(|s| s.genome).map(|g| g.signal.edge_lab_id().unwrap_or_default()).unwrap_or_default();
-                    let why = format!("edge-lab {key} turned {} at the close of its bar", if a.pos > 0 { "long" } else { "short" });
-                    if let Err(e) = book.enter_holder(t, v, side, unit, unit * genome::HOLD_SAFETY_R as f32, why) {
+                    let key = genome::seat(a.seat)
+                        .and_then(|s| s.genome)
+                        .map(|g| g.signal.edge_lab_id().unwrap_or_default())
+                        .unwrap_or_default();
+                    let why = format!(
+                        "edge-lab {key} turned {} at the close of its bar",
+                        if a.pos > 0 { "long" } else { "short" }
+                    );
+                    if let Err(e) = book.enter_holder(
+                        t,
+                        v,
+                        side,
+                        unit,
+                        unit * genome::HOLD_SAFETY_R as f32,
+                        why,
+                    ) {
                         log_line(&format!("pit: {name} passed on {}: {e}", a.inst.symbol()));
                     }
                 }
@@ -1429,23 +1959,39 @@ mod desk {
                 return;
             }
             for tr in &book.traders {
-                let Archetype::Genome(idx) = tr.archetype else { continue };
+                let Archetype::Genome(idx) = tr.archetype else {
+                    continue;
+                };
                 if self.adapt_day.get(&idx) == Some(&day) || self.retiring.contains(&idx) {
                     continue;
                 }
-                let Some(g) = genome::seat(idx).and_then(|s| s.genome) else { continue };
+                let Some(g) = genome::seat(idx).and_then(|s| s.genome) else {
+                    continue;
+                };
                 let Some(mode) = g.adapt else { continue };
                 if g.tactics.is_empty() {
                     continue;
                 }
                 self.adapt_day.insert(idx, day);
                 let (scores, code_pick) = score_tactics(&g, &self.bars, wall_ms);
-                let a = AdaptAnswer { seat: idx, day, scores: scores.clone(), code_pick, jev: None, error: None };
+                let a = AdaptAnswer {
+                    seat: idx,
+                    day,
+                    scores: scores.clone(),
+                    code_pick,
+                    jev: None,
+                    error: None,
+                };
                 match mode {
                     genome::Adapt::Code => {
                         let _ = self.adapt_tx.send(a);
                     }
-                    genome::Adapt::Jev => ask_adapter(self.adapt_tx.clone(), a, adapt_state(&g, &self.bars, &scores), g.tactics.len()),
+                    genome::Adapt::Jev => ask_adapter(
+                        self.adapt_tx.clone(),
+                        a,
+                        adapt_state(&g, &self.bars, &scores),
+                        g.tactics.len(),
+                    ),
                 }
             }
         }
@@ -1453,26 +1999,51 @@ mod desk {
         /// Adapters' choices: switch the seat to the chosen tactic and log the choice.
         fn take_adapt_answers(&mut self, book: &mut PaperBook, v: &View) {
             while let Ok(a) = self.adapt_rx.try_recv() {
-                let Some(g) = genome::seat(a.seat).and_then(|s| s.genome) else { continue };
+                let Some(g) = genome::seat(a.seat).and_then(|s| s.genome) else {
+                    continue;
+                };
                 let from = genome::tactic_in_use(&g);
-                let jev_pick = a.jev.as_ref().and_then(|ps| ps.iter().enumerate().max_by(|x, y| x.1.partial_cmp(y.1).unwrap_or(std::cmp::Ordering::Equal)).map(|(k, _)| k));
+                let jev_pick = a.jev.as_ref().and_then(|ps| {
+                    ps.iter()
+                        .enumerate()
+                        .max_by(|x, y| x.1.partial_cmp(y.1).unwrap_or(std::cmp::Ordering::Equal))
+                        .map(|(k, _)| k)
+                });
                 let pick = match g.adapt {
                     Some(genome::Adapt::Jev) => jev_pick,
                     _ => a.code_pick,
                 };
-                if let Some(k) = pick {
-                    if Some(k) != from && genome::set_tactic(a.seat, k) {
-                        if let Some(t) = book.traders.iter_mut().find(|tr| tr.archetype == Archetype::Genome(a.seat)) {
-                            t.note(format!("switched to tactic {} of {}: {}", k + 1, g.tactics.len(), g.tactics[k].rule_text()));
-                        }
-                        log_line(&format!("pit: {} switches to tactic {}: {}", g.name, k + 1, g.tactics[k].rule_text()));
+                if let Some(k) = pick
+                    && Some(k) != from
+                    && genome::set_tactic(a.seat, k)
+                {
+                    if let Some(t) = book
+                        .traders
+                        .iter_mut()
+                        .find(|tr| tr.archetype == Archetype::Genome(a.seat))
+                    {
+                        t.note(format!(
+                            "switched to tactic {} of {}: {}",
+                            k + 1,
+                            g.tactics.len(),
+                            g.tactics[k].rule_text()
+                        ));
                     }
+                    log_line(&format!(
+                        "pit: {} switches to tactic {}: {}",
+                        g.name,
+                        k + 1,
+                        g.tactics[k].rule_text()
+                    ));
                 }
-                append_jsonl(&self.adapt_log, &serde_json::json!({
-                    "adapter": g.id, "name": g.name, "mode": g.adapt, "day": a.day, "decided_ms": v.wall_ms,
-                    "scores": a.scores.iter().map(|(k, n, m)| serde_json::json!({"tactic": k + 1, "n": n, "mean": (m * 1e4).round() / 1e4})).collect::<Vec<_>>(),
-                    "code_pick": a.code_pick.map(|k| k + 1), "jev": a.jev, "from": from.map(|k| k + 1), "to": pick.map(|k| k + 1), "error": a.error, "source": SOURCE,
-                }));
+                append_jsonl(
+                    &self.adapt_log,
+                    &serde_json::json!({
+                        "adapter": g.id, "name": g.name, "mode": g.adapt, "day": a.day, "decided_ms": v.wall_ms,
+                        "scores": a.scores.iter().map(|(k, n, m)| serde_json::json!({"tactic": k + 1, "n": n, "mean": (m * 1e4).round() / 1e4})).collect::<Vec<_>>(),
+                        "code_pick": a.code_pick.map(|k| k + 1), "jev": a.jev, "from": from.map(|k| k + 1), "to": pick.map(|k| k + 1), "error": a.error, "source": SOURCE,
+                    }),
+                );
             }
         }
 
@@ -1497,7 +2068,10 @@ mod desk {
                     continue;
                 }
                 if v.wall_ms - o.placed_ms > 30_000 {
-                    self.manual_last = Some(format!("#{} {} {}: not filled, no price from that pit within 30 s", o.seq, o.action, o.symbol));
+                    self.manual_last = Some(format!(
+                        "#{} {} {}: not filled, no price from that pit within 30 s",
+                        o.seq, o.action, o.symbol
+                    ));
                     continue;
                 }
                 if o.symbol != sym {
@@ -1505,44 +2079,110 @@ mod desk {
                     continue;
                 }
                 if o.account != "paper" {
-                    let note = format!("#{} {} {}: only paper orders exist in this build", o.seq, o.action, o.symbol);
+                    let note = format!(
+                        "#{} {} {}: only paper orders exist in this build",
+                        o.seq, o.action, o.symbol
+                    );
                     log_line(&format!("ticket: {note}"));
                     self.manual_last = Some(note);
                     continue;
                 }
-                let Some(t) = book.traders.iter().position(|tr| tr.archetype == Archetype::Genome(seat)) else { continue };
-                let px = |x: f32| opencry_visual::pit::format_price_with_commas(x as f64, opencry_visual::pit::instrument_decimals(v.inst));
+                let Some(t) = book
+                    .traders
+                    .iter()
+                    .position(|tr| tr.archetype == Archetype::Genome(seat))
+                else {
+                    continue;
+                };
+                let px = |x: f32| {
+                    opencry_visual::pit::format_price_with_commas(
+                        x as f64,
+                        opencry_visual::pit::instrument_decimals(v.inst),
+                    )
+                };
                 let note = match o.action.as_str() {
-                    "close" => match book.traders[t].position.clone().filter(|p| p.inst == v.inst) {
+                    "close" => match book.traders[t]
+                        .position
+                        .clone()
+                        .filter(|p| p.inst == v.inst)
+                    {
                         Some(p) => {
-                            book.close_at_touch(t, v, opencry_visual::paper::ExitReason::Manual, false);
-                            let r = book.traders[t].trades.last().map(|x| x.pnl_r).unwrap_or(0.0);
-                            format!("#{} closed {} {} from {} at {}: {:+.2}R", o.seq, side_str(p.side), sym, px(p.entry), px(if p.side.is_buy() { v.bid } else { v.ask }), r)
+                            book.close_at_touch(
+                                t,
+                                v,
+                                opencry_visual::paper::ExitReason::Manual,
+                                false,
+                            );
+                            let r = book.traders[t]
+                                .trades
+                                .last()
+                                .map(|x| x.pnl_r)
+                                .unwrap_or(0.0);
+                            format!(
+                                "#{} closed {} {} from {} at {}: {:+.2}R",
+                                o.seq,
+                                side_str(p.side),
+                                sym,
+                                px(p.entry),
+                                px(if p.side.is_buy() { v.bid } else { v.ask }),
+                                r
+                            )
                         }
                         None => format!("#{} close {sym}: nothing open there", o.seq),
                     },
                     "buy" | "sell" => {
                         if let Some(p) = &book.traders[t].position {
-                            format!("#{} {} {sym}: already {} {}; close it first", o.seq, o.action, side_str(p.side), p.inst.symbol())
+                            format!(
+                                "#{} {} {sym}: already {} {}; close it first",
+                                o.seq,
+                                o.action,
+                                side_str(p.side),
+                                p.inst.symbol()
+                            )
                         } else if let Some(atr) = atr15(&self.bars[v.inst as usize]) {
-                            let side = if o.action == "buy" { opencry_visual::pit_engine::Side::Buy } else { opencry_visual::pit_engine::Side::Sell };
+                            let side = if o.action == "buy" {
+                                opencry_visual::pit_engine::Side::Buy
+                            } else {
+                                opencry_visual::pit_engine::Side::Sell
+                            };
                             let tick = v.tick as f64;
                             let d = o.stop_atr * atr;
-                            let entry = if side.is_buy() { v.ask as f64 } else { v.bid as f64 };
+                            let entry = if side.is_buy() {
+                                v.ask as f64
+                            } else {
+                                v.bid as f64
+                            };
                             let e = Entry {
                                 side,
                                 stop_ticks: (d / tick) as f32,
-                                target: Some((if side.is_buy() { entry + o.target_r * d } else { entry - o.target_r * d }) as f32),
+                                target: Some(
+                                    (if side.is_buy() {
+                                        entry + o.target_r * d
+                                    } else {
+                                        entry - o.target_r * d
+                                    }) as f32,
+                                ),
                                 trail: None,
                                 time_stop_secs: f64::INFINITY,
                                 cooldown_secs: 0.0,
-                                why: format!("by hand: stop {} ATR, target {} R", o.stop_atr, o.target_r),
+                                why: format!(
+                                    "by hand: stop {} ATR, target {} R",
+                                    o.stop_atr, o.target_r
+                                ),
                             };
                             match book.enter_genome(t, v, e, false) {
                                 Ok(()) => {
-                                    let p = book.traders[t].position.as_mut().expect("just entered");
+                                    let p =
+                                        book.traders[t].position.as_mut().expect("just entered");
                                     p.overnight = true; // yours until your stop, target or Close
-                                    format!("#{} {} {sym} at {}, stop {}, target {}", o.seq, if side.is_buy() { "bought" } else { "sold" }, px(p.entry), px(p.stop), p.target.map(px).unwrap_or_default())
+                                    format!(
+                                        "#{} {} {sym} at {}, stop {}, target {}",
+                                        o.seq,
+                                        if side.is_buy() { "bought" } else { "sold" },
+                                        px(p.entry),
+                                        px(p.stop),
+                                        p.target.map(px).unwrap_or_default()
+                                    )
                                 }
                                 Err(e) => format!("#{} {} {sym}: refused, {e}", o.seq, o.action),
                             }
@@ -1560,68 +2200,112 @@ mod desk {
         /// The board's view of the pit, from the file as last read.
         fn summary(&self) -> Option<DeskPit> {
             let v = self.last.as_ref()?;
-            let f = |x: Option<&serde_json::Value>| x.and_then(|x| x.as_f64()).unwrap_or(0.0) as f32;
-            let show = v.get("show").and_then(|s| s.as_array()).into_iter().flatten();
-            let seats: Vec<DeskSeat> = v.get("seats").and_then(|s| s.as_array()).into_iter().flatten().chain(show).filter_map(|s| {
-                let g = s.get("genome")?;
-                let (bt, fw) = (s.get("backtest"), s.get("forward"));
-                let parsed = serde_json::from_value::<Genome>(g.clone()).ok();
-                // An adapter's rule is the tactic it is using now, which only the desk knows.
-                let live = parsed.as_ref().and_then(|g| self.seated.get(&g.id)).map(|i| genome::seat_creed(*i).to_string());
-                let creed = live.or_else(|| parsed.as_ref().map(|g| g.describe())).unwrap_or_default();
-                let tag = parsed.as_ref().map(|g| genome::tag_of(g).to_string());
-                let jev = s.get("twin").and_then(|t| t.as_bool()).unwrap_or(false).then(|| {
-                    let tw = s.get("twin_split");
-                    let num = |p: &str| f(tw.and_then(|t| t.pointer(p)));
-                    DeskJevSplit {
-                        yes_n: num("/yes/n") as u32,
-                        yes_mean: num("/yes/mean"),
-                        no_n: num("/no/n") as u32,
-                        no_mean: num("/no/mean"),
-                        t: num("/t"),
-                        verdict: s.pointer("/twin_verdict/adds").and_then(|a| a.as_bool()).map(|a| if a { "adds something".into() } else { "adds nothing".into() }),
-                    }
-                });
-                Some(DeskSeat {
-                    id: g.get("id")?.as_str()?.to_string(),
-                    name: g.get("name")?.as_str()?.to_string(),
-                    creed,
-                    seated_ms: s.get("seated_ms").and_then(|x| x.as_i64()).unwrap_or(0),
-                    bt_is_mean: f(bt.and_then(|b| b.pointer("/is/mean"))),
-                    bt_is_t: f(bt.and_then(|b| b.pointer("/is/t"))),
-                    bt_ho_mean: f(bt.and_then(|b| b.pointer("/ho/mean"))),
-                    bt_ho_t: f(bt.and_then(|b| b.pointer("/ho/t"))),
-                    fwd_n: f(fw.and_then(|x| x.get("n"))) as u32,
-                    fwd_mean: f(fw.and_then(|x| x.get("mean"))),
-                    fwd_t: f(fw.and_then(|x| x.get("t"))),
-                    graduated: s.get("graduated").is_some_and(|x| !x.is_null()),
-                    jev,
-                    twin_of: None,
-                    floor: g.get("floor").and_then(|x| x.as_str()).map(str::to_string),
-                    tag,
+            let f =
+                |x: Option<&serde_json::Value>| x.and_then(|x| x.as_f64()).unwrap_or(0.0) as f32;
+            let show = v
+                .get("show")
+                .and_then(|s| s.as_array())
+                .into_iter()
+                .flatten();
+            let seats: Vec<DeskSeat> = v
+                .get("seats")
+                .and_then(|s| s.as_array())
+                .into_iter()
+                .flatten()
+                .chain(show)
+                .filter_map(|s| {
+                    let g = s.get("genome")?;
+                    let (bt, fw) = (s.get("backtest"), s.get("forward"));
+                    let parsed = serde_json::from_value::<Genome>(g.clone()).ok();
+                    // An adapter's rule is the tactic it is using now, which only the desk knows.
+                    let live = parsed
+                        .as_ref()
+                        .and_then(|g| self.seated.get(&g.id))
+                        .map(|i| genome::seat_creed(*i).to_string());
+                    let creed = live
+                        .or_else(|| parsed.as_ref().map(|g| g.describe()))
+                        .unwrap_or_default();
+                    let tag = parsed.as_ref().map(|g| genome::tag_of(g).to_string());
+                    let jev = s
+                        .get("twin")
+                        .and_then(|t| t.as_bool())
+                        .unwrap_or(false)
+                        .then(|| {
+                            let tw = s.get("twin_split");
+                            let num = |p: &str| f(tw.and_then(|t| t.pointer(p)));
+                            DeskJevSplit {
+                                yes_n: num("/yes/n") as u32,
+                                yes_mean: num("/yes/mean"),
+                                no_n: num("/no/n") as u32,
+                                no_mean: num("/no/mean"),
+                                t: num("/t"),
+                                verdict: s
+                                    .pointer("/twin_verdict/adds")
+                                    .and_then(|a| a.as_bool())
+                                    .map(|a| {
+                                        if a {
+                                            "adds something".into()
+                                        } else {
+                                            "adds nothing".into()
+                                        }
+                                    }),
+                            }
+                        });
+                    Some(DeskSeat {
+                        id: g.get("id")?.as_str()?.to_string(),
+                        name: g.get("name")?.as_str()?.to_string(),
+                        creed,
+                        seated_ms: s.get("seated_ms").and_then(|x| x.as_i64()).unwrap_or(0),
+                        bt_is_mean: f(bt.and_then(|b| b.pointer("/is/mean"))),
+                        bt_is_t: f(bt.and_then(|b| b.pointer("/is/t"))),
+                        bt_ho_mean: f(bt.and_then(|b| b.pointer("/ho/mean"))),
+                        bt_ho_t: f(bt.and_then(|b| b.pointer("/ho/t"))),
+                        fwd_n: f(fw.and_then(|x| x.get("n"))) as u32,
+                        fwd_mean: f(fw.and_then(|x| x.get("mean"))),
+                        fwd_t: f(fw.and_then(|x| x.get("t"))),
+                        graduated: s.get("graduated").is_some_and(|x| !x.is_null()),
+                        jev,
+                        twin_of: None,
+                        floor: g.get("floor").and_then(|x| x.as_str()).map(str::to_string),
+                        tag,
+                    })
                 })
-            })
-            .flat_map(|base| {
-                // A twin gets a row of its own on the page, with its own forward record.
-                let twin = base.jev.clone().map(|j| {
-                    let tf = v.get("seats").and_then(|s| s.as_array()).and_then(|a| a.iter().find(|s| s.pointer("/genome/id").and_then(|x| x.as_str()) == Some(base.id.as_str()))).and_then(|s| s.pointer("/twin_split/twin_forward")).cloned();
-                    let g = |k: &str| tf.as_ref().and_then(|t| t.get(k)).and_then(|x| x.as_f64()).unwrap_or(0.0) as f32;
-                    DeskSeat {
-                        id: format!("{}-J", base.id),
-                        name: format!("{}-J", base.name),
-                        creed: base.creed.clone(),
-                        seated_ms: base.seated_ms,
-                        fwd_n: g("n") as u32,
-                        fwd_mean: g("mean"),
-                        fwd_t: g("t"),
-                        jev: Some(j),
-                        twin_of: Some(base.name.clone()),
-                        ..Default::default()
-                    }
-                });
-                std::iter::once(base).chain(twin)
-            })
-            .collect();
+                .flat_map(|base| {
+                    // A twin gets a row of its own on the page, with its own forward record.
+                    let twin = base.jev.clone().map(|j| {
+                        let tf = v
+                            .get("seats")
+                            .and_then(|s| s.as_array())
+                            .and_then(|a| {
+                                a.iter().find(|s| {
+                                    s.pointer("/genome/id").and_then(|x| x.as_str())
+                                        == Some(base.id.as_str())
+                                })
+                            })
+                            .and_then(|s| s.pointer("/twin_split/twin_forward"))
+                            .cloned();
+                        let g = |k: &str| {
+                            tf.as_ref()
+                                .and_then(|t| t.get(k))
+                                .and_then(|x| x.as_f64())
+                                .unwrap_or(0.0) as f32
+                        };
+                        DeskSeat {
+                            id: format!("{}-J", base.id),
+                            name: format!("{}-J", base.name),
+                            creed: base.creed.clone(),
+                            seated_ms: base.seated_ms,
+                            fwd_n: g("n") as u32,
+                            fwd_mean: g("mean"),
+                            fwd_t: g("t"),
+                            jev: Some(j),
+                            twin_of: Some(base.name.clone()),
+                            ..Default::default()
+                        }
+                    });
+                    std::iter::once(base).chain(twin)
+                })
+                .collect();
             let mut seats = seats;
             if self.manual_seat.is_some() {
                 seats.push(DeskSeat {
@@ -1633,12 +2317,33 @@ mod desk {
                     ..Default::default()
                 });
             }
-            let retired = v.get("retired").and_then(|r| r.as_array()).cloned().unwrap_or_default();
-            let recent_retired = retired.iter().rev().take(3).filter_map(|r| {
-                let name = r.get("name")?.as_str()?;
-                let why = r.get("why").and_then(|w| w.as_str()).map(str::to_string).or_else(|| r.get("forward").filter(|f| !f.is_null()).map(|f| format!("{} trades {:+.3}R", f.get("n").and_then(|x| x.as_u64()).unwrap_or(0), f.get("mean").and_then(|x| x.as_f64()).unwrap_or(0.0))));
-                Some(format!("{name}: {}", why.unwrap_or_default()))
-            }).collect();
+            let retired = v
+                .get("retired")
+                .and_then(|r| r.as_array())
+                .cloned()
+                .unwrap_or_default();
+            let recent_retired = retired
+                .iter()
+                .rev()
+                .take(3)
+                .filter_map(|r| {
+                    let name = r.get("name")?.as_str()?;
+                    let why = r
+                        .get("why")
+                        .and_then(|w| w.as_str())
+                        .map(str::to_string)
+                        .or_else(|| {
+                            r.get("forward").filter(|f| !f.is_null()).map(|f| {
+                                format!(
+                                    "{} trades {:+.3}R",
+                                    f.get("n").and_then(|x| x.as_u64()).unwrap_or(0),
+                                    f.get("mean").and_then(|x| x.as_f64()).unwrap_or(0.0)
+                                )
+                            })
+                        });
+                    Some(format!("{name}: {}", why.unwrap_or_default()))
+                })
+                .collect();
             Some(DeskPit {
                 n_tried: v.get("n_tried").and_then(|x| x.as_u64()).unwrap_or(0),
                 seated_ever: v.get("seated_ever").and_then(|x| x.as_u64()).unwrap_or(0),
@@ -1653,7 +2358,10 @@ mod desk {
         fn sweep(&mut self, book: &mut PaperBook) {
             let retiring = &self.retiring;
             let before = book.traders.len();
-            book.retain_traders(|t| !(matches!(t.archetype, Archetype::Genome(i) if retiring.contains(&i)) && t.position.is_none()));
+            book.retain_traders(|t| {
+                !(matches!(t.archetype, Archetype::Genome(i) if retiring.contains(&i))
+                    && t.position.is_none())
+            });
             if book.traders.len() != before {
                 log_line(&format!("pit: {} retired", before - book.traders.len()));
             }
@@ -1673,8 +2381,16 @@ mod desk {
             }
             self.bucket[i] = bucket;
             let open = (bucket - 1) * BAR_MS;
-            let ones: Vec<Candle> = store.series(v.inst, Timeframe::M1, FeedMode::Live).bars.iter().filter(|c| c.time_ms >= open && c.time_ms < open + BAR_MS).copied().collect();
-            let (Some(first), Some(last)) = (ones.first(), ones.last()) else { return };
+            let ones: Vec<Candle> = store
+                .series(v.inst, Timeframe::M1, FeedMode::Live)
+                .bars
+                .iter()
+                .filter(|c| c.time_ms >= open && c.time_ms < open + BAR_MS)
+                .copied()
+                .collect();
+            let (Some(first), Some(last)) = (ones.first(), ones.last()) else {
+                return;
+            };
             let bar = Bar {
                 t: open,
                 o: first.open as f64,
@@ -1697,39 +2413,73 @@ mod desk {
             let sym = tape_symbol(v.inst);
             self.holders_at_close(book, v, bar.t, prev_t);
             self.adapters_at_close(book, v.wall_ms);
-            let n_genomes = book.traders.iter().filter(|t| matches!(t.archetype, Archetype::Genome(_))).count();
-            log_line(&format!("15m {} {} o {} h {} l {} c {} ({} bars, {n_genomes} genomes)", sym, bar.t, bar.o, bar.h, bar.l, bar.c, k + 1));
+            let n_genomes = book
+                .traders
+                .iter()
+                .filter(|t| matches!(t.archetype, Archetype::Genome(_)))
+                .count();
+            log_line(&format!(
+                "15m {} {} o {} h {} l {} c {} ({} bars, {n_genomes} genomes)",
+                sym,
+                bar.t,
+                bar.o,
+                bar.h,
+                bar.l,
+                bar.c,
+                k + 1
+            ));
             if v.spread_ticks > 3.0 * genome::typical_spread_ticks(v.inst) as f32 {
                 return; // a rollover-wide spread: the backtest never paid one, so nobody enters
             }
             for t in 0..book.traders.len() {
-                let Archetype::Genome(idx) = book.traders[t].archetype else { continue };
+                let Archetype::Genome(idx) = book.traders[t].archetype else {
+                    continue;
+                };
                 if book.traders[t].position.is_some() || self.retiring.contains(&idx) {
                     continue;
                 }
-                let Some(seat) = genome::seat(idx) else { continue };
-                let Some(g) = seat.genome.as_ref() else { continue };
+                let Some(seat) = genome::seat(idx) else {
+                    continue;
+                };
+                let Some(g) = seat.genome.as_ref() else {
+                    continue;
+                };
                 if g.jev.is_some() {
                     continue; // a twin never decides at the bar close: it waits for its genome's entry and Jev
                 }
                 if g.holds || g.floor.as_deref() == Some("manual") {
                     continue; // a holder acts on its strategy's own bars; the ticket's trader on orders
                 }
-                if !g.symbols.iter().any(|s| *s == sym) {
+                if !g.symbols.contains(&sym) {
                     continue;
                 }
-                if let (genome::Signal::EdgeLab { key, tf }, Some(id)) = (&g.signal, g.signal.edge_lab_id()) {
-                    if !f.has_entries(&id) {
-                        let d = edge_lab_entry(&self.path, key, *tf, &self.bars[i]);
-                        log_line(&format!("15m {sym} edge-lab {id}: {}", d.map_or("no answer".to_string(), |d| d.to_string())));
-                        f.set_entries(&id, HashMap::from([(k, d.unwrap_or(0))]));
-                    }
+                if let (genome::Signal::EdgeLab { key, tf }, Some(id)) =
+                    (&g.signal, g.signal.edge_lab_id())
+                    && !f.has_entries(&id)
+                {
+                    let d = edge_lab_entry(&self.path, key, *tf, &self.bars[i]);
+                    log_line(&format!(
+                        "15m {sym} edge-lab {id}: {}",
+                        d.map_or("no answer".to_string(), |d| d.to_string())
+                    ));
+                    f.set_entries(&id, HashMap::from([(k, d.unwrap_or(0))]));
                 }
-                let Some((side, stop, why)) = genome::evaluate(g, &mut f, k) else { continue };
+                let Some((side, stop, why)) = genome::evaluate(g, &mut f, k) else {
+                    continue;
+                };
                 let tick = v.tick as f64;
-                let (d, reach) = genome::stop_and_target(g, stop, v.spread_ticks as f64 * tick, tick);
-                let entry = if side.is_buy() { v.ask as f64 } else { v.bid as f64 };
-                let target = if side.is_buy() { entry + reach } else { entry - reach };
+                let (d, reach) =
+                    genome::stop_and_target(g, stop, v.spread_ticks as f64 * tick, tick);
+                let entry = if side.is_buy() {
+                    v.ask as f64
+                } else {
+                    v.bid as f64
+                };
+                let target = if side.is_buy() {
+                    entry + reach
+                } else {
+                    entry - reach
+                };
                 let e = Entry {
                     side,
                     stop_ticks: (d / tick) as f32,
@@ -1743,9 +2493,31 @@ mod desk {
                     Err(e) => log_line(&format!("pit: {} passed on {sym}: {e}", seat.name)),
                     Ok(()) => {
                         if let Some(&twin) = self.twins.get(&idx) {
-                            let q = genome::seat(twin).and_then(|s| s.genome.and_then(|g| g.jev)).unwrap_or_default();
-                            let a = TwinAnswer { twin, genome_id: g.id.clone(), inst: v.inst, decided_ms: v.wall_ms, side, stop, why: book.traders[t].position.as_ref().map(|p| p.why.clone()).unwrap_or_default(), p: None, model: None, error: None };
-                            ask_twin(self.answers_tx.clone(), a, genome::jev_state(&self.bars[i], side), q);
+                            let q = genome::seat(twin)
+                                .and_then(|s| s.genome.and_then(|g| g.jev))
+                                .unwrap_or_default();
+                            let a = TwinAnswer {
+                                twin,
+                                genome_id: g.id.clone(),
+                                inst: v.inst,
+                                decided_ms: v.wall_ms,
+                                side,
+                                stop,
+                                why: book.traders[t]
+                                    .position
+                                    .as_ref()
+                                    .map(|p| p.why.clone())
+                                    .unwrap_or_default(),
+                                p: None,
+                                model: None,
+                                error: None,
+                            };
+                            ask_twin(
+                                self.answers_tx.clone(),
+                                a,
+                                genome::jev_state(&self.bars[i], side),
+                                q,
+                            );
                         }
                     }
                 }
@@ -1759,11 +2531,15 @@ mod desk {
 
     pub fn run() -> Result<(), String> {
         if flag("--print-questions") {
-            println!("{}", serde_json::to_string_pretty(&all_questions()).map_err(|e| e.to_string())?);
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&all_questions()).map_err(|e| e.to_string())?
+            );
             return Ok(());
         }
         let args = parse_args()?;
-        fs::create_dir_all(&args.log_dir).map_err(|e| format!("cannot create {}: {e}", args.log_dir.display()))?;
+        fs::create_dir_all(&args.log_dir)
+            .map_err(|e| format!("cannot create {}: {e}", args.log_dir.display()))?;
         init_manual_name(&args.log_dir);
         let trades_path = args.log_dir.join("paper_desk_trades.jsonl");
         let decisions_path = args.log_dir.join("paper_desk_decisions.jsonl");
@@ -1774,7 +2550,11 @@ mod desk {
         let window_ms = (BOARD_WINDOW_HOURS * 3_600_000.0) as i64;
         log_line(&format!(
             "desk up: tape {ws_url}  relay {relay}  symbols {}  jev {} every {:.0}s  heartbeat {:.0}s  log {}",
-            args.symbols.iter().map(|i| tape_symbol(*i)).collect::<Vec<_>>().join(","),
+            args.symbols
+                .iter()
+                .map(|i| tape_symbol(*i))
+                .collect::<Vec<_>>()
+                .join(","),
             args.jev.label(),
             args.jev_every,
             args.heartbeat_every,
@@ -1793,16 +2573,31 @@ mod desk {
         book.reseed(args.seed);
         let mut history = load_history(&trades_path, started_ms, window_ms);
         if !history.is_empty() {
-            log_line(&format!("{} closed trades in the last {BOARD_WINDOW_HOURS:.0}h reloaded from {}", history.len(), trades_path.display()));
+            log_line(&format!(
+                "{} closed trades in the last {BOARD_WINDOW_HOURS:.0}h reloaded from {}",
+                history.len(),
+                trades_path.display()
+            ));
         }
 
         if let Some(keep) = &args.keep {
             book.retain_traders(|t| keep.iter().any(|k| k == t.name()));
-            log_line(&format!("keeping {} built-in traders: {}", book.traders.len(), book.traders.iter().map(|t| t.name()).collect::<Vec<_>>().join(", ")));
+            log_line(&format!(
+                "keeping {} built-in traders: {}",
+                book.traders.len(),
+                book.traders
+                    .iter()
+                    .map(|t| t.name())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
         }
 
         backfill_all(&mut store, &args.symbols, &args.backfill);
-        let mut gpit = args.pit.clone().map(|p| GenomePit::new(p, wall_clock_ms(), args.log_dir.join("genome_jev.jsonl")));
+        let mut gpit = args
+            .pit
+            .clone()
+            .map(|p| GenomePit::new(p, wall_clock_ms(), args.log_dir.join("genome_jev.jsonl")));
         if let Some(g) = gpit.as_mut() {
             g.backfill(&args.symbols, wall_clock_ms());
         }
@@ -1825,19 +2620,22 @@ mod desk {
         let mut queued: Vec<bool> = vec![false; n_pits];
         // Touch-triggered reads: a tracker per pit, the earliest next touch read, and the
         // follow-up waiting to be asked (the touch, when it is due, when it happened).
-        let mut trackers: Vec<TouchTracker> = (0..n_pits).map(|_| TouchTracker::default()).collect();
+        let mut trackers: Vec<TouchTracker> =
+            (0..n_pits).map(|_| TouchTracker::default()).collect();
         let mut touch_ok_at: Vec<f64> = vec![0.0; n_pits];
         let mut follow: Vec<Option<(Touch, f64, f64)>> = vec![None; n_pits];
         let (mut n_touches, mut n_touch_reads) = (0u64, 0u64);
         for (k, inst) in args.symbols.iter().enumerate() {
             // Spread the pits across the cadence so the relay sees a steady trickle.
-            next_read_at[*inst as usize] = 2.0 + k as f64 * args.jev_every / args.symbols.len() as f64;
+            next_read_at[*inst as usize] =
+                2.0 + k as f64 * args.jev_every / args.symbols.len() as f64;
         }
         let fresh_secs = READ_FRESH_SECS.max(args.jev_every + 5.0);
         let mut next_heartbeat = 0.0;
         let mut next_status = STATUS_EVERY_SECS;
         let mut heartbeat_404_said = false;
-        let (mut n_ticks, mut n_depth, mut n_reads, mut n_calls, mut n_failures) = (0u64, 0u64, 0u64, 0u64, 0u64);
+        let (mut n_ticks, mut n_depth, mut n_reads, mut n_calls, mut n_failures) =
+            (0u64, 0u64, 0u64, 0u64, 0u64);
 
         loop {
             let now = clock();
@@ -1877,34 +2675,74 @@ mod desk {
                                 let prev = feed.quote(inst).map(|q| q.price);
                                 feed.ingest_tick(inst, &tick, now);
                                 let tick_sz = tick_size(inst);
-                                let d_ticks = prev.map(|p| ((tick.bid - p) / tick_sz as f64) as f32).unwrap_or(0.0);
+                                let d_ticks = prev
+                                    .map(|p| ((tick.bid - p) / tick_sz as f64) as f32)
+                                    .unwrap_or(0.0);
                                 store.apply_live_tick(inst, tick.t, tick.bid as f32, d_ticks);
 
                                 // Levels from the 1m bars, like the app.
                                 let series = store.series(inst, Timeframe::M1, FeedMode::Live);
                                 let n = series.bars.len();
-                                let bars60: Vec<Candle> = series.bars.iter().skip(n.saturating_sub(BOARD_BARS)).copied().collect();
+                                let bars60: Vec<Candle> = series
+                                    .bars
+                                    .iter()
+                                    .skip(n.saturating_sub(BOARD_BARS))
+                                    .copied()
+                                    .collect();
                                 let rev = series.revision;
-                                let bar_open_ms = series.bars.back().map(|b| b.time_ms).unwrap_or(0);
+                                let bar_open_ms =
+                                    series.bars.back().map(|b| b.time_ms).unwrap_or(0);
                                 levels.refresh_trading(inst, &bars60, rev, now);
 
                                 // A touch of a level is what Jev is asked about, the moment it happens.
                                 if args.touch_reads && args.jev != JevMode::None {
                                     let unit = unit_ticks(&bars60, tick_sz);
-                                    let touches = trackers[i].step(levels.for_trading(inst), Step::tick(tick.bid as f32), wall_ms, bar_open_ms, tick_sz, unit);
+                                    let touches = trackers[i].step(
+                                        levels.for_trading(inst),
+                                        Step::tick(tick.bid as f32),
+                                        wall_ms,
+                                        bar_open_ms,
+                                        tick_sz,
+                                        unit,
+                                    );
                                     if let Some(t) = touches.into_iter().next() {
                                         n_touches += 1;
                                         if now >= touch_ok_at[i] {
                                             touch_ok_at[i] = now + args.touch_cooldown;
-                                            follow[i] = (args.touch_follow > 0.0).then(|| (t.clone(), now + args.touch_follow, now));
-                                            if !queued[i] {
-                                                if let Some(mut obs) = desk.observe(inst, &store, Timeframe::M1, &feed, levels.for_trading(inst), now, wall_ms) {
-                                                    obs.trigger = Some(trigger_for(&t, "touch", 0.0));
-                                                    if dispatch(args.jev, &mut desk, &job_tx, &mut queued, &mut n_reads, inst, obs, now) {
-                                                        n_touch_reads += 1;
-                                                        next_read_at[i] = now + args.jev_every;
-                                                        log_line(&format!("touch: {} {} {}..{} {} -> Jev asked", inst.symbol(), t.kind.tag(), t.lo, t.hi, t.side.label()));
-                                                    }
+                                            follow[i] = (args.touch_follow > 0.0)
+                                                .then(|| (t.clone(), now + args.touch_follow, now));
+                                            if !queued[i]
+                                                && let Some(mut obs) = desk.observe(
+                                                    inst,
+                                                    &store,
+                                                    Timeframe::M1,
+                                                    &feed,
+                                                    levels.for_trading(inst),
+                                                    now,
+                                                    wall_ms,
+                                                )
+                                            {
+                                                obs.trigger = Some(trigger_for(&t, "touch", 0.0));
+                                                if dispatch(
+                                                    args.jev,
+                                                    &mut desk,
+                                                    &job_tx,
+                                                    &mut queued,
+                                                    &mut n_reads,
+                                                    inst,
+                                                    obs,
+                                                    now,
+                                                ) {
+                                                    n_touch_reads += 1;
+                                                    next_read_at[i] = now + args.jev_every;
+                                                    log_line(&format!(
+                                                        "touch: {} {} {}..{} {} -> Jev asked",
+                                                        inst.symbol(),
+                                                        t.kind.tag(),
+                                                        t.lo,
+                                                        t.hi,
+                                                        t.side.label()
+                                                    ));
                                                 }
                                             }
                                         }
@@ -1912,13 +2750,19 @@ mod desk {
                                 }
 
                                 // The book.
-                                let PitFeedStatus::Live { rate, .. } = feed.pit_status(inst, now) else { continue };
+                                let PitFeedStatus::Live { rate, .. } = feed.pit_status(inst, now)
+                                else {
+                                    continue;
+                                };
                                 let q = feed.quote(inst).expect("quote after ingest");
-                                let bars40: Vec<Candle> = bars60.iter().rev().take(40).rev().copied().collect();
+                                let bars40: Vec<Candle> =
+                                    bars60.iter().rev().take(40).rev().copied().collect();
                                 let read = desk.read(inst).filter(|r| match args.jev {
                                     JevMode::None => false,
                                     JevMode::Rule => now - r.at <= fresh_secs,
-                                    JevMode::Live => r.source == ReadSource::Jev && now - r.at <= fresh_secs,
+                                    JevMode::Live => {
+                                        r.source == ReadSource::Jev && now - r.at <= fresh_secs
+                                    }
                                 });
                                 let bid = q.price as f32;
                                 let ask = q.ask as f32;
@@ -1951,20 +2795,54 @@ mod desk {
                                     let tj = trade_json(trade);
                                     append_jsonl(&trades_path, &tj);
                                     poster.log("paper_trades", &tj);
-                                    let dj = decision_json(trade.trader, trade.archetype, trade.symbol, wall_ms, "exit", trade.side, trade.exit, bid, ask, &trade.why_out, None);
+                                    let dj = decision_json(
+                                        trade.trader,
+                                        trade.archetype,
+                                        trade.symbol,
+                                        wall_ms,
+                                        "exit",
+                                        trade.side,
+                                        trade.exit,
+                                        bid,
+                                        ask,
+                                        &trade.why_out,
+                                        None,
+                                    );
                                     append_jsonl(&decisions_path, &dj);
                                     poster.log("paper_decisions", &dj);
                                     history.push(closed_from_trade(trade));
                                     log_line(&format!(
                                         "{} ({}) {} {} closed on {}: {:+.2}R ({:+.0} ticks)  [{}]",
-                                        trade.trader, book.traders[t].archetype.label(), trade.symbol, trade.side, trade.why_out, trade.pnl_r, trade.pnl_ticks, trade.why_in
+                                        trade.trader,
+                                        book.traders[t].archetype.label(),
+                                        trade.symbol,
+                                        trade.side,
+                                        trade.why_out,
+                                        trade.pnl_r,
+                                        trade.pnl_ticks,
+                                        trade.why_in
                                     ));
                                 }
                                 for t in opened {
                                     let tr = &book.traders[t];
-                                    let Some(p) = tr.position.as_ref() else { continue };
-                                    let hash = (!p.observation_hash.is_empty()).then_some(p.observation_hash.as_str());
-                                    let dj = decision_json(tr.name(), tr.archetype, p.inst.symbol(), wall_ms, "enter", side_str(p.side), p.entry, bid, ask, &p.why, hash);
+                                    let Some(p) = tr.position.as_ref() else {
+                                        continue;
+                                    };
+                                    let hash = (!p.observation_hash.is_empty())
+                                        .then_some(p.observation_hash.as_str());
+                                    let dj = decision_json(
+                                        tr.name(),
+                                        tr.archetype,
+                                        p.inst.symbol(),
+                                        wall_ms,
+                                        "enter",
+                                        side_str(p.side),
+                                        p.entry,
+                                        bid,
+                                        ask,
+                                        &p.why,
+                                        hash,
+                                    );
                                     append_jsonl(&decisions_path, &dj);
                                     poster.log("paper_decisions", &dj);
                                     log_line(&format!(
@@ -1975,7 +2853,9 @@ mod desk {
                                         side_str(p.side),
                                         p.entry,
                                         p.stop,
-                                        p.target.map(|t| t.to_string()).unwrap_or_else(|| "trail".into()),
+                                        p.target
+                                            .map(|t| t.to_string())
+                                            .unwrap_or_else(|| "trail".into()),
                                         p.why
                                     ));
                                 }
@@ -2023,14 +2903,33 @@ mod desk {
                 // Follow-ups: how is the reaction at the touched level developing?
                 for inst in &args.symbols {
                     let i = *inst as usize;
-                    let Some((_, due, _)) = follow[i] else { continue };
+                    let Some((_, due, _)) = follow[i] else {
+                        continue;
+                    };
                     if now < due || queued[i] {
                         continue;
                     }
                     let (t, _, touched_at) = follow[i].take().unwrap();
-                    if let Some(mut obs) = desk.observe(*inst, &store, Timeframe::M1, &feed, levels.for_trading(*inst), now, wall_ms) {
+                    if let Some(mut obs) = desk.observe(
+                        *inst,
+                        &store,
+                        Timeframe::M1,
+                        &feed,
+                        levels.for_trading(*inst),
+                        now,
+                        wall_ms,
+                    ) {
                         obs.trigger = Some(trigger_for(&t, "follow", now - touched_at));
-                        if dispatch(args.jev, &mut desk, &job_tx, &mut queued, &mut n_reads, *inst, obs, now) {
+                        if dispatch(
+                            args.jev,
+                            &mut desk,
+                            &job_tx,
+                            &mut queued,
+                            &mut n_reads,
+                            *inst,
+                            obs,
+                            now,
+                        ) {
                             n_touch_reads += 1;
                             next_read_at[i] = now + args.jev_every;
                         }
@@ -2041,12 +2940,29 @@ mod desk {
                     if now < next_read_at[i] || queued[i] {
                         continue;
                     }
-                    let Some(obs) = desk.observe(*inst, &store, Timeframe::M1, &feed, levels.for_trading(*inst), now, wall_ms) else {
+                    let Some(obs) = desk.observe(
+                        *inst,
+                        &store,
+                        Timeframe::M1,
+                        &feed,
+                        levels.for_trading(*inst),
+                        now,
+                        wall_ms,
+                    ) else {
                         next_read_at[i] = now + OBSERVE_RETRY_SECS;
                         continue;
                     };
                     next_read_at[i] = now + args.jev_every;
-                    dispatch(args.jev, &mut desk, &job_tx, &mut queued, &mut n_reads, *inst, obs, now);
+                    dispatch(
+                        args.jev,
+                        &mut desk,
+                        &job_tx,
+                        &mut queued,
+                        &mut n_reads,
+                        *inst,
+                        obs,
+                        now,
+                    );
                 }
             }
 
@@ -2056,13 +2972,18 @@ mod desk {
                 let hb_status = poster.heartbeat_status.load(Ordering::Relaxed);
                 if hb_status == 404 && !heartbeat_404_said {
                     heartbeat_404_said = true;
-                    log_line("relay answers 404 on /paper/heartbeat (older relay); trades still log, the board waits for a redeploy");
+                    log_line(
+                        "relay answers 404 on /paper/heartbeat (older relay); trades still log, the board waits for a redeploy",
+                    );
                 } else if hb_status == 200 && heartbeat_404_said {
                     heartbeat_404_said = false;
                     log_line("relay now accepts /paper/heartbeat");
                 }
                 history.retain(|c| c.closed_ms > wall_ms - 2 * window_ms);
-                let mut board = build_board(&args, &book, &feed, &desk, &history, started_ms, wall_ms, window_ms, now, n_ticks, n_reads, n_calls, n_failures);
+                let mut board = build_board(
+                    &args, &book, &feed, &desk, &history, started_ms, wall_ms, window_ms, now,
+                    n_ticks, n_reads, n_calls, n_failures,
+                );
                 board.pit = gpit.as_ref().and_then(|g| g.summary());
                 board.manual = gpit.as_ref().and_then(|g| g.manual_last.clone());
                 poster.heartbeat(&board);
@@ -2071,7 +2992,15 @@ mod desk {
             if now >= next_status {
                 next_status = now + STATUS_EVERY_SECS;
                 let (live, rate) = feed.live_summary(now);
-                let open: Vec<String> = book.traders.iter().filter_map(|t| t.position.as_ref().map(|p| format!("{} {} {}", t.name(), p.inst.symbol(), side_str(p.side)))).collect();
+                let open: Vec<String> = book
+                    .traders
+                    .iter()
+                    .filter_map(|t| {
+                        t.position.as_ref().map(|p| {
+                            format!("{} {} {}", t.name(), p.inst.symbol(), side_str(p.side))
+                        })
+                    })
+                    .collect();
                 log_line(&format!(
                     "status: feed {:?} {live} pits live {rate:.1} t/s  ticks {n_ticks} books {n_depth}  reads {n_reads} calls {n_calls} failed {n_failures}  touches {n_touches} touch reads {n_touch_reads}  trades {}  open [{}]  records posted {} failed {}  heartbeat HTTP {}",
                     feed.state,
@@ -2107,10 +3036,19 @@ mod desk {
     ) -> DeskBoard {
         // One row per trader on the book, in the book's order (the roster is trimmed and
         // genomes come and go, so it is not `Archetype::ALL`).
-        let roster: Vec<(&str, &str)> = book.traders.iter().map(|t| (t.name(), t.archetype.label())).collect();
+        let roster: Vec<(&str, &str)> = book
+            .traders
+            .iter()
+            .map(|t| (t.name(), t.archetype.label()))
+            .collect();
         let mut traders = leaderboard_for(&roster, history, wall_ms, window_ms);
         // The day block is the same arithmetic over a window that opened at 00:00 UTC.
-        let day = leaderboard_for(&roster, history, wall_ms, wall_ms - opencry_visual::paper::day_start_ms(wall_ms));
+        let day = leaderboard_for(
+            &roster,
+            history,
+            wall_ms,
+            wall_ms - opencry_visual::paper::day_start_ms(wall_ms),
+        );
         for (t, row) in traders.iter_mut().enumerate() {
             let tr = &book.traders[t];
             row.open = tr.position.as_ref().map(|p| DeskOpen {
@@ -2131,13 +3069,23 @@ mod desk {
             row.day_spread_paid_r = d.spread_paid_r;
             row.day_max_drawdown_r = d.max_drawdown_r;
             row.last_trades = last_trades(history, &row.trader);
-            row.waiting = tr.passes().into_iter().map(|(inst, why)| DeskPass::new(inst.symbol(), why)).collect();
+            row.waiting = tr
+                .passes()
+                .into_iter()
+                .map(|(inst, why)| DeskPass::new(inst.symbol(), why))
+                .collect();
         }
         let (live, _) = feed.live_summary(now);
         let jev_reads = args
             .symbols
             .iter()
-            .filter_map(|&inst| jev.read(inst).map(|r| DeskRead { symbol: inst.symbol().to_string(), headline: r.headline(), age_secs: (now - r.at).max(0.0) as f32 }))
+            .filter_map(|&inst| {
+                jev.read(inst).map(|r| DeskRead {
+                    symbol: inst.symbol().to_string(),
+                    headline: r.headline(),
+                    age_secs: (now - r.at).max(0.0) as f32,
+                })
+            })
             .collect();
         DeskBoard {
             jev_reads,
@@ -2149,7 +3097,11 @@ mod desk {
             jev_mode: args.jev.label().to_string(),
             jev_every_secs: args.jev_every,
             symbols: args.symbols.iter().map(|i| tape_symbol(*i)).collect(),
-            feed: format!("{}, {live} of {} pits ticking", format!("{:?}", feed.state).to_lowercase(), args.symbols.len()),
+            feed: format!(
+                "{}, {live} of {} pits ticking",
+                format!("{:?}", feed.state).to_lowercase(),
+                args.symbols.len()
+            ),
             ticks,
             reads,
             jev_calls,
@@ -2174,26 +3126,87 @@ mod desk {
         #[test]
         #[ignore]
         fn the_live_edge_lab_call_answers_what_the_backtest_entered() {
-            let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("evolve");
-            let eligible: serde_json::Value = serde_json::from_str(&fs::read_to_string(root.join("edge_lab/eligible.json")).unwrap()).unwrap();
-            let pick = eligible["eligible"].as_array().unwrap().iter().find(|e| e["tf"] == 60 && e["n_entries"].as_u64().unwrap_or(0) > 400).unwrap();
+            let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .parent()
+                .unwrap()
+                .join("evolve");
+            let eligible: serde_json::Value = serde_json::from_str(
+                &fs::read_to_string(root.join("edge_lab/eligible.json")).unwrap(),
+            )
+            .unwrap();
+            let pick = eligible["eligible"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|e| e["tf"] == 60 && e["n_entries"].as_u64().unwrap_or(0) > 400)
+                .unwrap();
             let (key, tf) = (pick["key"].as_str().unwrap(), 60u32);
-            let sig: HashMap<String, Vec<(i64, i8)>> = serde_json::from_str(&fs::read_to_string(root.join(format!("edge_lab/signals/{key}@{tf}.json"))).unwrap()).unwrap();
-            let rows: Vec<Vec<f64>> = serde_json::from_str(&fs::read_to_string(format!("{}/ctrader_US500_SB_15m.json", opencry_visual::edge_cache_dir())).unwrap()).unwrap();
-            let mut bars: Vec<Bar> = rows.iter().map(|r| Bar { t: r[0] as i64, o: r[1], h: r[2], l: r[3], c: r[4] }).collect();
+            let sig: HashMap<String, Vec<(i64, i8)>> = serde_json::from_str(
+                &fs::read_to_string(root.join(format!("edge_lab/signals/{key}@{tf}.json")))
+                    .unwrap(),
+            )
+            .unwrap();
+            let rows: Vec<Vec<f64>> = serde_json::from_str(
+                &fs::read_to_string(format!(
+                    "{}/ctrader_US500_SB_15m.json",
+                    opencry_visual::edge_cache_dir()
+                ))
+                .unwrap(),
+            )
+            .unwrap();
+            let mut bars: Vec<Bar> = rows
+                .iter()
+                .map(|r| Bar {
+                    t: r[0] as i64,
+                    o: r[1],
+                    h: r[2],
+                    l: r[3],
+                    c: r[4],
+                })
+                .collect();
             bars.sort_by_key(|b| b.t);
             bars.dedup_by_key(|b| b.t);
             let entries = &sig["US500"];
             for &(t, d) in &entries[entries.len() - 3..] {
                 let i = bars.binary_search_by_key(&t, |b| b.t).unwrap();
-                assert_eq!(edge_lab_entry(&root.join("pit.json"), key, tf, &bars[i + 1 - GENOME_BARS_KEEP..=i]), Some(d), "{key}@{tf} at {t}");
-                assert_eq!(edge_lab_entry(&root.join("pit.json"), key, tf, &bars[i - GENOME_BARS_KEEP..i]), Some(0), "no entry on the bar before");
+                assert_eq!(
+                    edge_lab_entry(
+                        &root.join("pit.json"),
+                        key,
+                        tf,
+                        &bars[i + 1 - GENOME_BARS_KEEP..=i]
+                    ),
+                    Some(d),
+                    "{key}@{tf} at {t}"
+                );
+                assert_eq!(
+                    edge_lab_entry(
+                        &root.join("pit.json"),
+                        key,
+                        tf,
+                        &bars[i - GENOME_BARS_KEEP..i]
+                    ),
+                    Some(0),
+                    "no entry on the bar before"
+                );
             }
         }
 
         fn closed(trader: &str, closed_ms: i64, pnl_r: f32) -> Closed {
-            let shown = DeskTrade { symbol: "XAG/USD".into(), side: "long".into(), pnl_r, closed_ms, ..Default::default() };
-            Closed { trader: trader.into(), closed_ms, pnl_r, spread_r: 0.25, shown }
+            let shown = DeskTrade {
+                symbol: "XAG/USD".into(),
+                side: "long".into(),
+                pnl_r,
+                closed_ms,
+                ..Default::default()
+            };
+            Closed {
+                trader: trader.into(),
+                closed_ms,
+                pnl_r,
+                spread_r: 0.25,
+                shown,
+            }
         }
 
         /// A pit file with one genome seated with its twin, read into a fresh book.
@@ -2201,7 +3214,12 @@ mod desk {
             let pit = dir.join("pit.json");
             let g = serde_json::json!({"id": "gtw1", "name": "Twtest", "signal": {"kind": "run", "k": 3}, "mode": "follow", "window": "all",
                 "exit": {"stop_atr": 1.0, "target_r": 2.0, "max_bars": 8}, "symbols": ["XAUUSD"]});
-            fs::write(&pit, serde_json::json!({"seats": [{"genome": g, "seated_ms": 0, "twin": true}]}).to_string()).unwrap();
+            fs::write(
+                &pit,
+                serde_json::json!({"seats": [{"genome": g, "seated_ms": 0, "twin": true}]})
+                    .to_string(),
+            )
+            .unwrap();
             let mut gp = GenomePit::new(pit, 0, dir.join("genome_jev.jsonl"));
             let mut book = PaperBook::default();
             book.log_to_relay = false;
@@ -2229,7 +3247,18 @@ mod desk {
         }
 
         fn answer(gp: &GenomePit, p: Option<f32>, decided_ms: i64) -> TwinAnswer {
-            TwinAnswer { twin: gp.twins.values().copied().next().unwrap(), genome_id: "gtw1".into(), inst: Instrument::Gold, decided_ms, side: Side::Buy, stop: 5.0, why: "test".into(), p, model: None, error: None }
+            TwinAnswer {
+                twin: gp.twins.values().copied().next().unwrap(),
+                genome_id: "gtw1".into(),
+                inst: Instrument::Gold,
+                decided_ms,
+                side: Side::Buy,
+                stop: 5.0,
+                why: "test".into(),
+                p,
+                model: None,
+                error: None,
+            }
         }
 
         #[test]
@@ -2238,14 +3267,24 @@ mod desk {
             fs::create_dir_all(&dir).unwrap();
             let (mut gp, mut book) = pit_with_twin(&dir);
             let names: Vec<&str> = book.traders.iter().map(|t| t.name()).collect();
-            assert_eq!(names, vec!["Twtest", "Twtest-J", "Paul Leppard"], "the genome and its twin are seated, and the ticket's trader");
-            let twin = book.traders.iter().position(|t| t.name() == "Twtest-J").unwrap();
+            assert_eq!(
+                names,
+                vec!["Twtest", "Twtest-J", "Paul Leppard"],
+                "the genome and its twin are seated, and the ticket's trader"
+            );
+            let twin = book
+                .traders
+                .iter()
+                .position(|t| t.name() == "Twtest-J")
+                .unwrap();
             let bars: Vec<Candle> = Vec::new();
-            let at = 1_792_800_000_000 - 1_792_800_000_000 % 86_400_000 + 10 * 3_600_000; // 10:00 UTC
+            let at = 1_792_800_000_000 + 10 * 3_600_000; // 10:00 UTC
 
             // No: stays out. Late yes (over 90 s): stays out.
             gp.answers_tx.send(answer(&gp, Some(0.3), at)).unwrap();
-            gp.answers_tx.send(answer(&gp, Some(0.9), at - 100_000)).unwrap();
+            gp.answers_tx
+                .send(answer(&gp, Some(0.9), at - 100_000))
+                .unwrap();
             gp.take_answers(&mut book, &gold_view(&bars, at + 2_000));
             assert!(book.traders[twin].position.is_none());
 
@@ -2262,13 +3301,22 @@ mod desk {
             gp.take_answers(&mut book, &gold_view(&bars, at + 2_000));
             let p = book.traders[twin].position.clone().expect("the twin is in");
             assert_eq!(p.entry, 2000.2);
-            assert!((p.stop_ticks - 50.0).abs() < 1e-3, "stop 5.0 = 50 ticks, above the 20-spread floor: {}", p.stop_ticks);
-            assert!((p.target.unwrap() - (2000.2 + 10.0)).abs() < 1e-2, "target 2 R");
+            assert!(
+                (p.stop_ticks - 50.0).abs() < 1e-3,
+                "stop 5.0 = 50 ticks, above the 20-spread floor: {}",
+                p.stop_ticks
+            );
+            assert!(
+                (p.target.unwrap() - (2000.2 + 10.0)).abs() < 1e-2,
+                "target 2 R"
+            );
             assert!((p.time_stop_secs - (8.0 * 900.0 - 2.0)).abs() < 1e-6);
             assert!(p.why.contains("Jev yes 70%"), "{}", p.why);
 
             // Busy: a second yes does not stack a position.
-            gp.answers_tx.send(answer(&gp, Some(0.95), at + 1_000)).unwrap();
+            gp.answers_tx
+                .send(answer(&gp, Some(0.95), at + 1_000))
+                .unwrap();
             gp.take_answers(&mut book, &gold_view(&bars, at + 3_000));
             assert_eq!(book.traders[twin].position.as_ref().unwrap().entry, 2000.2);
 
@@ -2279,7 +3327,16 @@ mod desk {
         }
 
         fn holder_answer(seat: u16, g: i64, pos: i8, asked_ms: i64) -> HolderAnswer {
-            HolderAnswer { seat, id: "h_test".into(), inst: Instrument::Gold, asked_ms, g, pos, unit: 30.0, error: None }
+            HolderAnswer {
+                seat,
+                id: "h_test".into(),
+                inst: Instrument::Gold,
+                asked_ms,
+                g,
+                pos,
+                unit: 30.0,
+                error: None,
+            }
         }
 
         #[test]
@@ -2295,7 +3352,11 @@ mod desk {
             book.log_to_relay = false;
             book.retain_traders(|_| false);
             gp.reload(&mut book, 0.0);
-            assert_eq!(book.traders.len(), 2, "the show floor is seated, and the ticket's trader");
+            assert_eq!(
+                book.traders.len(),
+                2,
+                "the show floor is seated, and the ticket's trader"
+            );
             assert_eq!(book.traders[0].archetype.label(), "holder");
             let seat = *gp.seated.get("h_test").unwrap();
             let bars: Vec<Candle> = Vec::new();
@@ -2303,37 +3364,66 @@ mod desk {
             let at = 1_792_800_000_000 - 1_792_800_000_000 % day;
 
             // First answer since start: records the strategy, does not join mid-trade.
-            gp.holder_tx.send(vec![holder_answer(seat, at - day, 1, at)]).unwrap();
+            gp.holder_tx
+                .send(vec![holder_answer(seat, at - day, 1, at)])
+                .unwrap();
             gp.take_holder_answers(&mut book, &gold_view(&bars, at + 1_000));
-            assert!(book.traders[0].position.is_none(), "joins at the next change, not mid-trade");
+            assert!(
+                book.traders[0].position.is_none(),
+                "joins at the next change, not mid-trade"
+            );
             // Same position next bar: nothing. Then it turns short: in, at the bid, R = 30 = 300 ticks.
-            gp.holder_tx.send(vec![holder_answer(seat, at, 1, at + day)]).unwrap();
+            gp.holder_tx
+                .send(vec![holder_answer(seat, at, 1, at + day)])
+                .unwrap();
             gp.take_holder_answers(&mut book, &gold_view(&bars, at + day + 1_000));
             assert!(book.traders[0].position.is_none());
-            gp.holder_tx.send(vec![holder_answer(seat, at + day, -1, at + 2 * day)]).unwrap();
+            gp.holder_tx
+                .send(vec![holder_answer(seat, at + day, -1, at + 2 * day)])
+                .unwrap();
             gp.take_holder_answers(&mut book, &gold_view(&bars, at + 2 * day + 1_000));
             let p = book.traders[0].position.clone().expect("in on the change");
             assert_eq!(p.entry, 2000.0);
-            assert!((p.stop_ticks - 300.0).abs() < 1e-3 && (p.stop - (2000.0 + 150.0)).abs() < 1e-2, "1 R = 300 ticks, safety stop 5 R: {p:?}");
+            assert!(
+                (p.stop_ticks - 300.0).abs() < 1e-3 && (p.stop - (2000.0 + 150.0)).abs() < 1e-2,
+                "1 R = 300 ticks, safety stop 5 R: {p:?}"
+            );
             assert!(p.overnight && p.target.is_none());
             // The desk's flat time does not close it.
             let mut q = p.clone();
-            assert!(opencry_visual::paper::exit_check(&mut q, 2000.0, 2000.2, 0.1, 1e9, 21 * 60).is_none(), "held past FLAT_AT");
+            assert!(
+                opencry_visual::paper::exit_check(&mut q, 2000.0, 2000.2, 0.1, 1e9, 21 * 60)
+                    .is_none(),
+                "held past FLAT_AT"
+            );
             // A restart restores it, and the state it acted on.
             let mut gp2 = GenomePit::new(pit, 0, dir.join("genome_jev.jsonl"));
             let mut book2 = PaperBook::default();
             book2.log_to_relay = false;
             book2.retain_traders(|_| false);
             gp2.reload(&mut book2, 0.0);
-            assert_eq!(book2.traders[0].position.as_ref().map(|p| (p.entry, p.overnight)), Some((2000.0, true)), "restored");
+            assert_eq!(
+                book2.traders[0]
+                    .position
+                    .as_ref()
+                    .map(|p| (p.entry, p.overnight)),
+                Some((2000.0, true)),
+                "restored"
+            );
             assert_eq!(gp2.holder_state.get("h_test@XAUUSD"), Some(&(at + day, -1)));
             // Strategy goes flat: a strategy exit, at the ask.
-            gp.holder_tx.send(vec![holder_answer(seat, at + 2 * day, 0, at + 3 * day)]).unwrap();
+            gp.holder_tx
+                .send(vec![holder_answer(seat, at + 2 * day, 0, at + 3 * day)])
+                .unwrap();
             gp.take_holder_answers(&mut book, &gold_view(&bars, at + 3 * day + 1_000));
             assert!(book.traders[0].position.is_none());
             let tr = book.traders[0].trades.last().unwrap();
             assert_eq!((tr.why_out.as_str(), tr.exit), ("strategy exit", 2000.2));
-            assert!((tr.pnl_r - (-2.0 / 300.0)).abs() < 1e-4, "paid the spread: {}", tr.pnl_r);
+            assert!(
+                (tr.pnl_r - (-2.0 / 300.0)).abs() < 1e-4,
+                "paid the spread: {}",
+                tr.pnl_r
+            );
             let _ = fs::remove_dir_all(&dir);
         }
 
@@ -2342,25 +3432,65 @@ mod desk {
             let dir = std::env::temp_dir().join(format!("ticket_test_{}", std::process::id()));
             fs::create_dir_all(&dir).unwrap();
             let (mut gp, mut book) = pit_with_twin(&dir);
-            let paul = book.traders.iter().position(|t| t.name() == "Paul Leppard").expect("the ticket's trader is seated");
+            let paul = book
+                .traders
+                .iter()
+                .position(|t| t.name() == "Paul Leppard")
+                .expect("the ticket's trader is seated");
             assert_eq!(book.traders[paul].archetype.label(), "manual");
-            let at = 1_792_800_000_000 - 1_792_800_000_000 % 86_400_000 + 10 * 3_600_000;
+            let at = 1_792_800_000_000 + 10 * 3_600_000;
             // 15m gold bars with a range of 2.0: ATR 2.0.
-            gp.bars[Instrument::Gold as usize] = (0..20).map(|k| Bar { t: at - (20 - k) * BAR_MS, o: 2000.0, h: 2001.0, l: 1999.0, c: 2000.0 }).collect();
-            let order = |seq, action: &str| ManualOrder { seq, action: action.into(), symbol: "XAUUSD".into(), stop_atr: 3.0, target_r: 2.0, placed_ms: at, account: "paper".into(), trader: None };
+            gp.bars[Instrument::Gold as usize] = (0..20)
+                .map(|k| Bar {
+                    t: at - (20 - k) * BAR_MS,
+                    o: 2000.0,
+                    h: 2001.0,
+                    l: 1999.0,
+                    c: 2000.0,
+                })
+                .collect();
+            let order = |seq, action: &str| ManualOrder {
+                seq,
+                action: action.into(),
+                symbol: "XAUUSD".into(),
+                stop_atr: 3.0,
+                target_r: 2.0,
+                placed_ms: at,
+                account: "paper".into(),
+                trader: None,
+            };
             let bars: Vec<Candle> = Vec::new();
 
             gp.manual_tx.send(order(1, "buy")).unwrap();
             gp.take_manual_orders(&mut book, &gold_view(&bars, at + 1_000));
             let p = book.traders[paul].position.clone().expect("bought");
             assert_eq!(p.entry, 2000.2, "at the ask");
-            assert!((p.stop_ticks - 60.0).abs() < 1e-3, "3 ATR = 6.0 = 60 ticks, above the desk's 20-spread floor: {}", p.stop_ticks);
-            assert!((p.target.unwrap() - 2012.2).abs() < 1e-2 && p.overnight, "2 R");
-            assert!(gp.manual_last.as_deref().unwrap().starts_with("#1 bought XAUUSD at 2,000.20"), "{:?}", gp.manual_last);
+            assert!(
+                (p.stop_ticks - 60.0).abs() < 1e-3,
+                "3 ATR = 6.0 = 60 ticks, above the desk's 20-spread floor: {}",
+                p.stop_ticks
+            );
+            assert!(
+                (p.target.unwrap() - 2012.2).abs() < 1e-2 && p.overnight,
+                "2 R"
+            );
+            assert!(
+                gp.manual_last
+                    .as_deref()
+                    .unwrap()
+                    .starts_with("#1 bought XAUUSD at 2,000.20"),
+                "{:?}",
+                gp.manual_last
+            );
 
             gp.manual_tx.send(order(2, "sell")).unwrap();
             gp.take_manual_orders(&mut book, &gold_view(&bars, at + 2_000));
-            assert!(gp.manual_last.as_deref().unwrap().contains("close it first"));
+            assert!(
+                gp.manual_last
+                    .as_deref()
+                    .unwrap()
+                    .contains("close it first")
+            );
 
             // An order for another pit waits for that pit; one over 30 s old is dropped.
             let mut other = order(3, "buy");
@@ -2369,7 +3499,10 @@ mod desk {
             gp.take_manual_orders(&mut book, &gold_view(&bars, at + 3_000));
             assert_eq!(gp.manual_ready.len(), 1);
             gp.take_manual_orders(&mut book, &gold_view(&bars, at + 40_000));
-            assert!(gp.manual_ready.is_empty() && gp.manual_last.as_deref().unwrap().contains("not filled"));
+            assert!(
+                gp.manual_ready.is_empty()
+                    && gp.manual_last.as_deref().unwrap().contains("not filled")
+            );
 
             let mut close = order(4, "close");
             close.placed_ms = at + 40_500;
@@ -2377,8 +3510,18 @@ mod desk {
             gp.take_manual_orders(&mut book, &gold_view(&bars, at + 41_000));
             assert!(book.traders[paul].position.is_none());
             let tr = book.traders[paul].trades.last().unwrap();
-            assert_eq!((tr.why_out.as_str(), tr.genome), ("closed by hand", Some("manual")));
-            assert!(gp.manual_last.as_deref().unwrap().starts_with("#4 closed long XAUUSD from 2,000.20 at 2,000.00"), "{:?}", gp.manual_last);
+            assert_eq!(
+                (tr.why_out.as_str(), tr.genome),
+                ("closed by hand", Some("manual"))
+            );
+            assert!(
+                gp.manual_last
+                    .as_deref()
+                    .unwrap()
+                    .starts_with("#4 closed long XAUUSD from 2,000.20 at 2,000.00"),
+                "{:?}",
+                gp.manual_last
+            );
             let _ = fs::remove_dir_all(&dir);
         }
 
@@ -2405,16 +3548,44 @@ mod desk {
             gp.reload(&mut book, 0.0);
             let seat = *gp.seated.get("a001c").unwrap();
             assert_eq!(book.traders[0].archetype.label(), "adapter");
-            assert!(genome::seat_creed(seat).starts_with("adapter (code): picks one of 2 tactics"), "{}", genome::seat_creed(seat));
-            gp.adapt_tx.send(AdaptAnswer { seat, day: 1, scores: vec![(0, 5, -0.2), (1, 4, 0.3)], code_pick: Some(1), jev: None, error: None }).unwrap();
+            assert!(
+                genome::seat_creed(seat).starts_with("adapter (code): picks one of 2 tactics"),
+                "{}",
+                genome::seat_creed(seat)
+            );
+            gp.adapt_tx
+                .send(AdaptAnswer {
+                    seat,
+                    day: 1,
+                    scores: vec![(0, 5, -0.2), (1, 4, 0.3)],
+                    code_pick: Some(1),
+                    jev: None,
+                    error: None,
+                })
+                .unwrap();
             let bars: Vec<Candle> = Vec::new();
             gp.take_adapt_answers(&mut book, &gold_view(&bars, 1_000));
             let now = genome::seat(seat).unwrap().genome.unwrap();
-            assert_eq!((now.id.as_str(), now.symbols.clone(), genome::tactic_in_use(&now)), ("a001c", vec!["US500".to_string()], Some(1)));
-            assert!(genome::seat_creed(seat).contains("opening range"), "{}", genome::seat_creed(seat));
+            assert_eq!(
+                (
+                    now.id.as_str(),
+                    now.symbols.clone(),
+                    genome::tactic_in_use(&now)
+                ),
+                ("a001c", vec!["US500".to_string()], Some(1))
+            );
+            assert!(
+                genome::seat_creed(seat).contains("opening range"),
+                "{}",
+                genome::seat_creed(seat)
+            );
             let logged = fs::read_to_string(dir.join("adapt.jsonl")).unwrap();
-            let row: serde_json::Value = serde_json::from_str(logged.lines().next().unwrap()).unwrap();
-            assert_eq!((row["from"].as_u64(), row["to"].as_u64()), (Some(1), Some(2)));
+            let row: serde_json::Value =
+                serde_json::from_str(logged.lines().next().unwrap()).unwrap();
+            assert_eq!(
+                (row["from"].as_u64(), row["to"].as_u64()),
+                (Some(1), Some(2))
+            );
             let _ = fs::remove_dir_all(&dir);
         }
 
@@ -2424,7 +3595,10 @@ mod desk {
             let exe = crate_dir.join("target").join("release").join("paper_desk");
             assert_eq!(default_log_dir(Some(exe)), crate_dir.join("log"));
             // A binary that is not under a crate's target tree falls back to the manifest dir.
-            assert_eq!(default_log_dir(Some(PathBuf::from("/usr/local/bin/paper_desk"))), crate_dir.join("log"));
+            assert_eq!(
+                default_log_dir(Some(PathBuf::from("/usr/local/bin/paper_desk"))),
+                crate_dir.join("log")
+            );
             assert_eq!(default_log_dir(None), crate_dir.join("log"));
         }
 
@@ -2440,7 +3614,10 @@ mod desk {
             let now = day0 + 10_000;
             let window = leaderboard(&h, now, 24 * 3_600_000);
             let day = leaderboard(&h, now, now - day0);
-            let g = Archetype::ALL.iter().position(|a| a.name() == "Grace").unwrap();
+            let g = Archetype::ALL
+                .iter()
+                .position(|a| a.name() == "Grace")
+                .unwrap();
             assert_eq!(window[g].trades, 3);
             assert_eq!(day[g].trades, 2);
             assert!((day[g].net_r - 0.5).abs() < 1e-6);
@@ -2450,7 +3627,9 @@ mod desk {
             assert_eq!(lt[0].closed_ms, day0 + 2_000, "newest first");
             assert_eq!(lt[2].closed_ms, day0 - 3_600_000);
             assert!(last_trades(&h, "Priya").is_empty());
-            let many: Vec<Closed> = (0..15).map(|k| closed("Colin", day0 + k * 1000, 0.1)).collect();
+            let many: Vec<Closed> = (0..15)
+                .map(|k| closed("Colin", day0 + k * 1000, 0.1))
+                .collect();
             assert_eq!(last_trades(&many, "Colin").len(), LAST_TRADES_KEEP);
         }
 
@@ -2472,7 +3651,11 @@ mod desk {
             assert_eq!((grace.trades, grace.wins, grace.losses), (4, 2, 2));
             assert!((grace.net_r - 1.8).abs() < 1e-5, "{}", grace.net_r);
             assert!((grace.spread_paid_r - 1.0).abs() < 1e-5);
-            assert!((grace.max_drawdown_r - 1.2).abs() < 1e-5, "peak 1.0 to -0.2: {}", grace.max_drawdown_r);
+            assert!(
+                (grace.max_drawdown_r - 1.2).abs() < 1e-5,
+                "peak 1.0 to -0.2: {}",
+                grace.max_drawdown_r
+            );
             let colin = rows.iter().find(|r| r.trader == "Colin").unwrap();
             assert_eq!((colin.trades, colin.losses), (1, 1));
             assert!((colin.max_drawdown_r - 1.0).abs() < 1e-5);
@@ -2497,14 +3680,40 @@ mod desk {
 
         #[test]
         fn records_carry_the_source_and_the_apps_fields() {
-            let d = decision_json("Vinnie", Archetype::MomentumScalper, "XAG/USD", 5, "enter", "long", 57.8, 57.79, 57.8, "why", Some("abc"));
+            let d = decision_json(
+                "Vinnie",
+                Archetype::MomentumScalper,
+                "XAG/USD",
+                5,
+                "enter",
+                "long",
+                57.8,
+                57.79,
+                57.8,
+                "why",
+                Some("abc"),
+            );
             assert_eq!(d["source"], "desk");
             assert_eq!(d["archetype"], "MomentumScalper");
             assert_eq!(d["observation_hash"], "abc");
-            for k in ["trader", "symbol", "at_ms", "action", "side", "price", "bid", "ask", "why"] {
+            for k in [
+                "trader", "symbol", "at_ms", "action", "side", "price", "bid", "ask", "why",
+            ] {
                 assert!(d.get(k).is_some(), "{k}");
             }
-            let exit = decision_json("Vinnie", Archetype::MomentumScalper, "XAG/USD", 6, "exit", "long", 57.9, 57.9, 57.92, "target", None);
+            let exit = decision_json(
+                "Vinnie",
+                Archetype::MomentumScalper,
+                "XAG/USD",
+                6,
+                "exit",
+                "long",
+                57.9,
+                57.9,
+                57.92,
+                "target",
+                None,
+            );
             assert!(exit["observation_hash"].is_null());
         }
 
@@ -2560,17 +3769,26 @@ mod desk {
             // The same position again is not a new entry; a new opened_ms is.
             let again = Snapshot::of(&book);
             assert!(again.diff(&book).1.is_empty());
-            book.traders[1].position = Some(Position { opened_ms: 200, ..p });
+            book.traders[1].position = Some(Position {
+                opened_ms: 200,
+                ..p
+            });
             assert_eq!(again.diff(&book).1, vec![1]);
         }
 
         #[test]
         fn the_websocket_address_comes_from_the_tape_url_and_symbols_parse() {
             assert_eq!(ws_from_http("http://localhost:8083"), "ws://localhost:8083");
-            assert_eq!(ws_from_http("https://tape.example:443"), "wss://tape.example:443");
+            assert_eq!(
+                ws_from_http("https://tape.example:443"),
+                "wss://tape.example:443"
+            );
             assert_eq!(ws_from_http("ws://already"), "ws://already");
             assert_eq!(parse_symbols(None).unwrap().len(), 9);
-            assert_eq!(parse_symbols(Some("xagusd,EUR/USD")).unwrap(), vec![Instrument::Silver, Instrument::EurUsd]);
+            assert_eq!(
+                parse_symbols(Some("xagusd,EUR/USD")).unwrap(),
+                vec![Instrument::Silver, Instrument::EurUsd]
+            );
             assert!(parse_symbols(Some("DOGE")).is_err());
         }
     }

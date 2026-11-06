@@ -16,12 +16,15 @@ use bevy::light::CascadeShadowConfigBuilder;
 use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
 
-use crate::market::{District, Instrument};
-use crate::pit_engine::{role_for_slot, ParticipantRole, Phase, PitEngines, PitEventKind, PitMarket, Side, SLOTS};
 use crate::camera::FloorViewMode;
+use crate::market::{District, Instrument};
+use crate::pit_engine::{
+    ParticipantRole, Phase, PitEngines, PitEventKind, PitMarket, SLOTS, Side, role_for_slot,
+};
 use crate::ui::Selection;
 use crate::unimate::{
-    spawn_unimate_trader_entity, JacketStyle, UnimateClip, UnimateMaterialCache, UnimateMeshCache, UnimateTrader,
+    JacketStyle, UnimateClip, UnimateMaterialCache, UnimateMeshCache, UnimateTrader,
+    spawn_unimate_trader_entity,
 };
 
 // ---------------------------------------------------------------------------
@@ -85,7 +88,12 @@ pub fn nearest_pit(point: Vec3, max_dist: f32) -> Option<Instrument> {
 // Bowl geometry. Steps descend from the rim to the well.
 pub const BOWL_RIM_RADIUS: f32 = 38.0;
 /// (inner radius, outer radius, top height) for each step, rim first.
-pub const BOWL_STEPS: [(f32, f32, f32); 4] = [(31.0, 38.0, 4.8), (24.0, 31.0, 3.6), (17.0, 24.0, 2.4), (10.0, 17.0, 1.2)];
+pub const BOWL_STEPS: [(f32, f32, f32); 4] = [
+    (31.0, 38.0, 4.8),
+    (24.0, 31.0, 3.6),
+    (17.0, 24.0, 2.4),
+    (10.0, 17.0, 1.2),
+];
 pub const WELL_RADIUS: f32 = 10.0;
 /// Standing rings: brokers and runners on the top step, locals one step above the well.
 pub const TOP_STEP_RADIUS: f32 = 34.5;
@@ -107,20 +115,29 @@ pub fn step_height_at(radius: f32) -> f32 {
 /// Pure function: home position and facing for a slot given how many slots are present.
 /// Each ring spreads its active members evenly, leaving the north arc to the pulpit and the
 /// lead broker, so a thin pit is a sparse ring rather than a clump.
-pub fn compute_pit_home_position(crowd_index: usize, active_count: usize, pit_origin: Vec3) -> (Vec3, Quat) {
+pub fn compute_pit_home_position(
+    crowd_index: usize,
+    active_count: usize,
+    pit_origin: Vec3,
+) -> (Vec3, Quat) {
     use std::f32::consts::{FRAC_PI_2, TAU};
     let face_center = |p: Vec3| {
         let to_center = -Vec2::new(p.x - pit_origin.x, p.z - pit_origin.z);
         Quat::from_rotation_y(to_center.x.atan2(to_center.y))
     };
-    let on_ring = |angle: f32, radius: f32, y: f32| pit_origin + Vec3::new(angle.cos() * radius, y, angle.sin() * radius);
+    let on_ring = |angle: f32, radius: f32, y: f32| {
+        pit_origin + Vec3::new(angle.cos() * radius, y, angle.sin() * radius)
+    };
     match crowd_index {
         0 => {
             // Lead broker on the top step just east of the pulpit, looking down into the bowl.
             let p = on_ring(-FRAC_PI_2 + 0.42, TOP_STEP_RADIUS, 4.8);
             (p, face_center(p))
         }
-        1 => (pit_origin + Vec3::new(0.0, PULPIT_TOP_Y, PULPIT_OFFSET_Z), Quat::IDENTITY),
+        1 => (
+            pit_origin + Vec3::new(0.0, PULPIT_TOP_Y, PULPIT_OFFSET_Z),
+            Quat::IDENTITY,
+        ),
         2..=9 => {
             let count = active_count.clamp(3, 10) - 2;
             let idx = crowd_index - 2;
@@ -234,7 +251,9 @@ pub fn jacket_for_slot(slot: usize) -> JacketStyle {
 
 /// Demographic seed for a slot (matches the original roster).
 pub fn seed_for_slot(slot: usize) -> u64 {
-    const SEEDS: [u64; SLOTS] = [101, 85, 12, 95, 44, 55, 88, 77, 801, 22, 1, 98, 319, 92, 2, 104, 755, 199];
+    const SEEDS: [u64; SLOTS] = [
+        101, 85, 12, 95, 44, 55, 88, 77, 801, 22, 1, 98, 319, 92, 2, 104, 755, 199,
+    ];
     SEEDS[slot.min(SLOTS - 1)]
 }
 
@@ -274,19 +293,35 @@ pub fn compute_deal_meeting_positions(home_a: Vec3, home_b: Vec3, min_gap: f32) 
     let dir = Vec3::new(delta.x, 0.0, delta.z) / dist_xz;
     let max_step = ((dist_xz - min_gap).max(0.0)) * 0.5;
     let step_dist = (dist_xz * 0.16).clamp(1.2, 2.4).min(max_step);
-    let target_a = Vec3::new(home_a.x + dir.x * step_dist, home_a.y, home_a.z + dir.z * step_dist);
-    let target_b = Vec3::new(home_b.x - dir.x * step_dist, home_b.y, home_b.z - dir.z * step_dist);
+    let target_a = Vec3::new(
+        home_a.x + dir.x * step_dist,
+        home_a.y,
+        home_a.z + dir.z * step_dist,
+    );
+    let target_b = Vec3::new(
+        home_b.x - dir.x * step_dist,
+        home_b.y,
+        home_b.z - dir.z * step_dist,
+    );
     (target_a, target_b)
 }
 
 /// Pure function: natural idle shift and pit scan rotation for non-transacting traders
-pub fn compute_idle_movement(home_position: Vec3, default_rotation: Quat, crowd_index: usize, elapsed: f32) -> (Vec3, Quat) {
+pub fn compute_idle_movement(
+    home_position: Vec3,
+    default_rotation: Quat,
+    crowd_index: usize,
+    elapsed: f32,
+) -> (Vec3, Quat) {
     let phase = elapsed * 1.3 + (crowd_index as f32 * 1.73);
     let shift_x = phase.sin() * 0.45;
     let shift_z = (phase * 0.7).cos() * 0.45;
     let target_pos = home_position + Vec3::new(shift_x, 0.0, shift_z);
     let scan_angle = (phase * 0.6).sin() * 0.32;
-    (target_pos, default_rotation * Quat::from_rotation_y(scan_angle))
+    (
+        target_pos,
+        default_rotation * Quat::from_rotation_y(scan_angle),
+    )
 }
 
 /// Pure function: where a non-transacting trader stands and looks. Roams the step, steps out of
@@ -304,7 +339,10 @@ pub fn compute_pit_bystander_behavior(
     let step_wander_tangent = wander_t.sin() * 2.2;
     let step_wander_radial = (wander_t * 0.7).cos() * 0.9;
 
-    let rad_vec = Vec2::new(home_position.x - pit_origin.x, home_position.z - pit_origin.z);
+    let rad_vec = Vec2::new(
+        home_position.x - pit_origin.x,
+        home_position.z - pit_origin.z,
+    );
     let rad_len = rad_vec.length();
     let (radial_dir, tangent_dir) = if rad_len > 0.1 {
         let r_norm = rad_vec / rad_len;
@@ -372,7 +410,11 @@ pub fn compute_pit_bystander_behavior(
 }
 
 /// Pure function: minimum personal separation across active crowd members (slot 1 is on the pulpit).
-pub fn enforce_pit_crowd_separation(positions: &mut [Vec3; 18], active_count: usize, min_separation: f32) {
+pub fn enforce_pit_crowd_separation(
+    positions: &mut [Vec3; 18],
+    active_count: usize,
+    min_separation: f32,
+) {
     for _iteration in 0..2 {
         for i in 0..active_count.min(18) {
             if i == 1 {
@@ -436,7 +478,9 @@ pub fn deal_pairs(pit: &PitMarket) -> Vec<(usize, usize, bool)> {
     let mut pairs: Vec<(usize, usize, bool)> = Vec::new();
     for slot in 0..pit.active_count {
         let phase = pit.participant(slot).phase;
-        let Some(cp) = phase.counterparty() else { continue };
+        let Some(cp) = phase.counterparty() else {
+            continue;
+        };
         if cp >= pit.active_count {
             continue;
         }
@@ -461,18 +505,32 @@ pub fn last_print_up(pit: &PitMarket) -> Option<bool> {
 
 /// Pure helper: where a participant stands given their phase, before separation and step
 /// heights. Shared by rigs and proxies so both views agree.
-pub fn phase_target_position(pit_origin: Vec3, slot: usize, phase: &Phase, home_positions: &[Vec3; 18]) -> Vec3 {
+pub fn phase_target_position(
+    pit_origin: Vec3,
+    slot: usize,
+    phase: &Phase,
+    home_positions: &[Vec3; 18],
+) -> Vec3 {
     let home = home_positions[slot];
     let radial = {
         let r = Vec2::new(home.x - pit_origin.x, home.z - pit_origin.z);
-        if r.length_squared() > 0.01 { r.normalize() } else { Vec2::Y }
+        if r.length_squared() > 0.01 {
+            r.normalize()
+        } else {
+            Vec2::Y
+        }
     };
     match phase {
-        Phase::Hitting { counterparty, .. } | Phase::Confirming { counterparty, .. } | Phase::Disputing { counterparty, .. } => {
-            let (mine, _) = compute_deal_meeting_positions(home, home_positions[*counterparty], 7.5);
+        Phase::Hitting { counterparty, .. }
+        | Phase::Confirming { counterparty, .. }
+        | Phase::Disputing { counterparty, .. } => {
+            let (mine, _) =
+                compute_deal_meeting_positions(home, home_positions[*counterparty], 7.5);
             mine
         }
-        Phase::Quoting { .. } | Phase::Working { .. } => home + Vec3::new(-radial.x, 0.0, -radial.y) * 1.6,
+        Phase::Quoting { .. } | Phase::Working { .. } => {
+            home + Vec3::new(-radial.x, 0.0, -radial.y) * 1.6
+        }
         Phase::BackingAway { .. } => home + Vec3::new(radial.x, 0.0, radial.y) * 2.6,
         Phase::Running { remaining } => {
             let tangent = Vec3::new(-radial.y, 0.0, radial.x);
@@ -506,7 +564,9 @@ pub fn create_octagon_ring_mesh(inner: f32, outer: f32, height: f32) -> Mesh {
     let mut indices: Vec<u32> = Vec::new();
     let half_h = height * 0.5;
     let segments = 8usize;
-    let angle_of = |i: usize| (i as f32 / segments as f32) * std::f32::consts::TAU + std::f32::consts::PI / 8.0;
+    let angle_of = |i: usize| {
+        (i as f32 / segments as f32) * std::f32::consts::TAU + std::f32::consts::PI / 8.0
+    };
 
     // Top and bottom caps as quad strips between the inner and outer octagons.
     for (y, n) in [(half_h, [0.0, 1.0, 0.0]), (-half_h, [0.0, -1.0, 0.0])] {
@@ -564,7 +624,10 @@ pub fn create_octagon_ring_mesh(inner: f32, outer: f32, height: f32) -> Mesh {
         }
     }
 
-    let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default());
+    let mut mesh = Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::default(),
+    );
     mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
     mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
     mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
@@ -585,7 +648,8 @@ pub fn spawn_brass_octagon_rail(
     let segments = 8;
     let mut pts = Vec::new();
     for i in 0..segments {
-        let angle = (i as f32 / segments as f32) * std::f32::consts::TAU + (std::f32::consts::PI / 8.0);
+        let angle =
+            (i as f32 / segments as f32) * std::f32::consts::TAU + (std::f32::consts::PI / 8.0);
         pts.push(Vec3::new(angle.cos() * radius, y_pos, angle.sin() * radius));
     }
     for i in 0..segments {
@@ -671,7 +735,11 @@ pub fn setup_pit_3d(
         .collect();
     let well_mesh = meshes.add(create_octagon_step_mesh(WELL_RADIUS + 0.2, 0.3));
     let glow_mesh = meshes.add(create_octagon_step_mesh(WELL_RADIUS - 0.6, 0.12));
-    let apron_mesh = meshes.add(create_octagon_ring_mesh(BOWL_RIM_RADIUS, BOWL_RIM_RADIUS + 3.5, 0.3));
+    let apron_mesh = meshes.add(create_octagon_ring_mesh(
+        BOWL_RIM_RADIUS,
+        BOWL_RIM_RADIUS + 3.5,
+        0.3,
+    ));
     let pulpit_mesh = meshes.add(create_octagon_step_mesh(4.6, PULPIT_TOP_Y));
     let desk_mesh = meshes.add(Cuboid::new(3.4, 0.4, 1.8));
     let screen_mesh = meshes.add(Cuboid::new(2.2, 1.2, 0.15));
@@ -709,7 +777,11 @@ pub fn setup_pit_3d(
         });
 
         commands
-            .spawn((Pit3dRoot { instrument: inst }, Transform::from_translation(origin), Visibility::Inherited))
+            .spawn((
+                Pit3dRoot { instrument: inst },
+                Transform::from_translation(origin),
+                Visibility::Inherited,
+            ))
             .with_children(|root| {
                 for (idx, &(_, _, top)) in BOWL_STEPS.iter().enumerate() {
                     root.spawn((
@@ -718,14 +790,22 @@ pub fn setup_pit_3d(
                         Transform::from_xyz(0.0, top * 0.5, 0.0),
                     ));
                 }
-                root.spawn((Mesh3d(well_mesh.clone()), MeshMaterial3d(well_mat.clone()), Transform::from_xyz(0.0, 0.15, 0.0)));
+                root.spawn((
+                    Mesh3d(well_mesh.clone()),
+                    MeshMaterial3d(well_mat.clone()),
+                    Transform::from_xyz(0.0, 0.15, 0.0),
+                ));
                 root.spawn((
                     Pit3dWellGlow { instrument: inst },
                     Mesh3d(glow_mesh.clone()),
                     MeshMaterial3d(glow_mat),
                     Transform::from_xyz(0.0, 0.36, 0.0),
                 ));
-                root.spawn((Mesh3d(apron_mesh.clone()), MeshMaterial3d(apron_mat), Transform::from_xyz(0.0, 0.15, 0.0)));
+                root.spawn((
+                    Mesh3d(apron_mesh.clone()),
+                    MeshMaterial3d(apron_mat),
+                    Transform::from_xyz(0.0, 0.15, 0.0),
+                ));
 
                 // Pulpit on the north rim with desk and tape screen.
                 root.spawn((
@@ -742,10 +822,19 @@ pub fn setup_pit_3d(
                     Pit3dPulpitScreen { instrument: inst },
                     Mesh3d(screen_mesh.clone()),
                     MeshMaterial3d(screen_mat),
-                    Transform::from_xyz(0.0, PULPIT_TOP_Y + 4.1, PULPIT_OFFSET_Z + 3.0).with_rotation(Quat::from_rotation_x(-0.2)),
+                    Transform::from_xyz(0.0, PULPIT_TOP_Y + 4.1, PULPIT_OFFSET_Z + 3.0)
+                        .with_rotation(Quat::from_rotation_x(-0.2)),
                 ));
 
-                spawn_brass_octagon_rail(root, &rail_mesh, &post_mesh, brass.clone(), BOWL_RIM_RADIUS + 0.6, 4.8 + 3.4, 4.8);
+                spawn_brass_octagon_rail(
+                    root,
+                    &rail_mesh,
+                    &post_mesh,
+                    brass.clone(),
+                    BOWL_RIM_RADIUS + 0.6,
+                    4.8 + 3.4,
+                    4.8,
+                );
             });
     }
 
@@ -764,7 +853,8 @@ pub fn setup_pit_3d(
             ..default()
         }
         .build(),
-        Transform::from_translation(FLOOR_3D_CENTER + Vec3::new(120.0, 220.0, 160.0)).looking_at(FLOOR_3D_CENTER, Vec3::Y),
+        Transform::from_translation(FLOOR_3D_CENTER + Vec3::new(120.0, 220.0, 160.0))
+            .looking_at(FLOOR_3D_CENTER, Vec3::Y),
     ));
     commands.spawn((
         PointLight {
@@ -779,7 +869,10 @@ pub fn setup_pit_3d(
 
     // Proxy figures for every slot of every pit.
     let proxy_mats = Pit3dProxyMaterials {
-        hand_idle: materials.add(StandardMaterial { base_color: Color::srgb(0.95, 0.78, 0.62), ..default() }),
+        hand_idle: materials.add(StandardMaterial {
+            base_color: Color::srgb(0.95, 0.78, 0.62),
+            ..default()
+        }),
         hand_buy: materials.add(StandardMaterial {
             base_color: Color::srgb(0.18, 1.0, 0.45),
             emissive: LinearRgba::from(Color::srgb(0.10, 0.9, 0.35)) * 3.0,
@@ -800,9 +893,14 @@ pub fn setup_pit_3d(
     let legs_mesh = meshes.add(Cuboid::new(3.0, 8.0, 1.8));
     let head_mesh = meshes.add(Cuboid::new(1.9, 2.1, 1.9));
     let hand_mesh = meshes.add(Cuboid::new(1.1, 1.3, 0.5));
-    let legs_mat = materials.add(StandardMaterial { base_color: Color::srgb_u8(0x2a, 0x2c, 0x34), ..default() });
-    let mut jacket_mats: std::collections::HashMap<u8, Handle<StandardMaterial>> = std::collections::HashMap::new();
-    let mut skin_mats: std::collections::HashMap<usize, Handle<StandardMaterial>> = std::collections::HashMap::new();
+    let legs_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb_u8(0x2a, 0x2c, 0x34),
+        ..default()
+    });
+    let mut jacket_mats: std::collections::HashMap<u8, Handle<StandardMaterial>> =
+        std::collections::HashMap::new();
+    let mut skin_mats: std::collections::HashMap<usize, Handle<StandardMaterial>> =
+        std::collections::HashMap::new();
 
     for inst in Instrument::ALL {
         let origin = pit_3d_origin(inst);
@@ -811,27 +909,52 @@ pub fn setup_pit_3d(
             let (primary, _, _) = jacket.colors();
             let jacket_mat = jacket_mats
                 .entry(jacket as u8)
-                .or_insert_with(|| materials.add(StandardMaterial { base_color: primary, perceptual_roughness: 0.75, ..default() }))
+                .or_insert_with(|| {
+                    materials.add(StandardMaterial {
+                        base_color: primary,
+                        perceptual_roughness: 0.75,
+                        ..default()
+                    })
+                })
                 .clone();
             let skin_mat = skin_mats
                 .entry(slot)
                 .or_insert_with(|| {
                     let (_, skin, _) = crate::unimate::sample_demographics(seed_for_slot(slot));
-                    materials.add(StandardMaterial { base_color: skin, perceptual_roughness: 0.65, ..default() })
+                    materials.add(StandardMaterial {
+                        base_color: skin,
+                        perceptual_roughness: 0.65,
+                        ..default()
+                    })
                 })
                 .clone();
             let (home, rot) = compute_pit_home_position(slot, SLOTS, origin);
             commands
-                .spawn((Pit3dProxy { instrument: inst, slot }, Transform::from_translation(home).with_rotation(rot), Visibility::Hidden))
+                .spawn((
+                    Pit3dProxy {
+                        instrument: inst,
+                        slot,
+                    },
+                    Transform::from_translation(home).with_rotation(rot),
+                    Visibility::Hidden,
+                ))
                 .with_children(|p| {
-                    p.spawn((Mesh3d(legs_mesh.clone()), MeshMaterial3d(legs_mat.clone()), Transform::from_xyz(0.0, 4.0, 0.0)));
+                    p.spawn((
+                        Mesh3d(legs_mesh.clone()),
+                        MeshMaterial3d(legs_mat.clone()),
+                        Transform::from_xyz(0.0, 4.0, 0.0),
+                    ));
                     p.spawn((
                         Pit3dProxyBody,
                         Mesh3d(body_mesh.clone()),
                         MeshMaterial3d(jacket_mat.clone()),
                         Transform::from_xyz(0.0, 11.0, 0.0),
                     ));
-                    p.spawn((Mesh3d(head_mesh.clone()), MeshMaterial3d(skin_mat.clone()), Transform::from_xyz(0.0, 15.8, 0.0)));
+                    p.spawn((
+                        Mesh3d(head_mesh.clone()),
+                        MeshMaterial3d(skin_mat.clone()),
+                        Transform::from_xyz(0.0, 15.8, 0.0),
+                    ));
                     for is_left in [true, false] {
                         let x = if is_left { -2.6 } else { 2.6 };
                         p.spawn((
@@ -858,7 +981,9 @@ pub fn setup_pit_3d(
     let deal_beam_mesh = meshes.add(Cylinder::new(0.08, 1.0));
     for link_idx in 0..4 {
         commands.spawn((
-            Pit3dDealLink { link_index: link_idx },
+            Pit3dDealLink {
+                link_index: link_idx,
+            },
             Mesh3d(deal_beam_mesh.clone()),
             MeshMaterial3d(deal_beam_mat.clone()),
             Transform::from_translation(PIT_3D_ORIGIN),
@@ -891,7 +1016,11 @@ pub fn sync_pit_3d_rig_focus(
     for slot in 0..SLOTS {
         let role = role_for_slot(slot);
         let (pos, default_rotation) = compute_pit_home_position(slot, SLOTS, origin);
-        let clip = if role == ParticipantRole::Reporter { UnimateClip::Pulpit } else { UnimateClip::Idle };
+        let clip = if role == ParticipantRole::Reporter {
+            UnimateClip::Pulpit
+        } else {
+            UnimateClip::Idle
+        };
         let facing_y = default_rotation.to_euler(EulerRot::YXZ).0;
         let entity = spawn_unimate_trader_entity(
             &mut commands,
@@ -919,8 +1048,19 @@ pub fn sync_pit_3d_with_market(
     view_mode: Res<FloorViewMode>,
     engines: Res<PitEngines>,
     focus: Res<Pit3dRigFocus>,
-    mut crowd: Query<(&Pit3dCrowdMember, &mut UnimateTrader, &mut Transform, &mut Visibility), Without<Pit3dDealLink>>,
-    mut deal_links: Query<(&Pit3dDealLink, &mut Transform, &mut Visibility), Without<Pit3dCrowdMember>>,
+    mut crowd: Query<
+        (
+            &Pit3dCrowdMember,
+            &mut UnimateTrader,
+            &mut Transform,
+            &mut Visibility,
+        ),
+        Without<Pit3dDealLink>,
+    >,
+    mut deal_links: Query<
+        (&Pit3dDealLink, &mut Transform, &mut Visibility),
+        Without<Pit3dCrowdMember>,
+    >,
 ) {
     if !view_mode.is_3d() {
         return;
@@ -995,7 +1135,8 @@ pub fn sync_pit_3d_with_market(
                 target_rotations[slot] = rot;
             }
             _ => {
-                target_positions[slot] = phase_target_position(origin, slot, &phase, &home_positions);
+                target_positions[slot] =
+                    phase_target_position(origin, slot, &phase, &home_positions);
                 target_rotations[slot] = match phase.counterparty() {
                     Some(cp) => {
                         let to_partner = current_positions[cp] - current_positions[slot];
@@ -1006,9 +1147,15 @@ pub fn sync_pit_3d_with_market(
                         }
                     }
                     None => match phase {
-                        Phase::BackingAway { .. } => default_rotations[slot] * Quat::from_rotation_y(0.55),
-                        Phase::Missed { .. } => default_rotations[slot] * Quat::from_rotation_y(-0.45),
-                        Phase::Endorsing { .. } => default_rotations[slot] * Quat::from_rotation_y(0.2),
+                        Phase::BackingAway { .. } => {
+                            default_rotations[slot] * Quat::from_rotation_y(0.55)
+                        }
+                        Phase::Missed { .. } => {
+                            default_rotations[slot] * Quat::from_rotation_y(-0.45)
+                        }
+                        Phase::Endorsing { .. } => {
+                            default_rotations[slot] * Quat::from_rotation_y(0.2)
+                        }
                         _ => default_rotations[slot],
                     },
                 };
@@ -1038,26 +1185,40 @@ pub fn sync_pit_3d_with_market(
             Phase::Hitting { .. } | Phase::Confirming { .. } => 0.9,
             _ => 0.0,
         };
-        let target = if slot == 1 { target_positions[slot] } else { settle_on_steps(origin, target_positions[slot]) };
-        let move_rate = if matches!(phase, Phase::Hitting { .. } | Phase::Running { .. }) { 6.5 } else { 4.0 };
-        transform.translation = transform.translation.lerp(target, (dt * move_rate).min(1.0));
-        transform.rotation = transform.rotation.slerp(target_rotations[slot], (dt * 6.0).min(1.0));
+        let target = if slot == 1 {
+            target_positions[slot]
+        } else {
+            settle_on_steps(origin, target_positions[slot])
+        };
+        let move_rate = if matches!(phase, Phase::Hitting { .. } | Phase::Running { .. }) {
+            6.5
+        } else {
+            4.0
+        };
+        transform.translation = transform
+            .translation
+            .lerp(target, (dt * move_rate).min(1.0));
+        transform.rotation = transform
+            .rotation
+            .slerp(target_rotations[slot], (dt * 6.0).min(1.0));
     }
 
     for (link, mut link_transform, mut link_vis) in deal_links.iter_mut() {
-        if let Some(&(a, b, beam)) = pairs.get(link.link_index) {
-            if beam && a < active_count && b < active_count {
-                let pos_a = current_positions[a] + Vec3::new(0.0, 7.0, 0.0);
-                let pos_b = current_positions[b] + Vec3::new(0.0, 7.0, 0.0);
-                let diff = pos_b - pos_a;
-                let len = diff.length();
-                if len > 0.1 {
-                    link_transform.translation = (pos_a + pos_b) * 0.5;
-                    link_transform.rotation = Quat::from_rotation_arc(Vec3::Y, diff / len);
-                    link_transform.scale = Vec3::new(1.0, len, 1.0);
-                    *link_vis = Visibility::Inherited;
-                    continue;
-                }
+        if let Some(&(a, b, beam)) = pairs.get(link.link_index)
+            && beam
+            && a < active_count
+            && b < active_count
+        {
+            let pos_a = current_positions[a] + Vec3::new(0.0, 7.0, 0.0);
+            let pos_b = current_positions[b] + Vec3::new(0.0, 7.0, 0.0);
+            let diff = pos_b - pos_a;
+            let len = diff.length();
+            if len > 0.1 {
+                link_transform.translation = (pos_a + pos_b) * 0.5;
+                link_transform.rotation = Quat::from_rotation_arc(Vec3::Y, diff / len);
+                link_transform.scale = Vec3::new(1.0, len, 1.0);
+                *link_vis = Visibility::Inherited;
+                continue;
             }
         }
         *link_vis = Visibility::Hidden;
@@ -1071,9 +1232,26 @@ pub fn sync_pit_3d_proxies(
     engines: Res<PitEngines>,
     focus: Res<Pit3dRigFocus>,
     proxy_mats: Res<Pit3dProxyMaterials>,
-    mut proxies: Query<(&Pit3dProxy, &mut Transform, &mut Visibility, &Children), (Without<Pit3dProxyHand>, Without<Pit3dProxyBody>)>,
-    mut hands: Query<(&Pit3dProxyHand, &mut Transform, &mut MeshMaterial3d<StandardMaterial>), (Without<Pit3dProxy>, Without<Pit3dProxyBody>)>,
-    mut bodies: Query<&mut Transform, (With<Pit3dProxyBody>, Without<Pit3dProxy>, Without<Pit3dProxyHand>)>,
+    mut proxies: Query<
+        (&Pit3dProxy, &mut Transform, &mut Visibility, &Children),
+        (Without<Pit3dProxyHand>, Without<Pit3dProxyBody>),
+    >,
+    mut hands: Query<
+        (
+            &Pit3dProxyHand,
+            &mut Transform,
+            &mut MeshMaterial3d<StandardMaterial>,
+        ),
+        (Without<Pit3dProxy>, Without<Pit3dProxyBody>),
+    >,
+    mut bodies: Query<
+        &mut Transform,
+        (
+            With<Pit3dProxyBody>,
+            Without<Pit3dProxy>,
+            Without<Pit3dProxyHand>,
+        ),
+    >,
 ) {
     if !view_mode.is_3d() {
         return;
@@ -1119,7 +1297,10 @@ pub fn sync_pit_3d_proxies(
         let (mut target, mut rot) = if matches!(phase, Phase::Idle) && proxy.slot != 1 {
             compute_idle_movement(homes[idx][proxy.slot], rots[idx][proxy.slot], proxy.slot, t)
         } else {
-            (phase_target_position(origin, proxy.slot, &phase, &homes[idx]), rots[idx][proxy.slot])
+            (
+                phase_target_position(origin, proxy.slot, &phase, &homes[idx]),
+                rots[idx][proxy.slot],
+            )
         };
         if let Some(cp) = phase.counterparty() {
             let to = homes[idx][cp] - target;
@@ -1135,9 +1316,14 @@ pub fn sync_pit_3d_proxies(
 
         // Hands: up and coloured while the engine says they are showing something.
         let (hands_up, mat) = match phase {
-            Phase::Quoting { side, .. } | Phase::Working { side, .. } => {
-                (true, if side.is_buy() { &proxy_mats.hand_buy } else { &proxy_mats.hand_sell })
-            }
+            Phase::Quoting { side, .. } | Phase::Working { side, .. } => (
+                true,
+                if side.is_buy() {
+                    &proxy_mats.hand_buy
+                } else {
+                    &proxy_mats.hand_sell
+                },
+            ),
             Phase::Hitting { .. } | Phase::Confirming { .. } => (true, &proxy_mats.hand_point),
             Phase::Disputing { .. } => (true, &proxy_mats.hand_sell),
             _ => (false, &proxy_mats.hand_idle),
@@ -1158,7 +1344,9 @@ pub fn sync_pit_3d_proxies(
                 }
             } else if let Ok(mut bt) = bodies.get_mut(child) {
                 let lean = if shouting { 0.18 } else { 0.0 };
-                bt.rotation = bt.rotation.slerp(Quat::from_rotation_x(lean), (dt * 6.0).min(1.0));
+                bt.rotation = bt
+                    .rotation
+                    .slerp(Quat::from_rotation_x(lean), (dt * 6.0).min(1.0));
             }
         }
     }
@@ -1183,7 +1371,9 @@ pub fn sync_pit_3d_wells(
     for (well, handle) in wells.iter() {
         let pit = engines.pit(well.instrument);
         let sig = &pit.signals;
-        let Some(mat) = materials.get_mut(handle) else { continue };
+        let Some(mat) = materials.get_mut(handle) else {
+            continue;
+        };
         // The desk's confidence in its read lights the well a little: a confident floor is a bright one.
         let read_glow = pit.floor_read.map(|r| r.confidence * 0.5).unwrap_or(0.0);
         let brightness = 0.25 + sig.sound * 1.6 + sig.pressure.abs() * 0.4 + read_glow;
@@ -1201,7 +1391,9 @@ pub fn sync_pit_3d_wells(
     }
     for (screen, handle) in screens.iter() {
         let pit = engines.pit(screen.instrument);
-        let Some(mat) = materials.get_mut(handle) else { continue };
+        let Some(mat) = materials.get_mut(handle) else {
+            continue;
+        };
         let glow = 1.0 + pit.signals.sound * 2.0;
         mat.emissive = match last_print_up(pit) {
             Some(true) => LinearRgba::from(Color::srgb(0.0, 0.95, 0.40)) * glow,
@@ -1213,7 +1405,11 @@ pub fn sync_pit_3d_wells(
 
 /// Colour for a side, shared with overlays.
 pub fn side_color(side: Side) -> Color {
-    if side.is_buy() { Color::srgb(0.25, 1.0, 0.45) } else { Color::srgb(1.0, 0.32, 0.32) }
+    if side.is_buy() {
+        Color::srgb(0.25, 1.0, 0.45)
+    } else {
+        Color::srgb(1.0, 0.32, 0.32)
+    }
 }
 
 #[cfg(test)]
@@ -1222,30 +1418,38 @@ mod tests {
 
     #[test]
     fn test_ring_mesh_attributes() {
-        for mesh in [create_octagon_step_mesh(20.0, 1.5), create_octagon_ring_mesh(10.0, 20.0, 1.2)] {
+        for mesh in [
+            create_octagon_step_mesh(20.0, 1.5),
+            create_octagon_ring_mesh(10.0, 20.0, 1.2),
+        ] {
             assert_eq!(mesh.primitive_topology(), PrimitiveTopology::TriangleList);
             let positions = mesh.attribute(Mesh::ATTRIBUTE_POSITION).expect("positions");
             let normals = mesh.attribute(Mesh::ATTRIBUTE_NORMAL).expect("normals");
             let uvs = mesh.attribute(Mesh::ATTRIBUTE_UV_0).expect("uvs");
-            assert!(positions.len() > 0);
+            assert!(!positions.is_empty());
             assert_eq!(positions.len(), normals.len());
             assert_eq!(positions.len(), uvs.len());
             let indices = mesh.indices().expect("indices");
-            assert!(indices.len() > 0);
+            assert!(!indices.is_empty());
             assert_eq!(indices.len() % 3, 0);
         }
     }
 
     #[test]
     fn test_pit_3d_origin_isolation_and_spacing() {
-        assert!(PIT_3D_ORIGIN.y >= 4000.0);
+        const { assert!(PIT_3D_ORIGIN.y >= 4000.0) };
         for a in Instrument::ALL {
             for b in Instrument::ALL {
                 if a == b {
                     continue;
                 }
                 let d = (pit_3d_origin(a) - pit_3d_origin(b)).length();
-                assert!(d >= BOWL_RIM_RADIUS * 2.0 + 8.0, "{:?} and {:?} are {d} apart", a, b);
+                assert!(
+                    d >= BOWL_RIM_RADIUS * 2.0 + 8.0,
+                    "{:?} and {:?} are {d} apart",
+                    a,
+                    b
+                );
             }
         }
     }
@@ -1256,18 +1460,40 @@ mod tests {
         // forex and crypto, which share the front row with a gap between them.
         for d in District::ALL {
             let zs: Vec<f32> = d.pits().map(|i| pit_3d_origin(i).z).collect();
-            assert!(zs.iter().all(|z| (z - zs[0]).abs() < 1e-3), "{d:?} is not on one row: {zs:?}");
+            assert!(
+                zs.iter().all(|z| (z - zs[0]).abs() < 1e-3),
+                "{d:?} is not on one row: {zs:?}"
+            );
         }
         let row = |d: District| pit_3d_origin(d.pits().next().unwrap()).z;
-        assert!(row(District::Metals) < row(District::Equities) && row(District::Equities) < row(District::Forex));
+        assert!(
+            row(District::Metals) < row(District::Equities)
+                && row(District::Equities) < row(District::Forex)
+        );
         assert_eq!(row(District::Forex), row(District::Crypto));
         let gap = pit_3d_origin(Instrument::Bitcoin).x - pit_3d_origin(Instrument::GbpUsd).x;
-        assert!(gap > PIT_PITCH * 1.25, "Bitcoin stands apart from the FX pair: {gap}");
+        assert!(
+            gap > PIT_PITCH * 1.25,
+            "Bitcoin stands apart from the FX pair: {gap}"
+        );
         // The floor centre is the middle of the layout.
-        let xs: Vec<f32> = Instrument::ALL.iter().map(|i| pit_3d_origin(*i).x).collect();
-        let zs: Vec<f32> = Instrument::ALL.iter().map(|i| pit_3d_origin(*i).z).collect();
-        let mid = |v: &[f32]| (v.iter().cloned().fold(f32::INFINITY, f32::min) + v.iter().cloned().fold(f32::NEG_INFINITY, f32::max)) * 0.5;
-        assert!((mid(&xs) - FLOOR_3D_CENTER.x).abs() < 1.0 && (mid(&zs) - FLOOR_3D_CENTER.z).abs() < 1.0);
+        let xs: Vec<f32> = Instrument::ALL
+            .iter()
+            .map(|i| pit_3d_origin(*i).x)
+            .collect();
+        let zs: Vec<f32> = Instrument::ALL
+            .iter()
+            .map(|i| pit_3d_origin(*i).z)
+            .collect();
+        let mid = |v: &[f32]| {
+            (v.iter().cloned().fold(f32::INFINITY, f32::min)
+                + v.iter().cloned().fold(f32::NEG_INFINITY, f32::max))
+                * 0.5
+        };
+        assert!(
+            (mid(&xs) - FLOOR_3D_CENTER.x).abs() < 1.0
+                && (mid(&zs) - FLOOR_3D_CENTER.z).abs() < 1.0
+        );
     }
 
     #[test]
@@ -1276,19 +1502,33 @@ mod tests {
             let sign = district_sign_origin(d);
             for i in d.pits() {
                 let o = pit_3d_origin(i);
-                assert!(sign.z < o.z - BOWL_RIM_RADIUS, "{d:?} sign at z {} overlaps {i:?}", sign.z);
+                assert!(
+                    sign.z < o.z - BOWL_RIM_RADIUS,
+                    "{d:?} sign at z {} overlaps {i:?}",
+                    sign.z
+                );
                 assert!((sign.x - o.x).abs() <= PIT_PITCH * 1.5 + 1.0);
             }
             // And clear of every other pit.
-            assert_eq!(nearest_pit(sign, BOWL_RIM_RADIUS), None, "{d:?} sign stands in a pit");
+            assert_eq!(
+                nearest_pit(sign, BOWL_RIM_RADIUS),
+                None,
+                "{d:?} sign stands in a pit"
+            );
         }
     }
 
     #[test]
     fn test_nearest_pit() {
         let o = pit_3d_origin(Instrument::Gold);
-        assert_eq!(nearest_pit(o + Vec3::new(5.0, 0.0, -3.0), 46.0), Some(Instrument::Gold));
-        assert_eq!(nearest_pit(PIT_3D_ORIGIN + Vec3::new(-70.0, 0.0, -300.0), 46.0), None);
+        assert_eq!(
+            nearest_pit(o + Vec3::new(5.0, 0.0, -3.0), 46.0),
+            Some(Instrument::Gold)
+        );
+        assert_eq!(
+            nearest_pit(PIT_3D_ORIGIN + Vec3::new(-70.0, 0.0, -300.0), 46.0),
+            None
+        );
     }
 
     #[test]
@@ -1311,10 +1551,16 @@ mod tests {
                     assert!((p.y - origin.y - PULPIT_TOP_Y).abs() < 1e-3);
                     continue;
                 }
-                assert!((p.y - origin.y - step_height_at(r)).abs() < 1e-3, "slot {slot} floats at r {r}");
+                assert!(
+                    (p.y - origin.y - step_height_at(r)).abs() < 1e-3,
+                    "slot {slot} floats at r {r}"
+                );
                 let fwd = rot * Vec3::Z;
                 let to_center = (origin - p).with_y(0.0).normalize();
-                assert!(fwd.dot(to_center) > 0.95, "slot {slot} should face the well");
+                assert!(
+                    fwd.dot(to_center) > 0.95,
+                    "slot {slot} should face the well"
+                );
             }
         }
     }
@@ -1323,11 +1569,16 @@ mod tests {
     fn test_home_positions_keep_their_distance() {
         let origin = pit_3d_origin(Instrument::Gold);
         for active in [5usize, 9, 14, 18] {
-            let pts: Vec<Vec3> = (0..active).map(|s| compute_pit_home_position(s, active, origin).0).collect();
+            let pts: Vec<Vec3> = (0..active)
+                .map(|s| compute_pit_home_position(s, active, origin).0)
+                .collect();
             for i in 0..active {
                 for j in (i + 1)..active {
                     let d = (pts[i] - pts[j]).with_y(0.0).length();
-                    assert!(d >= 6.0, "active {active}: slots {i} and {j} only {d:.1} apart");
+                    assert!(
+                        d >= 6.0,
+                        "active {active}: slots {i} and {j} only {d:.1} apart"
+                    );
                 }
             }
         }
@@ -1362,10 +1613,18 @@ mod tests {
 
     #[test]
     fn test_compute_deal_meeting_positions() {
-        let (a, b) = compute_deal_meeting_positions(Vec3::new(10.0, 2.0, 0.0), Vec3::new(-10.0, 2.0, 0.0), 6.0);
+        let (a, b) = compute_deal_meeting_positions(
+            Vec3::new(10.0, 2.0, 0.0),
+            Vec3::new(-10.0, 2.0, 0.0),
+            6.0,
+        );
         assert!(a.distance(b) >= 6.0);
         assert!(a.x < 10.0 && b.x > -10.0);
-        let (ca, cb) = compute_deal_meeting_positions(Vec3::new(3.5, 2.0, 0.0), Vec3::new(-3.5, 2.0, 0.0), 6.0);
+        let (ca, cb) = compute_deal_meeting_positions(
+            Vec3::new(3.5, 2.0, 0.0),
+            Vec3::new(-3.5, 2.0, 0.0),
+            6.0,
+        );
         assert!((ca.distance(cb) - 6.0).abs() < 0.01);
     }
 
@@ -1376,8 +1635,15 @@ mod tests {
         current_positions[4] = Vec3::new(-10.0, 2.0, 0.0);
         let active_deals = vec![(2, 4, UnimateClip::Buy, UnimateClip::Sell, true)];
         let bystander_home = Vec3::new(0.0, 2.0, 0.5);
-        let (target_pos, target_rot, clip) =
-            compute_pit_bystander_behavior(Vec3::ZERO, bystander_home, Quat::IDENTITY, 3, 5.0, &active_deals, &current_positions);
+        let (target_pos, target_rot, clip) = compute_pit_bystander_behavior(
+            Vec3::ZERO,
+            bystander_home,
+            Quat::IDENTITY,
+            3,
+            5.0,
+            &active_deals,
+            &current_positions,
+        );
         assert!(target_pos.distance(bystander_home) >= 2.0);
         let fwd = target_rot * Vec3::Z;
         let to_deal = (Vec3::new(0.0, 2.0, 0.0) - target_pos).normalize();
@@ -1390,8 +1656,24 @@ mod tests {
         let current_positions = [Vec3::ZERO; 18];
         let origin = pit_3d_origin(Instrument::Us30);
         let home = origin + Vec3::new(LOCAL_STEP_RADIUS, 2.4, 0.0);
-        let (p1, _, _) = compute_pit_bystander_behavior(origin, home, Quat::IDENTITY, 2, 1.0, &[], &current_positions);
-        let (p2, _, _) = compute_pit_bystander_behavior(origin, home, Quat::IDENTITY, 2, 8.0, &[], &current_positions);
+        let (p1, _, _) = compute_pit_bystander_behavior(
+            origin,
+            home,
+            Quat::IDENTITY,
+            2,
+            1.0,
+            &[],
+            &current_positions,
+        );
+        let (p2, _, _) = compute_pit_bystander_behavior(
+            origin,
+            home,
+            Quat::IDENTITY,
+            2,
+            8.0,
+            &[],
+            &current_positions,
+        );
         assert!(p1.distance(home) > 0.1 && p1.distance(home) < 4.0);
         assert!(p1.distance(p2) > 0.5);
     }

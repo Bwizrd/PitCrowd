@@ -37,12 +37,17 @@ mod prior {
     use std::path::PathBuf;
     use std::time::Instant;
 
-    use opencry_visual::candles::{parse_iso_ms, wall_clock_ms, Candle};
+    use opencry_visual::candles::{Candle, parse_iso_ms, wall_clock_ms};
     use opencry_visual::influx;
-    use opencry_visual::levels::{compose, detect_levels, round_step, tape_symbol, LevelKind, LEVEL_NODES};
+    use opencry_visual::levels::{
+        LEVEL_NODES, LevelKind, compose, detect_levels, round_step, tape_symbol,
+    };
     use opencry_visual::market::Instrument;
     use opencry_visual::pit_engine::tick_size;
-    use opencry_visual::reaction::{classify, unit_ticks, wilson, Outcome, PriorTable, Side, Step, Tally, TouchTracker, PRIOR_HORIZONS_MIN};
+    use opencry_visual::reaction::{
+        Outcome, PRIOR_HORIZONS_MIN, PriorTable, Side, Step, Tally, TouchTracker, classify,
+        unit_ticks, wilson,
+    };
     use opencry_visual::report::Session;
     use opencry_visual::tape_chart::BOARD_BARS;
 
@@ -50,7 +55,9 @@ mod prior {
 
     fn arg(name: &str) -> Option<String> {
         let a: Vec<String> = std::env::args().collect();
-        a.iter().position(|x| x == name).and_then(|i| a.get(i + 1).cloned())
+        a.iter()
+            .position(|x| x == name)
+            .and_then(|i| a.get(i + 1).cloned())
     }
 
     fn flag(name: &str) -> bool {
@@ -58,7 +65,11 @@ mod prior {
     }
 
     fn parse_when(s: &str) -> Result<i64, String> {
-        let full = if s.len() == 10 { format!("{s}T00:00:00Z") } else { s.to_string() };
+        let full = if s.len() == 10 {
+            format!("{s}T00:00:00Z")
+        } else {
+            s.to_string()
+        };
         parse_iso_ms(&full).ok_or(format!("bad time {s}; want YYYY-MM-DD or RFC3339"))
     }
 
@@ -76,14 +87,19 @@ mod prior {
         let d = doy - (153 * mp + 2) / 5 + 1;
         let m = if mp < 10 { mp + 3 } else { mp - 9 };
         let y = if m <= 2 { y + 1 } else { y };
-        format!("{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z", rem / 3600, rem % 3600 / 60, rem % 60)
+        format!(
+            "{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z",
+            rem / 3600,
+            rem % 3600 / 60,
+            rem % 60
+        )
     }
 
     // -----------------------------------------------------------------------
     // Bars, cached
     // -----------------------------------------------------------------------
 
-    fn cache_path(dir: &PathBuf, sb: &str) -> PathBuf {
+    fn cache_path(dir: &std::path::Path, sb: &str) -> PathBuf {
         dir.join(format!("{sb}_1m.txt"))
     }
 
@@ -102,12 +118,25 @@ mod prior {
         let mut out = Vec::new();
         for l in lines {
             let mut p = l.split_whitespace();
-            let (Some(t), Some(o), Some(h), Some(lo), Some(c), Some(v)) = (p.next(), p.next(), p.next(), p.next(), p.next(), p.next()) else { continue };
+            let (Some(t), Some(o), Some(h), Some(lo), Some(c), Some(v)) =
+                (p.next(), p.next(), p.next(), p.next(), p.next(), p.next())
+            else {
+                continue;
+            };
             let t: i64 = t.parse().ok()?;
             if t < from_ms || t >= to_ms {
                 continue;
             }
-            out.push(Candle { time_ms: t, open: o.parse().ok()?, high: h.parse().ok()?, low: lo.parse().ok()?, close: c.parse().ok()?, volume: v.parse().ok()?, delta: 0.0, sweep: 0.0 });
+            out.push(Candle {
+                time_ms: t,
+                open: o.parse().ok()?,
+                high: h.parse().ok()?,
+                low: lo.parse().ok()?,
+                close: c.parse().ok()?,
+                volume: v.parse().ok()?,
+                delta: 0.0,
+                sweep: 0.0,
+            });
         }
         Some(out)
     }
@@ -119,7 +148,10 @@ mod prior {
         let mut s = String::with_capacity(bars.len() * 48);
         s.push_str(&format!("range {from_ms} {to_ms}\n"));
         for b in bars {
-            s.push_str(&format!("{} {} {} {} {} {}\n", b.time_ms, b.open, b.high, b.low, b.close, b.volume));
+            s.push_str(&format!(
+                "{} {} {} {} {} {}\n",
+                b.time_ms, b.open, b.high, b.low, b.close, b.volume
+            ));
         }
         let _ = fs::write(path, s);
     }
@@ -136,12 +168,21 @@ mod prior {
 
     /// Feed one instrument's bars through the live level and touch code, adding every resolved
     /// touch to `table`.
-    pub fn walk(inst: Instrument, bars: &[Candle], horizons: &[u32], table: &mut PriorTable) -> Walk {
+    pub fn walk(
+        inst: Instrument,
+        bars: &[Candle],
+        horizons: &[u32],
+        table: &mut PriorTable,
+    ) -> Walk {
         let tick = tick_size(inst);
         let round = round_step(inst);
         let sym = tape_symbol(inst);
         let mut tracker = TouchTracker::default();
-        let mut w = Walk { touches: 0, pending: 0, gapped: 0 };
+        let mut w = Walk {
+            touches: 0,
+            pending: 0,
+            gapped: 0,
+        };
         let max_h = *horizons.iter().max().unwrap_or(&15) as usize;
         for i in 1..bars.len() {
             let start = i + 1 - BOARD_BARS.min(i + 1);
@@ -149,7 +190,14 @@ mod prior {
             let levels = compose(detect_levels(window, tick, round), LEVEL_NODES * 2);
             let unit = unit_ticks(window, tick);
             let bar = &bars[i];
-            let touches = tracker.step(&levels, Step::bar(bar), bar.time_ms, bar.time_ms, tick, unit);
+            let touches = tracker.step(
+                &levels,
+                Step::bar(bar),
+                bar.time_ms,
+                bar.time_ms,
+                tick,
+                unit,
+            );
             if touches.is_empty() {
                 continue;
             }
@@ -205,7 +253,10 @@ mod prior {
             out.push_str(&s);
             out.push('\n');
         };
-        w(format!("REACTION PRIOR  {} .. {}  ({} bars)   built {}", table.from, table.to, table.bars, table.built_at));
+        w(format!(
+            "REACTION PRIOR  {} .. {}  ({} bars)   built {}",
+            table.from, table.to, table.bars, table.built_at
+        ));
         w("A touch is price arriving at a level from outside; the outcome is the path of the next H minutes.".into());
         w("hold = anything but a break, with its Wilson 95% interval.".into());
         let kinds = [
@@ -255,7 +306,10 @@ mod prior {
         if let Some(&h) = horizons.iter().max() {
             let base = table.tally(None, None, None, None, h).hold_rate();
             w(String::new());
-            w(format!("== pit x kind x side cells at {h} min with n >= 100, ranked by hold rate against the base {}", pct(base)));
+            w(format!(
+                "== pit x kind x side cells at {h} min with n >= 100, ranked by hold rate against the base {}",
+                pct(base)
+            ));
             let mut cells: Vec<(String, Tally)> = Vec::new();
             for inst in symbols {
                 let sym = tape_symbol(*inst);
@@ -290,12 +344,20 @@ mod prior {
     pub fn run() -> Result<(), String> {
         let t0 = Instant::now();
         let symbols: Vec<Instrument> = match arg("--symbols").as_deref() {
-            None | Some("all") => Instrument::ALL.iter().copied().filter(|i| *i != Instrument::Bitcoin).collect(),
+            None | Some("all") => Instrument::ALL
+                .iter()
+                .copied()
+                .filter(|i| *i != Instrument::Bitcoin)
+                .collect(),
             Some(list) => list
                 .split(',')
                 .map(|s| {
                     let want = s.trim().to_uppercase().replace('/', "");
-                    Instrument::ALL.iter().copied().find(|i| tape_symbol(*i) == want).ok_or(format!("unknown symbol {s}"))
+                    Instrument::ALL
+                        .iter()
+                        .copied()
+                        .find(|i| tape_symbol(*i) == want)
+                        .ok_or(format!("unknown symbol {s}"))
                 })
                 .collect::<Result<_, _>>()?,
         };
@@ -305,27 +367,55 @@ mod prior {
         };
         let from_ms = match (arg("--from"), arg("--days")) {
             (Some(s), _) => parse_when(&s)?,
-            (None, Some(d)) => to_ms - d.parse::<i64>().map_err(|e| format!("--days: {e}"))? * 86_400_000,
+            (None, Some(d)) => {
+                to_ms - d.parse::<i64>().map_err(|e| format!("--days: {e}"))? * 86_400_000
+            }
             (None, None) => parse_when(HISTORY_START)?,
         };
         let horizons: Vec<u32> = match arg("--horizons") {
-            Some(s) => s.split(',').map(|x| x.trim().parse::<u32>().map_err(|e| format!("--horizons: {e}"))).collect::<Result<_, _>>()?,
+            Some(s) => s
+                .split(',')
+                .map(|x| {
+                    x.trim()
+                        .parse::<u32>()
+                        .map_err(|e| format!("--horizons: {e}"))
+                })
+                .collect::<Result<_, _>>()?,
             None => PRIOR_HORIZONS_MIN.to_vec(),
         };
         let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        let out_path = arg("--out").map(PathBuf::from).unwrap_or_else(|| manifest.join("assets/reaction_prior.json"));
+        let out_path = arg("--out")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| manifest.join("assets/reaction_prior.json"));
         let cache_dir = manifest.join("replay_out/bars_cache");
-        let report_dir = arg("--report-dir").map(PathBuf::from).unwrap_or_else(|| manifest.join(format!("replay_out/reaction_prior_{}", stamp(wall_clock_ms()).replace([':', '-'], "").trim_end_matches('Z'))));
+        let report_dir = arg("--report-dir").map(PathBuf::from).unwrap_or_else(|| {
+            manifest.join(format!(
+                "replay_out/reaction_prior_{}",
+                stamp(wall_clock_ms())
+                    .replace([':', '-'], "")
+                    .trim_end_matches('Z')
+            ))
+        });
         fs::create_dir_all(&report_dir).map_err(|e| format!("{}: {e}", report_dir.display()))?;
         let use_cache = !flag("--no-cache");
 
         let cfg = influx::config()?;
-        let mut table = PriorTable { built_at: stamp(wall_clock_ms()), from: stamp(from_ms), to: stamp(to_ms), bars: 0, rows: Vec::new() };
+        let mut table = PriorTable {
+            built_at: stamp(wall_clock_ms()),
+            from: stamp(from_ms),
+            to: stamp(to_ms),
+            bars: 0,
+            rows: Vec::new(),
+        };
         let mut per_symbol: BTreeMap<String, (usize, Walk)> = BTreeMap::new();
         for inst in &symbols {
             let sb = format!("{}_SB", tape_symbol(*inst));
             let cache = cache_path(&cache_dir, &sb);
-            let bars = match if use_cache { read_cache(&cache, from_ms, to_ms) } else { None } {
+            let bars = match if use_cache {
+                read_cache(&cache, from_ms, to_ms)
+            } else {
+                None
+            } {
                 Some(b) => {
                     eprintln!("{sb}: {} bars from cache", b.len());
                     b
@@ -344,7 +434,13 @@ mod prior {
             };
             let t1 = Instant::now();
             let w = walk(*inst, &bars, &horizons, &mut table);
-            eprintln!("{sb}: {} touches ({} still open, {} across a gap) in {:.1}s", w.touches, w.pending, w.gapped, t1.elapsed().as_secs_f64());
+            eprintln!(
+                "{sb}: {} touches ({} still open, {} across a gap) in {:.1}s",
+                w.touches,
+                w.pending,
+                w.gapped,
+                t1.elapsed().as_secs_f64()
+            );
             table.bars += bars.len() as u64;
             per_symbol.insert(sb, (bars.len(), w));
         }
@@ -355,14 +451,32 @@ mod prior {
         let mut text = report(&table, &horizons, &symbols);
         text.push('\n');
         for (sb, (n, w)) in &per_symbol {
-            text.push_str(&format!("{sb:<12} bars {n:>8}  touches {:>7}  open {:>4}  gapped {:>5}\n", w.touches, w.pending, w.gapped));
+            text.push_str(&format!(
+                "{sb:<12} bars {n:>8}  touches {:>7}  open {:>4}  gapped {:>5}\n",
+                w.touches, w.pending, w.gapped
+            ));
         }
-        text.push_str(&format!("\nwrote {} ({} cells) in {:.0}s\n", out_path.display(), table.rows.len(), t0.elapsed().as_secs_f64()));
+        text.push_str(&format!(
+            "\nwrote {} ({} cells) in {:.0}s\n",
+            out_path.display(),
+            table.rows.len(),
+            t0.elapsed().as_secs_f64()
+        ));
         let mut f = fs::File::create(report_dir.join("report.txt")).map_err(|e| e.to_string())?;
         let _ = f.write_all(text.as_bytes());
         print!("{text}");
         println!("report: {}", report_dir.join("report.txt").display());
         Ok(())
+    }
+
+    impl std::fmt::Debug for Walk {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(
+                f,
+                "touches {} pending {} gapped {}",
+                self.touches, self.pending, self.gapped
+            )
+        }
     }
 
     #[cfg(test)]
@@ -386,22 +500,39 @@ mod prior {
                         (px, px + 0.04, px - 0.04, px)
                     }
                 };
-                bars.push(Candle { time_ms: i * 60_000, open: o, high: h, low: l, close: c, volume: 1.0, delta: 0.0, sweep: 0.0 });
+                bars.push(Candle {
+                    time_ms: i * 60_000,
+                    open: o,
+                    high: h,
+                    low: l,
+                    close: c,
+                    volume: 1.0,
+                    delta: 0.0,
+                    sweep: 0.0,
+                });
             }
             let mut table = PriorTable::default();
             let w = walk(Instrument::Silver, &bars, &[5, 15], &mut table);
-            let t = table.tally(Some("XAGUSD"), Some("SWING HI"), Some(Side::FromBelow), None, 15);
+            let t = table.tally(
+                Some("XAGUSD"),
+                Some("SWING HI"),
+                Some(Side::FromBelow),
+                None,
+                15,
+            );
             assert!(t.n >= 1, "{w:?} {table:?}");
             assert_eq!(t.reject, t.n, "the swing high held: {t:?}");
-            assert_eq!(table.tally(None, Some("SWING HI"), Some(Side::FromBelow), None, 15).brk, 0);
+            assert_eq!(
+                table
+                    .tally(None, Some("SWING HI"), Some(Side::FromBelow), None, 15)
+                    .brk,
+                0
+            );
             let r = report(&table, &[5, 15], &[Instrument::Silver]);
-            assert!(r.contains("SWING HI from below") && r.contains("XAGUSD"), "{r}");
-        }
-    }
-
-    impl std::fmt::Debug for Walk {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            write!(f, "touches {} pending {} gapped {}", self.touches, self.pending, self.gapped)
+            assert!(
+                r.contains("SWING HI from below") && r.contains("XAGUSD"),
+                "{r}"
+            );
         }
     }
 }

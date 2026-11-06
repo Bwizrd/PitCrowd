@@ -43,13 +43,17 @@ use std::collections::VecDeque;
 use bevy::prelude::*;
 use serde::Serialize;
 
-use crate::candles::{wall_clock_ms, Candle, CandleStore, Timeframe};
-use crate::jev::{relay_url, AskRule, AskSide, CrewAsk, Direction, JevAsk, JevDesk, LevelSide, MarketInterpretation, ReadSource, ASK_ABSORBING, ASK_BAR_SHAPE, ASK_CARRY_THROUGH, ASK_DELTA_DIVERGENCE, ASK_MAGNET, ASK_STOP_RUN, ASK_TAPE_STATE, ASK_TOUCH_OUTCOME};
+use crate::candles::{Candle, CandleStore, Timeframe, wall_clock_ms};
+use crate::jev::{
+    ASK_ABSORBING, ASK_BAR_SHAPE, ASK_CARRY_THROUGH, ASK_DELTA_DIVERGENCE, ASK_MAGNET,
+    ASK_STOP_RUN, ASK_TAPE_STATE, ASK_TOUCH_OUTCOME, AskRule, AskSide, CrewAsk, Direction, JevAsk,
+    JevDesk, LevelSide, MarketInterpretation, ReadSource, relay_url,
+};
 use crate::levels::{Level, LevelKind, LevelStore};
 use crate::live_feed::{FeedMode, LiveFeed, PitFeedStatus, TickFlow};
 use crate::market::Instrument;
 use crate::pit::{format_price_with_commas, instrument_decimals, set_ui_text};
-use crate::pit_engine::{tick_size, Side, XorShift};
+use crate::pit_engine::{Side, XorShift, tick_size};
 use crate::scenario::MarketScenarioController;
 
 /// Pounds per tick, every trader, every pit. Flat so the leaderboard compares ideas, not sizes.
@@ -98,7 +102,10 @@ pub struct Session {
 
 impl Session {
     pub const fn new(from_h: i64, from_m: i64, until_h: i64, until_m: i64) -> Self {
-        Session { from: from_h * 60 + from_m, until: until_h * 60 + until_m }
+        Session {
+            from: from_h * 60 + from_m,
+            until: until_h * 60 + until_m,
+        }
     }
 
     pub fn contains(&self, minute: i64) -> bool {
@@ -107,7 +114,10 @@ impl Session {
 }
 
 /// The whole entry window.
-pub const ALL_DAY: Session = Session { from: ENTRY_FROM, until: ENTRY_UNTIL };
+pub const ALL_DAY: Session = Session {
+    from: ENTRY_FROM,
+    until: ENTRY_UNTIL,
+};
 const LONDON: Session = Session::new(7, 0, 11, 0);
 const NEW_YORK: Session = Session::new(13, 30, 16, 30);
 const LONDON_KILL_ZONE: Session = Session::new(7, 0, 10, 0);
@@ -129,7 +139,11 @@ pub struct Rules {
 
 impl Rules {
     const fn standard(sessions: &'static [Session]) -> Self {
-        Rules { min_stop_spreads: MIN_STOP_SPREADS, min_target_spreads: MIN_TARGET_SPREADS, sessions }
+        Rules {
+            min_stop_spreads: MIN_STOP_SPREADS,
+            min_target_spreads: MIN_TARGET_SPREADS,
+            sessions,
+        }
     }
 
     pub fn in_session(&self, minute: i64) -> bool {
@@ -144,7 +158,9 @@ impl Rules {
     /// Seconds until the current session ends (a cooldown of this length means "once per
     /// session"); zero outside every session.
     pub fn secs_to_session_end(&self, minute: i64) -> f64 {
-        self.session_at(minute).map(|s| ((s.until - minute) * 60) as f64).unwrap_or(0.0)
+        self.session_at(minute)
+            .map(|s| ((s.until - minute) * 60) as f64)
+            .unwrap_or(0.0)
     }
 }
 
@@ -273,21 +289,43 @@ impl Archetype {
         }
         match self {
             Archetype::Genome(i) => crate::genome::seat_creed(i),
-            Archetype::MomentumScalper => "Jev says go with conviction and no exhaustion: in for 8 ticks, out at 6, three minutes max.",
-            Archetype::TrendRider => "Jev agrees with the last 20 bars: rides it with a trailing stop, up to an hour.",
-            Archetype::ExhaustionFader => "Jev sees the side in control tiring: fades it toward the next level.",
-            Archetype::IctLevelTrader => "No Jev. A swept swing low, then a return into a fresh order block or gap: stop under it, target the next swing.",
-            Archetype::GapFiller => "No Jev. Trades the first return into an unfilled fair value gap, stop beyond it.",
-            Archetype::OpeningRangeBreakout => "No Jev. The first 15 minutes of London and New York draw the box: first 1m close outside it, stop at the box's middle, 1.5 R, once a session.",
-            Archetype::SessionExtremeFader => "No Jev. A new session high or low on fading tick rate and a rejection wick: fades it back to VWAP, unless a block or gap is in the way.",
-            Archetype::VwapPullback => "No Jev. Twenty minutes a unit clear of VWAP is a trend: buys the first touch back to VWAP, stop a unit behind it, target the session extreme.",
-            Archetype::Control => "Flips a coin every few minutes inside the others' hours, same costs, same exits. The bar everyone must clear.",
+            Archetype::MomentumScalper => {
+                "Jev says go with conviction and no exhaustion: in for 8 ticks, out at 6, three minutes max."
+            }
+            Archetype::TrendRider => {
+                "Jev agrees with the last 20 bars: rides it with a trailing stop, up to an hour."
+            }
+            Archetype::ExhaustionFader => {
+                "Jev sees the side in control tiring: fades it toward the next level."
+            }
+            Archetype::IctLevelTrader => {
+                "No Jev. A swept swing low, then a return into a fresh order block or gap: stop under it, target the next swing."
+            }
+            Archetype::GapFiller => {
+                "No Jev. Trades the first return into an unfilled fair value gap, stop beyond it."
+            }
+            Archetype::OpeningRangeBreakout => {
+                "No Jev. The first 15 minutes of London and New York draw the box: first 1m close outside it, stop at the box's middle, 1.5 R, once a session."
+            }
+            Archetype::SessionExtremeFader => {
+                "No Jev. A new session high or low on fading tick rate and a rejection wick: fades it back to VWAP, unless a block or gap is in the way."
+            }
+            Archetype::VwapPullback => {
+                "No Jev. Twenty minutes a unit clear of VWAP is a trend: buys the first touch back to VWAP, stop a unit behind it, target the session extreme."
+            }
+            Archetype::Control => {
+                "Flips a coin every few minutes inside the others' hours, same costs, same exits. The bar everyone must clear."
+            }
             _ => "Trades Jev's read.",
         }
     }
 
     pub fn uses_jev(self) -> bool {
-        self.crew().is_some() || matches!(self, Archetype::MomentumScalper | Archetype::TrendRider | Archetype::ExhaustionFader)
+        self.crew().is_some()
+            || matches!(
+                self,
+                Archetype::MomentumScalper | Archetype::TrendRider | Archetype::ExhaustionFader
+            )
     }
 
     /// Cost floors and entry hours. The control's hours are the union of everyone else's (see
@@ -424,53 +462,254 @@ const CREW_BASE: JevStyle = JevStyle {
 
 pub static JEV_CREW: [JevStyle; 15] = [
     // On the common read.
-    JevStyle { arch: Archetype::JevContrarian, name: "Gus", label: "contrarian", color: (0.60, 0.45, 1.0), lean: Lean::Fade, min_confidence: 0.30, time_stop_secs: 900.0,
-        creed: "Whatever Jev says at 30% or better, Gus does the opposite. If Jev is right, Gus pays for it.", ..CREW_BASE },
-    JevStyle { arch: Archetype::JevDoubtFader, name: "Ivo", label: "doubt fader", color: (1.0, 0.45, 0.70), lean: Lean::Fade, min_confidence: 0.20, max_conviction: 0.30, time_stop_secs: 600.0, cooldown_secs: 45.0,
-        creed: "Fades a lean Jev holds without conviction (0.3 or less): a weak read is noise to lean against.", ..CREW_BASE },
-    JevStyle { arch: Archetype::JevFlatFader, name: "Sol", label: "flat fader", color: (0.80, 0.80, 0.90), flat_only: true, time_stop_secs: 900.0,
-        creed: "Trades only Jev's flat reads: after a five-bar move of half a unit or more, bets it comes back.", ..CREW_BASE },
-    JevStyle { arch: Archetype::JevEverything, name: "Tess", label: "everything", color: (1.0, 0.60, 0.85), min_confidence: 0.10, time_stop_secs: 600.0, cooldown_secs: 20.0,
-        creed: "Every lean Jev has, however faint: the raw read, traded as often as the cooldown allows.", ..CREW_BASE },
+    JevStyle {
+        arch: Archetype::JevContrarian,
+        name: "Gus",
+        label: "contrarian",
+        color: (0.60, 0.45, 1.0),
+        lean: Lean::Fade,
+        min_confidence: 0.30,
+        time_stop_secs: 900.0,
+        creed: "Whatever Jev says at 30% or better, Gus does the opposite. If Jev is right, Gus pays for it.",
+        ..CREW_BASE
+    },
+    JevStyle {
+        arch: Archetype::JevDoubtFader,
+        name: "Ivo",
+        label: "doubt fader",
+        color: (1.0, 0.45, 0.70),
+        lean: Lean::Fade,
+        min_confidence: 0.20,
+        max_conviction: 0.30,
+        time_stop_secs: 600.0,
+        cooldown_secs: 45.0,
+        creed: "Fades a lean Jev holds without conviction (0.3 or less): a weak read is noise to lean against.",
+        ..CREW_BASE
+    },
+    JevStyle {
+        arch: Archetype::JevFlatFader,
+        name: "Sol",
+        label: "flat fader",
+        color: (0.80, 0.80, 0.90),
+        flat_only: true,
+        time_stop_secs: 900.0,
+        creed: "Trades only Jev's flat reads: after a five-bar move of half a unit or more, bets it comes back.",
+        ..CREW_BASE
+    },
+    JevStyle {
+        arch: Archetype::JevEverything,
+        name: "Tess",
+        label: "everything",
+        color: (1.0, 0.60, 0.85),
+        min_confidence: 0.10,
+        time_stop_secs: 600.0,
+        cooldown_secs: 20.0,
+        creed: "Every lean Jev has, however faint: the raw read, traded as often as the cooldown allows.",
+        ..CREW_BASE
+    },
     // Lena and Kit were retired on 2026-10-23 with the other filter clones and reinstated on
     // 2026-10-24 at Paul's call: under the 20-spread stops they were the two best Jev traders on
     // the desk (Lena 16 trades +6.5 R, Kit 11 trades +2.1 R), small samples to be confirmed.
-    JevStyle { arch: Archetype::JevAbsorber, name: "Lena", label: "absorber", color: (0.75, 0.85, 0.55), lean: Lean::Fade, reactions: &["absorbing"], min_confidence: 0.20, time_stop_secs: 900.0,
-        creed: "Only when Jev sees absorption at a level: someone big is taking the other side, so she joins them.", ..CREW_BASE },
-    JevStyle { arch: Archetype::JevSweeper, name: "Kit", label: "sweeper", color: (0.90, 0.60, 0.50), lean: Lean::Fade, reactions: &["sweeping"], target_units: 1.5, time_stop_secs: 1200.0,
-        creed: "Only on a sweep: stops were run, so Kit fades the lean back through the level.", ..CREW_BASE },
+    JevStyle {
+        arch: Archetype::JevAbsorber,
+        name: "Lena",
+        label: "absorber",
+        color: (0.75, 0.85, 0.55),
+        lean: Lean::Fade,
+        reactions: &["absorbing"],
+        min_confidence: 0.20,
+        time_stop_secs: 900.0,
+        creed: "Only when Jev sees absorption at a level: someone big is taking the other side, so she joins them.",
+        ..CREW_BASE
+    },
+    JevStyle {
+        arch: Archetype::JevSweeper,
+        name: "Kit",
+        label: "sweeper",
+        color: (0.90, 0.60, 0.50),
+        lean: Lean::Fade,
+        reactions: &["sweeping"],
+        target_units: 1.5,
+        time_stop_secs: 1200.0,
+        creed: "Only on a sweep: stops were run, so Kit fades the lean back through the level.",
+        ..CREW_BASE
+    },
     // Each on a question of its own. The touch questions are answered only on touch reads.
-    JevStyle { arch: Archetype::JevOracle, name: "Vera", label: "oracle", color: (0.95, 0.85, 0.30), first_mover_secs: 60.0, target_units: 1.5, time_stop_secs: 900.0,
-        ask: Some(CrewAsk { question: &ASK_TOUCH_OUTCOME, rule: AskRule::LevelChoice { map: &[("reject", LevelSide::Away), ("sweep", LevelSide::Away), ("break", LevelSide::Through)], min: 0.45 } }),
-        creed: "Asks Jev what the touched level will have done in fifteen minutes, and trades an answer held at 45% or better: away on reject or sweep, through on break.", ..CREW_BASE },
-    JevStyle { arch: Archetype::JevAbsorption, name: "Wren", label: "absorption", color: (0.55, 0.90, 0.60), first_mover_secs: 60.0, time_stop_secs: 900.0,
-        ask: Some(CrewAsk { question: &ASK_ABSORBING, rule: AskRule::NoulLevel { min: 0.6, side: LevelSide::Away } }),
-        creed: "Asks whether size is absorbing the arrivals at the touched level; at 60% yes, trades away from it with whoever is absorbing.", ..CREW_BASE },
-    JevStyle { arch: Archetype::JevStopRun, name: "Xi", label: "stop run", color: (0.95, 0.55, 0.55), first_mover_secs: 60.0, target_units: 1.5, time_stop_secs: 900.0,
-        ask: Some(CrewAsk { question: &ASK_STOP_RUN, rule: AskRule::NoulLevel { min: 0.6, side: LevelSide::Away } }),
-        creed: "Asks whether the push into the level was a stop run; at 60% yes, fades it back the way it came.", ..CREW_BASE },
-    JevStyle { arch: Archetype::JevCarry, name: "Yusuf", label: "carry", color: (0.40, 0.80, 1.0), first_mover_secs: 60.0, target_units: 0.0, trail_units: 1.0, time_stop_secs: 2400.0, cooldown_secs: 90.0,
-        ask: Some(CrewAsk { question: &ASK_CARRY_THROUGH, rule: AskRule::NoulLevel { min: 0.65, side: LevelSide::Through } }),
-        creed: "Asks whether a break of the touched level would carry a unit; at 65% yes, goes through it on a one-unit trail.", ..CREW_BASE },
-    JevStyle { arch: Archetype::JevTape, name: "Zara", label: "tape", color: (0.98, 0.70, 0.35), first_mover_secs: 30.0, time_stop_secs: 600.0, cooldown_secs: 45.0,
-        ask: Some(CrewAsk { question: &ASK_TAPE_STATE, rule: AskRule::Choice { map: &[("one_way_buying", AskSide::Buy), ("one_way_selling", AskSide::Sell)], min: 0.5 } }),
-        creed: "Asks only about the last twenty seconds of tape; joins one-way buying or selling, a unit each way, ten minutes.", ..CREW_BASE },
-    JevStyle { arch: Archetype::JevClimax, name: "Ana", label: "climax", color: (0.85, 0.45, 0.95), target_units: 1.5, time_stop_secs: 1200.0,
-        ask: Some(CrewAsk { question: &ASK_BAR_SHAPE, rule: AskRule::Choice { map: &[("climax_up", AskSide::Sell), ("climax_down", AskSide::Buy)], min: 0.4 } }),
-        creed: "Asks for the shape of the last twenty bars and fades a climax: sells a buying climax, buys a selling one.", ..CREW_BASE },
-    JevStyle { arch: Archetype::JevLeg, name: "Ben", label: "leg", color: (0.35, 0.95, 0.85), target_units: 0.0, trail_units: 1.0, time_stop_secs: 1800.0, cooldown_secs: 90.0,
-        ask: Some(CrewAsk { question: &ASK_BAR_SHAPE, rule: AskRule::Choice { map: &[("trend_up", AskSide::Buy), ("trend_down", AskSide::Sell)], min: 0.4 } }),
-        creed: "Same question as Ana, the other answer: joins a steady trend leg on a one-unit trail.", ..CREW_BASE },
-    JevStyle { arch: Archetype::JevMagnet, name: "Cy", label: "magnet", color: (0.70, 0.75, 0.95), time_stop_secs: 900.0,
-        ask: Some(CrewAsk { question: &ASK_MAGNET, rule: AskRule::Choice { map: &[("above", AskSide::Buy), ("below", AskSide::Sell)], min: 0.5 } }),
-        creed: "Asks which listed level price reaches first, the one above or the one below, and trades toward it when Jev is at least half sure.", ..CREW_BASE },
-    JevStyle { arch: Archetype::JevDivergence, name: "Dee", label: "divergence", color: (0.95, 0.95, 0.55), target_units: 1.5, time_stop_secs: 900.0,
-        ask: Some(CrewAsk { question: &ASK_DELTA_DIVERGENCE, rule: AskRule::NoulLean { min: 0.6, with_lean: false } }),
-        creed: "Asks whether the move is making new extremes on shrinking delta and tick rate; at 60% yes, fades Jev's lean.", ..CREW_BASE },
+    JevStyle {
+        arch: Archetype::JevOracle,
+        name: "Vera",
+        label: "oracle",
+        color: (0.95, 0.85, 0.30),
+        first_mover_secs: 60.0,
+        target_units: 1.5,
+        time_stop_secs: 900.0,
+        ask: Some(CrewAsk {
+            question: &ASK_TOUCH_OUTCOME,
+            rule: AskRule::LevelChoice {
+                map: &[
+                    ("reject", LevelSide::Away),
+                    ("sweep", LevelSide::Away),
+                    ("break", LevelSide::Through),
+                ],
+                min: 0.45,
+            },
+        }),
+        creed: "Asks Jev what the touched level will have done in fifteen minutes, and trades an answer held at 45% or better: away on reject or sweep, through on break.",
+        ..CREW_BASE
+    },
+    JevStyle {
+        arch: Archetype::JevAbsorption,
+        name: "Wren",
+        label: "absorption",
+        color: (0.55, 0.90, 0.60),
+        first_mover_secs: 60.0,
+        time_stop_secs: 900.0,
+        ask: Some(CrewAsk {
+            question: &ASK_ABSORBING,
+            rule: AskRule::NoulLevel {
+                min: 0.6,
+                side: LevelSide::Away,
+            },
+        }),
+        creed: "Asks whether size is absorbing the arrivals at the touched level; at 60% yes, trades away from it with whoever is absorbing.",
+        ..CREW_BASE
+    },
+    JevStyle {
+        arch: Archetype::JevStopRun,
+        name: "Xi",
+        label: "stop run",
+        color: (0.95, 0.55, 0.55),
+        first_mover_secs: 60.0,
+        target_units: 1.5,
+        time_stop_secs: 900.0,
+        ask: Some(CrewAsk {
+            question: &ASK_STOP_RUN,
+            rule: AskRule::NoulLevel {
+                min: 0.6,
+                side: LevelSide::Away,
+            },
+        }),
+        creed: "Asks whether the push into the level was a stop run; at 60% yes, fades it back the way it came.",
+        ..CREW_BASE
+    },
+    JevStyle {
+        arch: Archetype::JevCarry,
+        name: "Yusuf",
+        label: "carry",
+        color: (0.40, 0.80, 1.0),
+        first_mover_secs: 60.0,
+        target_units: 0.0,
+        trail_units: 1.0,
+        time_stop_secs: 2400.0,
+        cooldown_secs: 90.0,
+        ask: Some(CrewAsk {
+            question: &ASK_CARRY_THROUGH,
+            rule: AskRule::NoulLevel {
+                min: 0.65,
+                side: LevelSide::Through,
+            },
+        }),
+        creed: "Asks whether a break of the touched level would carry a unit; at 65% yes, goes through it on a one-unit trail.",
+        ..CREW_BASE
+    },
+    JevStyle {
+        arch: Archetype::JevTape,
+        name: "Zara",
+        label: "tape",
+        color: (0.98, 0.70, 0.35),
+        first_mover_secs: 30.0,
+        time_stop_secs: 600.0,
+        cooldown_secs: 45.0,
+        ask: Some(CrewAsk {
+            question: &ASK_TAPE_STATE,
+            rule: AskRule::Choice {
+                map: &[
+                    ("one_way_buying", AskSide::Buy),
+                    ("one_way_selling", AskSide::Sell),
+                ],
+                min: 0.5,
+            },
+        }),
+        creed: "Asks only about the last twenty seconds of tape; joins one-way buying or selling, a unit each way, ten minutes.",
+        ..CREW_BASE
+    },
+    JevStyle {
+        arch: Archetype::JevClimax,
+        name: "Ana",
+        label: "climax",
+        color: (0.85, 0.45, 0.95),
+        target_units: 1.5,
+        time_stop_secs: 1200.0,
+        ask: Some(CrewAsk {
+            question: &ASK_BAR_SHAPE,
+            rule: AskRule::Choice {
+                map: &[("climax_up", AskSide::Sell), ("climax_down", AskSide::Buy)],
+                min: 0.4,
+            },
+        }),
+        creed: "Asks for the shape of the last twenty bars and fades a climax: sells a buying climax, buys a selling one.",
+        ..CREW_BASE
+    },
+    JevStyle {
+        arch: Archetype::JevLeg,
+        name: "Ben",
+        label: "leg",
+        color: (0.35, 0.95, 0.85),
+        target_units: 0.0,
+        trail_units: 1.0,
+        time_stop_secs: 1800.0,
+        cooldown_secs: 90.0,
+        ask: Some(CrewAsk {
+            question: &ASK_BAR_SHAPE,
+            rule: AskRule::Choice {
+                map: &[("trend_up", AskSide::Buy), ("trend_down", AskSide::Sell)],
+                min: 0.4,
+            },
+        }),
+        creed: "Same question as Ana, the other answer: joins a steady trend leg on a one-unit trail.",
+        ..CREW_BASE
+    },
+    JevStyle {
+        arch: Archetype::JevMagnet,
+        name: "Cy",
+        label: "magnet",
+        color: (0.70, 0.75, 0.95),
+        time_stop_secs: 900.0,
+        ask: Some(CrewAsk {
+            question: &ASK_MAGNET,
+            rule: AskRule::Choice {
+                map: &[("above", AskSide::Buy), ("below", AskSide::Sell)],
+                min: 0.5,
+            },
+        }),
+        creed: "Asks which listed level price reaches first, the one above or the one below, and trades toward it when Jev is at least half sure.",
+        ..CREW_BASE
+    },
+    JevStyle {
+        arch: Archetype::JevDivergence,
+        name: "Dee",
+        label: "divergence",
+        color: (0.95, 0.95, 0.55),
+        target_units: 1.5,
+        time_stop_secs: 900.0,
+        ask: Some(CrewAsk {
+            question: &ASK_DELTA_DIVERGENCE,
+            rule: AskRule::NoulLean {
+                min: 0.6,
+                with_lean: false,
+            },
+        }),
+        creed: "Asks whether the move is making new extremes on shrinking delta and tick rate; at 60% yes, fades Jev's lean.",
+        ..CREW_BASE
+    },
 ];
 
 fn fmt_secs(s: f64) -> String {
-    if s >= 60.0 { format!("{:.0} min", s / 60.0) } else { format!("{s:.0} s") }
+    if s >= 60.0 {
+        format!("{:.0} min", s / 60.0)
+    } else {
+        format!("{s:.0} s")
+    }
 }
 
 impl JevStyle {
@@ -480,16 +719,30 @@ impl JevStyle {
         if let Some(a) = self.ask {
             parts.push(format!(
                 "on Jev's answer to its own question{} \"{}\" ({})",
-                if a.question.touch_only { ", asked when price has just touched a level," } else { "" },
+                if a.question.touch_only {
+                    ", asked when price has just touched a level,"
+                } else {
+                    ""
+                },
                 a.question.instructions,
                 a.rule.text()
             ));
         } else if self.flat_only {
             parts.push("only on a FLAT read, fading the last five bars' move when it is half a unit or more".into());
         } else {
-            parts.push(format!("{} Jev's lean", if self.lean == Lean::Follow { "with" } else { "against" }));
+            parts.push(format!(
+                "{} Jev's lean",
+                if self.lean == Lean::Follow {
+                    "with"
+                } else {
+                    "against"
+                }
+            ));
             if self.min_confidence > 0.0 {
-                parts.push(format!("direction confidence >= {:.0}%", self.min_confidence * 100.0));
+                parts.push(format!(
+                    "direction confidence >= {:.0}%",
+                    self.min_confidence * 100.0
+                ));
             }
             if self.min_conviction > 0.0 {
                 parts.push(format!("conviction >= {:.2} of 2", self.min_conviction));
@@ -498,7 +751,10 @@ impl JevStyle {
                 parts.push(format!("conviction <= {:.2} of 2", self.max_conviction));
             }
             if self.min_continuation > 0.0 {
-                parts.push(format!("continuation >= {:.0}%", self.min_continuation * 100.0));
+                parts.push(format!(
+                    "continuation >= {:.0}%",
+                    self.min_continuation * 100.0
+                ));
             }
             if self.min_exhaustion > 0.0 {
                 parts.push(format!("exhaustion >= {:.0}%", self.min_exhaustion * 100.0));
@@ -508,21 +764,37 @@ impl JevStyle {
             }
         }
         if !self.reactions.is_empty() {
-            parts.push(format!("only when Jev's level reaction is {}", self.reactions.join(" or ")));
+            parts.push(format!(
+                "only when Jev's level reaction is {}",
+                self.reactions.join(" or ")
+            ));
         }
         if self.first_mover_secs > 0.0 {
-            parts.push(format!("only in the first {:.0} s after a read arrives", self.first_mover_secs));
+            parts.push(format!(
+                "only in the first {:.0} s after a read arrives",
+                self.first_mover_secs
+            ));
         }
         let mut exits = vec![format!("stop {:.2} units", self.stop_units)];
         if self.target_units > 0.0 {
             exits.push(format!("target {:.2} units", self.target_units));
         }
         if self.trail_units > 0.0 {
-            exits.push(format!("trail {:.2} units behind the best price once a unit onside", self.trail_units));
+            exits.push(format!(
+                "trail {:.2} units behind the best price once a unit onside",
+                self.trail_units
+            ));
         }
         exits.push(format!("time stop {}", fmt_secs(self.time_stop_secs)));
-        exits.push(format!("{} cooldown after a trade", fmt_secs(self.cooldown_secs)));
-        format!("Enters {}. Exits: {}. A unit is the mean 1m bar range of the last 20 bars.", parts.join(", "), exits.join(", "))
+        exits.push(format!(
+            "{} cooldown after a trade",
+            fmt_secs(self.cooldown_secs)
+        ));
+        format!(
+            "Enters {}. Exits: {}. A unit is the mean 1m bar range of the last 20 bars.",
+            parts.join(", "),
+            exits.join(", ")
+        )
     }
 }
 
@@ -558,26 +830,42 @@ fn decide_crew(s: &JevStyle, v: &View) -> Result<Entry, String> {
     let r = v.read.ok_or_else(|| "no fresh Jev read".to_string())?;
     let age = v.now - r.at;
     if s.first_mover_secs > 0.0 && age > s.first_mover_secs {
-        return Err(format!("read is {age:.0}s old; acts in its first {:.0}s", s.first_mover_secs));
+        return Err(format!(
+            "read is {age:.0}s old; acts in its first {:.0}s",
+            s.first_mover_secs
+        ));
     }
     if let Some(a) = s.ask {
         return decide_ask(s, a, r, v);
     }
     if !s.reactions.is_empty() && !s.reactions.contains(&r.reaction.as_str()) {
-        return Err(format!("level {}; wants {}", r.reaction, s.reactions.join("/")));
+        return Err(format!(
+            "level {}; wants {}",
+            r.reaction,
+            s.reactions.join("/")
+        ));
     }
     let u = v.unit();
     let pct = r.direction_confidence * 100.0;
     let (side, why) = if s.flat_only {
         if r.direction != Direction::Flat {
-            return Err(format!("Jev leans {} {pct:.0}%; waits for flat", r.direction.label()));
+            return Err(format!(
+                "Jev leans {} {pct:.0}%; waits for flat",
+                r.direction.label()
+            ));
         }
         let d = v.net_change_ticks(5);
         if d.abs() < 0.5 * u {
-            return Err(format!("Jev flat and the last 5 bars moved {d:+.0} ticks, under half a unit ({:.0})", 0.5 * u));
+            return Err(format!(
+                "Jev flat and the last 5 bars moved {d:+.0} ticks, under half a unit ({:.0})",
+                0.5 * u
+            ));
         }
         let side = if d > 0.0 { Side::Sell } else { Side::Buy };
-        (side, format!("Jev flat {pct:.0}% after a {d:+.0}-tick 5-bar move: fading it"))
+        (
+            side,
+            format!("Jev flat {pct:.0}% after a {d:+.0}-tick 5-bar move: fading it"),
+        )
     } else {
         let lean_side = match r.direction {
             Direction::Up => Side::Buy,
@@ -585,28 +873,54 @@ fn decide_crew(s: &JevStyle, v: &View) -> Result<Entry, String> {
             Direction::Flat => return Err(format!("Jev: flat {pct:.0}%")),
         };
         if r.direction_confidence < s.min_confidence {
-            return Err(format!("Jev {} at {pct:.0}% < {:.0}%", r.direction.label(), s.min_confidence * 100.0));
+            return Err(format!(
+                "Jev {} at {pct:.0}% < {:.0}%",
+                r.direction.label(),
+                s.min_confidence * 100.0
+            ));
         }
         if r.conviction < s.min_conviction {
-            return Err(format!("conviction {:.2} < {:.2}", r.conviction, s.min_conviction));
+            return Err(format!(
+                "conviction {:.2} < {:.2}",
+                r.conviction, s.min_conviction
+            ));
         }
         if r.conviction > s.max_conviction {
-            return Err(format!("conviction {:.2} > {:.2}: too sure to fade", r.conviction, s.max_conviction));
+            return Err(format!(
+                "conviction {:.2} > {:.2}: too sure to fade",
+                r.conviction, s.max_conviction
+            ));
         }
         if r.continuation < s.min_continuation {
-            return Err(format!("continuation {:.0}% < {:.0}%", r.continuation * 100.0, s.min_continuation * 100.0));
+            return Err(format!(
+                "continuation {:.0}% < {:.0}%",
+                r.continuation * 100.0,
+                s.min_continuation * 100.0
+            ));
         }
         if r.exhaustion > s.max_exhaustion {
-            return Err(format!("exhaustion {:.0}% > {:.0}%", r.exhaustion * 100.0, s.max_exhaustion * 100.0));
+            return Err(format!(
+                "exhaustion {:.0}% > {:.0}%",
+                r.exhaustion * 100.0,
+                s.max_exhaustion * 100.0
+            ));
         }
         if r.exhaustion < s.min_exhaustion {
-            return Err(format!("exhaustion {:.0}% < {:.0}%: not tired yet", r.exhaustion * 100.0, s.min_exhaustion * 100.0));
+            return Err(format!(
+                "exhaustion {:.0}% < {:.0}%: not tired yet",
+                r.exhaustion * 100.0,
+                s.min_exhaustion * 100.0
+            ));
         }
         let side = match s.lean {
             Lean::Follow => lean_side,
             Lean::Fade => lean_side.opposite(),
         };
-        let how = if s.lean == Lean::Follow { "with" } else { "against" };
+        let how = if s.lean == Lean::Follow {
+            "with"
+        } else {
+            "against"
+        };
         (
             side,
             format!(
@@ -625,12 +939,23 @@ fn decide_crew(s: &JevStyle, v: &View) -> Result<Entry, String> {
 /// A question trader: its own answer decides the side; the touch, when there is one, sets
 /// the stop beyond the level's far edge (a quarter unit past it) if that is wider than the
 /// style's own stop.
-fn decide_ask(s: &JevStyle, a: CrewAsk, r: &MarketInterpretation, v: &View) -> Result<Entry, String> {
+fn decide_ask(
+    s: &JevStyle,
+    a: CrewAsk,
+    r: &MarketInterpretation,
+    v: &View,
+) -> Result<Entry, String> {
     if a.question.touch_only && r.trigger.is_none() {
         return Err("waits for a touch read".into());
     }
-    let ans = r.answers.get(a.question.key).ok_or_else(|| format!("Jev was not asked {}", a.question.key))?;
-    let side = match a.rule.side(a.question.key, ans, r.trigger.as_ref(), r.direction)? {
+    let ans = r
+        .answers
+        .get(a.question.key)
+        .ok_or_else(|| format!("Jev was not asked {}", a.question.key))?;
+    let side = match a
+        .rule
+        .side(a.question.key, ans, r.trigger.as_ref(), r.direction)?
+    {
         AskSide::Buy => Side::Buy,
         AskSide::Sell => Side::Sell,
     };
@@ -642,10 +967,20 @@ fn decide_ask(s: &JevStyle, a: CrewAsk, r: &MarketInterpretation, v: &View) -> R
         // Away from the level: the stop goes past its far edge. Through it: past the near edge.
         let far = if t.side.contains("above") { t.lo } else { t.hi };
         let near = if t.side.contains("above") { t.hi } else { t.lo };
-        let beyond = if (side.is_buy() && entry > t.hi) || (!side.is_buy() && entry < t.lo) { far } else { near };
+        let beyond = if (side.is_buy() && entry > t.hi) || (!side.is_buy() && entry < t.lo) {
+            far
+        } else {
+            near
+        };
         let needed = (entry - beyond).abs() / v.tick + 0.25 * u;
         stop_ticks = stop_ticks.max(needed);
-        at = format!(" at {} {}..{} {}", t.level, fmt_px(v.inst, t.lo), fmt_px(v.inst, t.hi), t.side);
+        at = format!(
+            " at {} {}..{} {}",
+            t.level,
+            fmt_px(v.inst, t.lo),
+            fmt_px(v.inst, t.hi),
+            t.side
+        );
     }
     let why = format!("Jev {} = {}{at}", a.question.key, JevAsk::answer_text(ans));
     Ok(crew_entry(s, v, side, stop_ticks, why))
@@ -655,9 +990,27 @@ fn decide_ask(s: &JevStyle, a: CrewAsk, r: &MarketInterpretation, v: &View) -> R
 fn crew_entry(s: &JevStyle, v: &View, side: Side, stop_ticks: f32, why: String) -> Entry {
     let u = v.unit();
     let entry = if side.is_buy() { v.ask } else { v.bid };
-    let target = (s.target_units > 0.0).then(|| if side.is_buy() { entry + s.target_units * u * v.tick } else { entry - s.target_units * u * v.tick });
-    let trail = (s.trail_units > 0.0).then(|| Trail { arm_ticks: s.trail_units * u, lock_ticks: 0.25 * u, trail_ticks: s.trail_units * u });
-    Entry { side, stop_ticks, target, trail, time_stop_secs: s.time_stop_secs, cooldown_secs: s.cooldown_secs, why }
+    let target = (s.target_units > 0.0).then(|| {
+        if side.is_buy() {
+            entry + s.target_units * u * v.tick
+        } else {
+            entry - s.target_units * u * v.tick
+        }
+    });
+    let trail = (s.trail_units > 0.0).then_some(Trail {
+        arm_ticks: s.trail_units * u,
+        lock_ticks: 0.25 * u,
+        trail_ticks: s.trail_units * u,
+    });
+    Entry {
+        side,
+        stop_ticks,
+        target,
+        trail,
+        time_stop_secs: s.time_stop_secs,
+        cooldown_secs: s.cooldown_secs,
+        why,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -779,7 +1132,11 @@ impl View<'_> {
         if k == 0 {
             return MIN_UNIT_TICKS;
         }
-        let mean = self.bars[self.bars.len() - k..].iter().map(|b| (b.high - b.low) / self.tick).sum::<f32>() / k as f32;
+        let mean = self.bars[self.bars.len() - k..]
+            .iter()
+            .map(|b| (b.high - b.low) / self.tick)
+            .sum::<f32>()
+            / k as f32;
         mean.max(MIN_UNIT_TICKS)
     }
 
@@ -797,12 +1154,23 @@ impl View<'_> {
 
     /// Nearest level of these kinds strictly above (for longs) or below (for shorts) `from`,
     /// at least `min_ticks` away.
-    pub fn next_level(&self, side: Side, from: f32, kinds: &[LevelKind], min_ticks: f32) -> Option<f32> {
+    pub fn next_level(
+        &self,
+        side: Side,
+        from: f32,
+        kinds: &[LevelKind],
+        min_ticks: f32,
+    ) -> Option<f32> {
         let mut best: Option<f32> = None;
         for l in self.levels.iter().filter(|l| kinds.contains(&l.kind)) {
             let px = if side.is_buy() { l.lo } else { l.hi };
-            let dist = if side.is_buy() { (px - from) / self.tick } else { (from - px) / self.tick };
-            if dist >= min_ticks && best.is_none_or(|b| if side.is_buy() { px < b } else { px > b }) {
+            let dist = if side.is_buy() {
+                (px - from) / self.tick
+            } else {
+                (from - px) / self.tick
+            };
+            if dist >= min_ticks && best.is_none_or(|b| if side.is_buy() { px < b } else { px > b })
+            {
                 best = Some(px);
             }
         }
@@ -816,10 +1184,20 @@ impl View<'_> {
 
     /// A recent bar wicked below a swing low (or above a swing high) and closed back: a sweep.
     pub fn swept(&self, side: Side, lookback: usize) -> Option<&Level> {
-        let kind = if side.is_buy() { LevelKind::SwingLow } else { LevelKind::SwingHigh };
+        let kind = if side.is_buy() {
+            LevelKind::SwingLow
+        } else {
+            LevelKind::SwingHigh
+        };
         let recent = &self.bars[self.bars.len().saturating_sub(lookback)..];
         self.levels_of(kind).find(|l| {
-            recent.iter().any(|b| if side.is_buy() { b.low < l.lo && b.close > l.hi } else { b.high > l.hi && b.close < l.lo })
+            recent.iter().any(|b| {
+                if side.is_buy() {
+                    b.low < l.lo && b.close > l.hi
+                } else {
+                    b.high > l.hi && b.close < l.lo
+                }
+            })
         })
     }
 
@@ -831,7 +1209,13 @@ impl View<'_> {
     /// The bars of the floor's day so far (bars are oldest first).
     pub fn session_bars(&self) -> &[Candle] {
         let open = self.session_open_ms();
-        &self.bars[self.bars.len() - self.bars.iter().rev().take_while(|b| b.time_ms >= open).count()..]
+        &self.bars[self.bars.len()
+            - self
+                .bars
+                .iter()
+                .rev()
+                .take_while(|b| b.time_ms >= open)
+                .count()..]
     }
 
     /// Session VWAP: close weighted by tick count over the session's bars, the forming bar
@@ -866,7 +1250,12 @@ impl View<'_> {
         if self.wall_ms < until {
             return None;
         }
-        let range: Vec<Candle> = self.bars.iter().filter(|b| b.time_ms >= from && b.time_ms < until).copied().collect();
+        let range: Vec<Candle> = self
+            .bars
+            .iter()
+            .filter(|b| b.time_ms >= from && b.time_ms < until)
+            .copied()
+            .collect();
         if range.len() < OPENING_RANGE_MIN_BARS {
             return None;
         }
@@ -905,7 +1294,12 @@ fn extremes_of(bars: &[Candle]) -> Option<(f32, f32)> {
 }
 
 /// Resting-interest zones that a mean-reversion target must not have to trade through.
-const BLOCKS_AND_GAPS: [LevelKind; 4] = [LevelKind::BullOrderBlock, LevelKind::BearOrderBlock, LevelKind::BullFvg, LevelKind::BearFvg];
+const BLOCKS_AND_GAPS: [LevelKind; 4] = [
+    LevelKind::BullOrderBlock,
+    LevelKind::BearOrderBlock,
+    LevelKind::BullFvg,
+    LevelKind::BearFvg,
+];
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Entry {
@@ -943,9 +1337,17 @@ pub fn decide(arch: Archetype, v: &View, rng: &mut XorShift) -> Result<Entry, St
             }
             let u = v.unit();
             if v.spread_ticks > 0.35 * u {
-                return Err(format!("spread {:.0} ticks is {:.0}% of the unit: too wide to scalp", v.spread_ticks, v.spread_ticks / u * 100.0));
+                return Err(format!(
+                    "spread {:.0} ticks is {:.0}% of the unit: too wide to scalp",
+                    v.spread_ticks,
+                    v.spread_ticks / u * 100.0
+                ));
             }
-            let target = if side.is_buy() { v.ask + u * v.tick } else { v.bid - u * v.tick };
+            let target = if side.is_buy() {
+                v.ask + u * v.tick
+            } else {
+                v.bid - u * v.tick
+            };
             Ok(Entry {
                 side,
                 stop_ticks: 0.75 * u,
@@ -953,7 +1355,13 @@ pub fn decide(arch: Archetype, v: &View, rng: &mut XorShift) -> Result<Entry, St
                 trail: None,
                 time_stop_secs: 180.0,
                 cooldown_secs: 60.0,
-                why: format!("Jev {} {:.0}%, conviction {:.1}, continuation {:.0}%", r.direction.label(), r.direction_confidence * 100.0, r.conviction, r.continuation * 100.0),
+                why: format!(
+                    "Jev {} {:.0}%, conviction {:.1}, continuation {:.0}%",
+                    r.direction.label(),
+                    r.direction_confidence * 100.0,
+                    r.conviction,
+                    r.continuation * 100.0
+                ),
             })
         }
         Archetype::TrendRider => {
@@ -963,25 +1371,57 @@ pub fn decide(arch: Archetype, v: &View, rng: &mut XorShift) -> Result<Entry, St
                 Direction::Up if drift >= 8.0 => Side::Buy,
                 Direction::Down if drift <= -8.0 => Side::Sell,
                 Direction::Flat => return Err("Jev: flat".into()),
-                _ => return Err(format!("Jev {} but 20-bar drift {:+.0} ticks", r.direction.label(), drift)),
+                _ => {
+                    return Err(format!(
+                        "Jev {} but 20-bar drift {:+.0} ticks",
+                        r.direction.label(),
+                        drift
+                    ));
+                }
             };
             if r.conviction < 1.0 || r.exhaustion >= 0.4 {
-                return Err(format!("conviction {:.1}, exhaustion {:.0}%", r.conviction, r.exhaustion * 100.0));
+                return Err(format!(
+                    "conviction {:.1}, exhaustion {:.0}%",
+                    r.conviction,
+                    r.exhaustion * 100.0
+                ));
             }
             let swing_kinds = [LevelKind::SwingLow, LevelKind::SwingHigh];
-            let behind = v.next_level(side.opposite(), if side.is_buy() { v.bid } else { v.ask }, &swing_kinds, 3.0);
+            let behind = v.next_level(
+                side.opposite(),
+                if side.is_buy() { v.bid } else { v.ask },
+                &swing_kinds,
+                3.0,
+            );
             let u = v.unit();
             let stop_ticks = behind
-                .map(|px| ((if side.is_buy() { v.ask - px } else { px - v.bid }) / v.tick + 0.25 * u).clamp(0.75 * u, 2.5 * u))
+                .map(|px| {
+                    ((if side.is_buy() {
+                        v.ask - px
+                    } else {
+                        px - v.bid
+                    }) / v.tick
+                        + 0.25 * u)
+                        .clamp(0.75 * u, 2.5 * u)
+                })
                 .unwrap_or(1.5 * u);
             Ok(Entry {
                 side,
                 stop_ticks,
                 target: None,
-                trail: Some(Trail { arm_ticks: u, lock_ticks: 0.25 * u, trail_ticks: u }),
+                trail: Some(Trail {
+                    arm_ticks: u,
+                    lock_ticks: 0.25 * u,
+                    trail_ticks: u,
+                }),
                 time_stop_secs: 3600.0,
                 cooldown_secs: 120.0,
-                why: format!("Jev {} with 20-bar drift {:+.0} ticks; stop behind the swing {:.0} ticks away", r.direction.label(), drift, stop_ticks),
+                why: format!(
+                    "Jev {} with 20-bar drift {:+.0} ticks; stop behind the swing {:.0} ticks away",
+                    r.direction.label(),
+                    drift,
+                    stop_ticks
+                ),
             })
         }
         Archetype::ExhaustionFader => {
@@ -997,21 +1437,41 @@ pub fn decide(arch: Archetype, v: &View, rng: &mut XorShift) -> Result<Entry, St
             if r.direction_confidence < 0.5 {
                 return Err("no clear side to fade".into());
             }
-            let kinds = [LevelKind::BullOrderBlock, LevelKind::BearOrderBlock, LevelKind::BullFvg, LevelKind::BearFvg, LevelKind::SwingLow, LevelKind::SwingHigh];
+            let kinds = [
+                LevelKind::BullOrderBlock,
+                LevelKind::BearOrderBlock,
+                LevelKind::BullFvg,
+                LevelKind::BearFvg,
+                LevelKind::SwingLow,
+                LevelKind::SwingHigh,
+            ];
             let from = if side.is_buy() { v.ask } else { v.bid };
             let u = v.unit();
             let target = v.next_level(side, from, &kinds, 0.5 * u).map(|px| {
                 let cap = 2.5 * u * v.tick;
-                if side.is_buy() { px.min(from + cap) } else { px.max(from - cap) }
+                if side.is_buy() {
+                    px.min(from + cap)
+                } else {
+                    px.max(from - cap)
+                }
             });
             Ok(Entry {
                 side,
                 stop_ticks: u,
-                target: Some(target.unwrap_or(if side.is_buy() { from + 1.2 * u * v.tick } else { from - 1.2 * u * v.tick })),
+                target: Some(target.unwrap_or(if side.is_buy() {
+                    from + 1.2 * u * v.tick
+                } else {
+                    from - 1.2 * u * v.tick
+                })),
                 trail: None,
                 time_stop_secs: 1200.0,
                 cooldown_secs: 180.0,
-                why: format!("fading Jev {}: exhaustion {:.0}%, reaction {}", r.direction.label(), r.exhaustion * 100.0, r.reaction),
+                why: format!(
+                    "fading Jev {}: exhaustion {:.0}%, reaction {}",
+                    r.direction.label(),
+                    r.exhaustion * 100.0,
+                    r.reaction
+                ),
             })
         }
         Archetype::IctLevelTrader => {
@@ -1019,21 +1479,39 @@ pub fn decide(arch: Archetype, v: &View, rng: &mut XorShift) -> Result<Entry, St
                 return Err("fewer than 10 bars".into());
             }
             for side in [Side::Buy, Side::Sell] {
-                let Some(swept) = v.swept(side, 15) else { continue };
+                let Some(swept) = v.swept(side, 15) else {
+                    continue;
+                };
                 let (block_kind, gap_kind) = if side.is_buy() {
                     (LevelKind::BullOrderBlock, LevelKind::BullFvg)
                 } else {
                     (LevelKind::BearOrderBlock, LevelKind::BearFvg)
                 };
-                let zone = v.levels.iter().find(|l| (l.kind == block_kind || l.kind == gap_kind) && !l.touched && v.at_level(l, 2.0));
+                let zone = v.levels.iter().find(|l| {
+                    (l.kind == block_kind || l.kind == gap_kind) && !l.touched && v.at_level(l, 2.0)
+                });
                 let Some(zone) = zone else { continue };
                 let from = if side.is_buy() { v.ask } else { v.bid };
-                let stop = if side.is_buy() { zone.lo - 2.0 * v.tick } else { zone.hi + 2.0 * v.tick };
-                let stop_ticks = ((from - stop).abs() / v.tick).clamp(0.5 * v.unit(), 4.0 * v.unit());
-                let target_kinds = [LevelKind::SwingHigh, LevelKind::SwingLow, LevelKind::SessionHigh, LevelKind::SessionLow];
+                let stop = if side.is_buy() {
+                    zone.lo - 2.0 * v.tick
+                } else {
+                    zone.hi + 2.0 * v.tick
+                };
+                let stop_ticks =
+                    ((from - stop).abs() / v.tick).clamp(0.5 * v.unit(), 4.0 * v.unit());
+                let target_kinds = [
+                    LevelKind::SwingHigh,
+                    LevelKind::SwingLow,
+                    LevelKind::SessionHigh,
+                    LevelKind::SessionLow,
+                ];
                 let target = v
                     .next_level(side, from, &target_kinds, stop_ticks * 1.5)
-                    .unwrap_or(if side.is_buy() { from + 2.0 * stop_ticks * v.tick } else { from - 2.0 * stop_ticks * v.tick });
+                    .unwrap_or(if side.is_buy() {
+                        from + 2.0 * stop_ticks * v.tick
+                    } else {
+                        from - 2.0 * stop_ticks * v.tick
+                    });
                 return Ok(Entry {
                     side,
                     stop_ticks,
@@ -1041,24 +1519,52 @@ pub fn decide(arch: Archetype, v: &View, rng: &mut XorShift) -> Result<Entry, St
                     trail: None,
                     time_stop_secs: 5400.0,
                     cooldown_secs: 600.0,
-                    why: format!("{} swept at {}, price back in a fresh {} {}..{}", swept.kind.tag(), swept.mid(), zone.kind.tag(), zone.lo, zone.hi),
+                    why: format!(
+                        "{} swept at {}, price back in a fresh {} {}..{}",
+                        swept.kind.tag(),
+                        swept.mid(),
+                        zone.kind.tag(),
+                        zone.lo,
+                        zone.hi
+                    ),
                 });
             }
             Err("no sweep-and-return setup".into())
         }
         Archetype::GapFiller => {
-            for (side, kind) in [(Side::Buy, LevelKind::BullFvg), (Side::Sell, LevelKind::BearFvg)] {
-                let Some(gap) = v.levels_of(kind).find(|l| !l.touched && v.bid >= l.lo && v.bid <= l.hi) else { continue };
+            for (side, kind) in [
+                (Side::Buy, LevelKind::BullFvg),
+                (Side::Sell, LevelKind::BearFvg),
+            ] {
+                let Some(gap) = v
+                    .levels_of(kind)
+                    .find(|l| !l.touched && v.bid >= l.lo && v.bid <= l.hi)
+                else {
+                    continue;
+                };
                 // First return only: the previous tick was still outside the gap.
-                let was_outside = if side.is_buy() { v.prev_bid > gap.hi } else { v.prev_bid < gap.lo };
+                let was_outside = if side.is_buy() {
+                    v.prev_bid > gap.hi
+                } else {
+                    v.prev_bid < gap.lo
+                };
                 if !was_outside {
                     continue;
                 }
                 let from = if side.is_buy() { v.ask } else { v.bid };
                 let height = (gap.hi - gap.lo).max(2.0 * v.tick);
-                let stop = if side.is_buy() { gap.lo - 2.0 * v.tick } else { gap.hi + 2.0 * v.tick };
-                let stop_ticks = ((from - stop).abs() / v.tick).clamp(0.4 * v.unit(), 3.0 * v.unit());
-                let target = if side.is_buy() { gap.hi + height } else { gap.lo - height };
+                let stop = if side.is_buy() {
+                    gap.lo - 2.0 * v.tick
+                } else {
+                    gap.hi + 2.0 * v.tick
+                };
+                let stop_ticks =
+                    ((from - stop).abs() / v.tick).clamp(0.4 * v.unit(), 3.0 * v.unit());
+                let target = if side.is_buy() {
+                    gap.hi + height
+                } else {
+                    gap.lo - height
+                };
                 return Ok(Entry {
                     side,
                     stop_ticks,
@@ -1066,7 +1572,12 @@ pub fn decide(arch: Archetype, v: &View, rng: &mut XorShift) -> Result<Entry, St
                     trail: None,
                     time_stop_secs: 2700.0,
                     cooldown_secs: 300.0,
-                    why: format!("first return into {} {}..{}", gap.kind.tag(), gap.lo, gap.hi),
+                    why: format!(
+                        "first return into {} {}..{}",
+                        gap.kind.tag(),
+                        gap.lo,
+                        gap.hi
+                    ),
                 });
             }
             Err("no fresh gap under price".into())
@@ -1079,16 +1590,23 @@ pub fn decide(arch: Archetype, v: &View, rng: &mut XorShift) -> Result<Entry, St
                 .filter(|o| minute >= o + OPENING_RANGE_MINS)
                 .max()
                 .ok_or_else(|| "no opening range yet".to_string())?;
-            let (hi, lo) = v.opening_range(open).ok_or_else(|| format!("{:02}:{:02} range still forming", open / 60, open % 60))?;
+            let (hi, lo) = v
+                .opening_range(open)
+                .ok_or_else(|| format!("{:02}:{:02} range still forming", open / 60, open % 60))?;
             let done = completed_bars(v.bars, v.wall_ms);
-            let [.., prev, last] = done else { return Err("fewer than two completed bars".into()) };
+            let [.., prev, last] = done else {
+                return Err("fewer than two completed bars".into());
+            };
             // The first close outside the box only: the bar before it closed inside.
             let side = if last.close > hi && prev.close <= hi {
                 Side::Buy
             } else if last.close < lo && prev.close >= lo {
                 Side::Sell
             } else {
-                return Err(format!("no first close outside the {}..{} opening range", lo, hi));
+                return Err(format!(
+                    "no first close outside the {}..{} opening range",
+                    lo, hi
+                ));
             };
             let mid = (hi + lo) * 0.5;
             let from = if side.is_buy() { v.ask } else { v.bid };
@@ -1097,12 +1615,24 @@ pub fn decide(arch: Archetype, v: &View, rng: &mut XorShift) -> Result<Entry, St
             Ok(Entry {
                 side,
                 stop_ticks,
-                target: Some(if side.is_buy() { from + reach } else { from - reach }),
+                target: Some(if side.is_buy() {
+                    from + reach
+                } else {
+                    from - reach
+                }),
                 trail: None,
                 time_stop_secs: 90.0 * 60.0,
                 // Once per session per pit: the cooldown runs to the end of this session.
                 cooldown_secs: arch.rules().secs_to_session_end(minute).max(60.0),
-                why: format!("1m close {} outside the {:02}:{:02} opening range {}..{}; stop at its middle {}", last.close, open / 60, open % 60, lo, hi, mid),
+                why: format!(
+                    "1m close {} outside the {:02}:{:02} opening range {}..{}; stop at its middle {}",
+                    last.close,
+                    open / 60,
+                    open % 60,
+                    lo,
+                    hi,
+                    mid
+                ),
             })
         }
         Archetype::SessionExtremeFader => {
@@ -1116,49 +1646,101 @@ pub fn decide(arch: Archetype, v: &View, rng: &mut XorShift) -> Result<Entry, St
             for side in [Side::Sell, Side::Buy] {
                 // A new session extreme printed inside the last three bars.
                 let (extreme, prior) = if side.is_buy() {
-                    (last3.iter().map(|b| b.low).fold(f32::MAX, f32::min), before.iter().map(|b| b.low).fold(f32::MAX, f32::min))
+                    (
+                        last3.iter().map(|b| b.low).fold(f32::MAX, f32::min),
+                        before.iter().map(|b| b.low).fold(f32::MAX, f32::min),
+                    )
                 } else {
-                    (last3.iter().map(|b| b.high).fold(f32::MIN, f32::max), before.iter().map(|b| b.high).fold(f32::MIN, f32::max))
+                    (
+                        last3.iter().map(|b| b.high).fold(f32::MIN, f32::max),
+                        before.iter().map(|b| b.high).fold(f32::MIN, f32::max),
+                    )
                 };
-                let is_new = if side.is_buy() { extreme < prior } else { extreme > prior };
+                let is_new = if side.is_buy() {
+                    extreme < prior
+                } else {
+                    extreme > prior
+                };
                 if !is_new {
                     continue;
                 }
-                let tag = if side.is_buy() { "session low" } else { "session high" };
+                let tag = if side.is_buy() {
+                    "session low"
+                } else {
+                    "session high"
+                };
                 // Tick rate dropping: the newest bar is the quietest of the three and at most
                 // three quarters of the busiest.
                 let vols = [last3[0].volume, last3[1].volume, last3[2].volume];
-                if !(vols[2] < vols[0] && vols[2] < vols[1] && vols[2] <= 0.75 * vols[0].max(vols[1])) {
-                    why_not = format!("new {tag} {extreme} but tick counts {:.0}/{:.0}/{:.0} are not fading", vols[0], vols[1], vols[2]);
+                if !(vols[2] < vols[0]
+                    && vols[2] < vols[1]
+                    && vols[2] <= 0.75 * vols[0].max(vols[1]))
+                {
+                    why_not = format!(
+                        "new {tag} {extreme} but tick counts {:.0}/{:.0}/{:.0} are not fading",
+                        vols[0], vols[1], vols[2]
+                    );
                     continue;
                 }
                 // The bar that printed the extreme was rejected: its wick on that side is at
                 // least half its range.
-                let xb = last3.iter().find(|b| if side.is_buy() { b.low <= extreme } else { b.high >= extreme }).expect("extreme came from these bars");
+                let xb = last3
+                    .iter()
+                    .find(|b| {
+                        if side.is_buy() {
+                            b.low <= extreme
+                        } else {
+                            b.high >= extreme
+                        }
+                    })
+                    .expect("extreme came from these bars");
                 let range = xb.high - xb.low;
-                let wick = if side.is_buy() { xb.open.min(xb.close) - xb.low } else { xb.high - xb.open.max(xb.close) };
+                let wick = if side.is_buy() {
+                    xb.open.min(xb.close) - xb.low
+                } else {
+                    xb.high - xb.open.max(xb.close)
+                };
                 if range <= 0.0 || wick < 0.5 * range {
                     why_not = format!("new {tag} {extreme} but no rejection wick");
                     continue;
                 }
                 // And price has backed off it.
                 let from = if side.is_buy() { v.ask } else { v.bid };
-                if if side.is_buy() { from <= extreme } else { from >= extreme } {
+                if if side.is_buy() {
+                    from <= extreme
+                } else {
+                    from >= extreme
+                } {
                     why_not = format!("new {tag} {extreme} still printing");
                     continue;
                 }
                 // Nothing of interest within a unit on the way to the target.
                 let ut = u * v.tick;
                 let blocked = v.levels.iter().any(|l| {
-                    BLOCKS_AND_GAPS.contains(&l.kind) && if side.is_buy() { l.lo < from + ut && l.hi > from } else { l.hi > from - ut && l.lo < from }
+                    BLOCKS_AND_GAPS.contains(&l.kind)
+                        && if side.is_buy() {
+                            l.lo < from + ut && l.hi > from
+                        } else {
+                            l.hi > from - ut && l.lo < from
+                        }
                 });
                 if blocked {
-                    why_not = format!("new {tag} {extreme} rejected, but a block or gap sits within a unit");
+                    why_not = format!(
+                        "new {tag} {extreme} rejected, but a block or gap sits within a unit"
+                    );
                     continue;
                 }
-                let stop = if side.is_buy() { extreme - ut } else { extreme + ut };
+                let stop = if side.is_buy() {
+                    extreme - ut
+                } else {
+                    extreme + ut
+                };
                 let stop_ticks = (stop - from).abs() / v.tick;
-                let two_units = if side.is_buy() { from + 2.0 * ut } else { from - 2.0 * ut };
+                let two_units = if side.is_buy() {
+                    from + 2.0 * ut
+                } else {
+                    from - 2.0 * ut
+                };
                 let target = match v.vwap() {
                     Some(w) if side.is_buy() && w > from => w.min(two_units),
                     Some(w) if !side.is_buy() && w < from => w.max(two_units),
@@ -1168,7 +1750,9 @@ pub fn decide(arch: Archetype, v: &View, rng: &mut XorShift) -> Result<Entry, St
                 // fade to VWAP: only take it when price is still close to the extreme.
                 let reach = (target - from).abs() / v.tick;
                 if reach < stop_ticks * MIN_REWARD_TO_RISK {
-                    why_not = format!("new {tag} {extreme} rejected, but price is too far from it: {reach:.0} ticks to the target against a {stop_ticks:.0}-tick stop");
+                    why_not = format!(
+                        "new {tag} {extreme} rejected, but price is too far from it: {reach:.0} ticks to the target against a {stop_ticks:.0}-tick stop"
+                    );
                     continue;
                 }
                 return Ok(Entry {
@@ -1178,7 +1762,17 @@ pub fn decide(arch: Archetype, v: &View, rng: &mut XorShift) -> Result<Entry, St
                     trail: None,
                     time_stop_secs: 40.0 * 60.0,
                     cooldown_secs: 300.0,
-                    why: format!("fading a new {tag} {extreme}: tick counts {:.0}/{:.0}/{:.0}, rejection wick; stop a unit beyond, target {}", vols[0], vols[1], vols[2], if target == two_units { "two units".to_string() } else { format!("VWAP {target}") }),
+                    why: format!(
+                        "fading a new {tag} {extreme}: tick counts {:.0}/{:.0}/{:.0}, rejection wick; stop a unit beyond, target {}",
+                        vols[0],
+                        vols[1],
+                        vols[2],
+                        if target == two_units {
+                            "two units".to_string()
+                        } else {
+                            format!("VWAP {target}")
+                        }
+                    ),
                 });
             }
             Err(why_not)
@@ -1194,32 +1788,58 @@ pub fn decide(arch: Archetype, v: &View, rng: &mut XorShift) -> Result<Entry, St
             let band = 0.25 * ut;
             let mut why_not = String::from("no trend a unit clear of VWAP");
             for side in [Side::Buy, Side::Sell] {
-                let away = |(close, vw): &(f32, f32)| if side.is_buy() { close - vw >= ut } else { vw - close >= ut };
+                let away = |(close, vw): &(f32, f32)| {
+                    if side.is_buy() {
+                        close - vw >= ut
+                    } else {
+                        vw - close >= ut
+                    }
+                };
                 // Up to five bars of pullback, after a run of twenty or more a unit clear.
                 let pull = path.iter().rev().take_while(|p| !away(p)).count();
                 if pull > 5 {
                     continue;
                 }
-                let run = path[..path.len() - pull].iter().rev().take_while(|p| away(p)).count();
+                let run = path[..path.len() - pull]
+                    .iter()
+                    .rev()
+                    .take_while(|p| away(p))
+                    .count();
                 if run < 20 {
-                    why_not = format!("only {run} bars {} VWAP", if side.is_buy() { "above" } else { "below" });
+                    why_not = format!(
+                        "only {run} bars {} VWAP",
+                        if side.is_buy() { "above" } else { "below" }
+                    );
                     continue;
                 }
                 // First touch: the last completed bar still closed outside the band, and the
                 // price is inside it now.
                 let last_close = path[path.len() - 1].0;
-                let outside_before = if side.is_buy() { last_close > w + band } else { last_close < w - band };
+                let outside_before = if side.is_buy() {
+                    last_close > w + band
+                } else {
+                    last_close < w - band
+                };
                 let inside_now = (v.bid - w).abs() <= band;
                 if !outside_before || !inside_now {
-                    why_not = format!("{run}-bar trend {} VWAP {w:.5}, waiting for the first touch", if side.is_buy() { "above" } else { "below" });
+                    why_not = format!(
+                        "{run}-bar trend {} VWAP {w:.5}, waiting for the first touch",
+                        if side.is_buy() { "above" } else { "below" }
+                    );
                     continue;
                 }
                 let from = if side.is_buy() { v.ask } else { v.bid };
                 let stop = if side.is_buy() { w - ut } else { w + ut };
                 let stop_ticks = (from - stop).abs() / v.tick;
-                let Some((hi, lo)) = v.session_extremes() else { continue };
+                let Some((hi, lo)) = v.session_extremes() else {
+                    continue;
+                };
                 let target = if side.is_buy() { hi } else { lo };
-                if if side.is_buy() { target <= from } else { target >= from } {
+                if if side.is_buy() {
+                    target <= from
+                } else {
+                    target >= from
+                } {
                     why_not = "session extreme is behind the entry".into();
                     continue;
                 }
@@ -1230,18 +1850,30 @@ pub fn decide(arch: Archetype, v: &View, rng: &mut XorShift) -> Result<Entry, St
                     trail: None,
                     time_stop_secs: 3600.0,
                     cooldown_secs: 600.0,
-                    why: format!("{run} bars {} VWAP {w:.5}, first touch back; stop a unit beyond VWAP, target the session {}", if side.is_buy() { "above" } else { "below" }, if side.is_buy() { "high" } else { "low" }),
+                    why: format!(
+                        "{run} bars {} VWAP {w:.5}, first touch back; stop a unit beyond VWAP, target the session {}",
+                        if side.is_buy() { "above" } else { "below" },
+                        if side.is_buy() { "high" } else { "low" }
+                    ),
                 });
             }
             Err(why_not)
         }
         Archetype::Control => {
-            let side = if rng.chance(0.5) { Side::Buy } else { Side::Sell };
+            let side = if rng.chance(0.5) {
+                Side::Buy
+            } else {
+                Side::Sell
+            };
             let u = v.unit();
             Ok(Entry {
                 side,
                 stop_ticks: u,
-                target: Some(if side.is_buy() { v.ask + u * v.tick } else { v.bid - u * v.tick }),
+                target: Some(if side.is_buy() {
+                    v.ask + u * v.tick
+                } else {
+                    v.bid - u * v.tick
+                }),
                 trail: None,
                 time_stop_secs: 600.0,
                 cooldown_secs: 180.0 + rng.unit() as f64 * 300.0,
@@ -1256,18 +1888,33 @@ pub fn decide(arch: Archetype, v: &View, rng: &mut XorShift) -> Result<Entry, St
 /// `min_stop_spreads` spreads is widened to it (and the trade's R measured on the widened
 /// stop); an entry whose own target (the stop, for a trailing trade) is under
 /// `min_target_spreads` spreads away is refused. The spread counts as at least one tick.
-pub fn apply_cost_rules(e: &mut Entry, rules: &Rules, spread_ticks: f32, entry_px: f32, tick: f32) -> Result<(), String> {
+pub fn apply_cost_rules(
+    e: &mut Entry,
+    rules: &Rules,
+    spread_ticks: f32,
+    entry_px: f32,
+    tick: f32,
+) -> Result<(), String> {
     // Distances come out of f32 price arithmetic: a thousandth of a tick is noise, not a veto.
     const EPS: f32 = 1e-3;
     let spread = spread_ticks.max(1.0);
-    let reach_ticks = e.target.map(|t| (t - entry_px).abs() / tick).unwrap_or(e.stop_ticks);
+    let reach_ticks = e
+        .target
+        .map(|t| (t - entry_px).abs() / tick)
+        .unwrap_or(e.stop_ticks);
     let min_reach = rules.min_target_spreads * spread;
     if reach_ticks + EPS < min_reach {
-        return Err(format!("target {:.1} ticks away is under {} spreads ({:.1} ticks)", reach_ticks, rules.min_target_spreads, min_reach));
+        return Err(format!(
+            "target {:.1} ticks away is under {} spreads ({:.1} ticks)",
+            reach_ticks, rules.min_target_spreads, min_reach
+        ));
     }
     let floor = rules.min_stop_spreads * spread;
     if e.stop_ticks + EPS < floor {
-        e.why = format!("{} | stop widened from {:.1} to {:.1} ticks ({} spreads)", e.why, e.stop_ticks, floor, rules.min_stop_spreads);
+        e.why = format!(
+            "{} | stop widened from {:.1} to {:.1} ticks ({} spreads)",
+            e.why, e.stop_ticks, floor, rules.min_stop_spreads
+        );
         e.stop_ticks = floor;
     }
     Ok(())
@@ -1332,7 +1979,11 @@ impl Trader {
 
     pub fn win_rate(&self) -> f32 {
         let n = self.wins + self.losses;
-        if n == 0 { 0.0 } else { self.wins as f32 / n as f32 }
+        if n == 0 {
+            0.0
+        } else {
+            self.wins as f32 / n as f32
+        }
     }
 
     pub fn note(&mut self, why: String) {
@@ -1345,7 +1996,11 @@ impl Trader {
     fn settle(&mut self, pnl_ticks: f32, pnl_r: f32) {
         self.pnl_ticks += pnl_ticks;
         self.pnl_r += pnl_r;
-        if pnl_ticks > 0.0 { self.wins += 1 } else { self.losses += 1 }
+        if pnl_ticks > 0.0 {
+            self.wins += 1
+        } else {
+            self.losses += 1
+        }
         self.peak_r = self.peak_r.max(self.pnl_r);
         self.max_drawdown_r = self.max_drawdown_r.max(self.peak_r - self.pnl_r);
     }
@@ -1378,21 +2033,52 @@ impl ExitReason {
 }
 
 /// Exit check for one position against the current touch. Pure.
-pub fn exit_check(p: &mut Position, bid: f32, ask: f32, tick: f32, now: f64, minute_of_day: i64) -> Option<(ExitReason, f32)> {
+pub fn exit_check(
+    p: &mut Position,
+    bid: f32,
+    ask: f32,
+    tick: f32,
+    now: f64,
+    minute_of_day: i64,
+) -> Option<(ExitReason, f32)> {
     let mark = if p.side.is_buy() { bid } else { ask };
-    p.best = if p.side.is_buy() { p.best.max(mark) } else { p.best.min(mark) };
+    p.best = if p.side.is_buy() {
+        p.best.max(mark)
+    } else {
+        p.best.min(mark)
+    };
     if let Some(t) = p.trail {
-        let onside = p.open_ticks(bid, ask, tick).max(if p.side.is_buy() { (p.best - p.entry) / tick } else { (p.entry - p.best) / tick });
+        let onside = p.open_ticks(bid, ask, tick).max(if p.side.is_buy() {
+            (p.best - p.entry) / tick
+        } else {
+            (p.entry - p.best) / tick
+        });
         if onside >= t.arm_ticks {
-            let locked = if p.side.is_buy() { p.entry + t.lock_ticks * tick } else { p.entry - t.lock_ticks * tick };
-            let trailed = if p.side.is_buy() { p.best - t.trail_ticks * tick } else { p.best + t.trail_ticks * tick };
-            p.stop = if p.side.is_buy() { p.stop.max(locked).max(trailed) } else { p.stop.min(locked).min(trailed) };
+            let locked = if p.side.is_buy() {
+                p.entry + t.lock_ticks * tick
+            } else {
+                p.entry - t.lock_ticks * tick
+            };
+            let trailed = if p.side.is_buy() {
+                p.best - t.trail_ticks * tick
+            } else {
+                p.best + t.trail_ticks * tick
+            };
+            p.stop = if p.side.is_buy() {
+                p.stop.max(locked).max(trailed)
+            } else {
+                p.stop.min(locked).min(trailed)
+            };
         }
     }
     if minute_of_day >= FLAT_AT && !p.overnight {
         return Some((ExitReason::SessionClose, mark));
     }
-    let stopped = if p.side.is_buy() { bid <= p.stop } else { ask >= p.stop };
+    let stopped = if p.side.is_buy() {
+        bid <= p.stop
+    } else {
+        ask >= p.stop
+    };
     if stopped {
         return Some((ExitReason::Stop, mark));
     }
@@ -1468,14 +2154,23 @@ impl PaperBook {
 
     pub fn toggle_show(&mut self, controller: &mut MarketScenarioController) {
         self.show = !self.show;
-        controller.announcement_banner = if self.show { "PAPER TRADERS SHOWN  (T hides)".into() } else { "PAPER TRADERS HIDDEN".into() };
+        controller.announcement_banner = if self.show {
+            "PAPER TRADERS SHOWN  (T hides)".into()
+        } else {
+            "PAPER TRADERS HIDDEN".into()
+        };
         controller.banner_timer = 1.5;
     }
 
     /// Leaderboard order: best first, by realised plus open P&L is unknown here, so realised.
     pub fn ranking(&self) -> Vec<usize> {
         let mut idx: Vec<usize> = (0..self.traders.len()).collect();
-        idx.sort_by(|a, b| self.traders[*b].pnl_r.partial_cmp(&self.traders[*a].pnl_r).unwrap());
+        idx.sort_by(|a, b| {
+            self.traders[*b]
+                .pnl_r
+                .partial_cmp(&self.traders[*a].pnl_r)
+                .unwrap()
+        });
         idx
     }
 
@@ -1483,14 +2178,27 @@ impl PaperBook {
         if !self.log_to_relay {
             return;
         }
-        let Ok(body) = serde_json::to_vec(value) else { return };
+        let Ok(body) = serde_json::to_vec(value) else {
+            return;
+        };
         let mut req = ehttp::Request::post(format!("{}/log/{name}", relay_url()), body);
-        req.headers = ehttp::Headers::new(&[("Accept", "application/json"), ("Content-Type", "application/json")]);
+        req.headers = ehttp::Headers::new(&[
+            ("Accept", "application/json"),
+            ("Content-Type", "application/json"),
+        ]);
         ehttp::fetch(req, |_| {});
     }
 
     /// Close a trader's position at `exit` for `reason`: settle it, keep and log the trade.
-    fn close_position(&mut self, t: usize, p: Position, v: &View, reason: ExitReason, exit: f32, log: bool) {
+    fn close_position(
+        &mut self,
+        t: usize,
+        p: Position,
+        v: &View,
+        reason: ExitReason,
+        exit: f32,
+        log: bool,
+    ) {
         let pnl_ticks = p.open_ticks(v.bid, v.ask, v.tick);
         let pnl_r = pnl_ticks / p.stop_ticks.max(1.0);
         let trade = Trade {
@@ -1518,13 +2226,33 @@ impl PaperBook {
         };
         let tr = &mut self.traders[t];
         tr.settle(pnl_ticks, pnl_r);
-        tr.note(format!("{} {} {} closed on {}: {:+.2}R ({:+.0} ticks)", v.inst.symbol(), side_str(p.side), fmt_px(v.inst, p.entry), reason.label(), pnl_r, pnl_ticks));
+        tr.note(format!(
+            "{} {} {} closed on {}: {:+.2}R ({:+.0} ticks)",
+            v.inst.symbol(),
+            side_str(p.side),
+            fmt_px(v.inst, p.entry),
+            reason.label(),
+            pnl_r,
+            pnl_ticks
+        ));
         tr.position = None;
         tr.trades.push(trade.clone());
         self.revision += 1;
         if log {
             self.log("paper_trades", &trade);
-            let d = Decision { trader: trade.trader, archetype: trade.archetype, symbol: trade.symbol, at_ms: v.wall_ms, action: "exit", side: Some(trade.side), price: exit, bid: v.bid, ask: v.ask, why: trade.why_out.clone(), observation_hash: None };
+            let d = Decision {
+                trader: trade.trader,
+                archetype: trade.archetype,
+                symbol: trade.symbol,
+                at_ms: v.wall_ms,
+                action: "exit",
+                side: Some(trade.side),
+                price: exit,
+                bid: v.bid,
+                ask: v.ask,
+                why: trade.why_out.clone(),
+                observation_hash: None,
+            };
             self.log("paper_decisions", &d);
         }
     }
@@ -1536,7 +2264,13 @@ impl PaperBook {
 
     /// Close a position on this pit at the touch, for `reason`.
     pub fn close_at_touch(&mut self, t: usize, v: &View, reason: ExitReason, log: bool) -> bool {
-        let Some(p) = self.traders[t].position.clone().filter(|p| p.inst == v.inst) else { return false };
+        let Some(p) = self.traders[t]
+            .position
+            .clone()
+            .filter(|p| p.inst == v.inst)
+        else {
+            return false;
+        };
         let exit = if p.side.is_buy() { v.bid } else { v.ask };
         self.close_position(t, p, v, reason, exit, log);
         true
@@ -1544,15 +2278,29 @@ impl PaperBook {
 
     /// A holder enters at the touch: one R is `unit_ticks`, the safety stop `safety_ticks` away,
     /// no target, no time stop, held overnight.
-    pub fn enter_holder(&mut self, t: usize, v: &View, side: Side, unit_ticks: f32, safety_ticks: f32, why: String) -> Result<(), String> {
+    pub fn enter_holder(
+        &mut self,
+        t: usize,
+        v: &View,
+        side: Side,
+        unit_ticks: f32,
+        safety_ticks: f32,
+        why: String,
+    ) -> Result<(), String> {
         if self.traders[t].position.is_some() {
             return Err("already in a position".into());
         }
         if unit_ticks < v.spread_ticks.max(1.0) * MIN_TARGET_SPREADS {
-            return Err(format!("one R of {unit_ticks:.1} ticks is under {MIN_TARGET_SPREADS} spreads"));
+            return Err(format!(
+                "one R of {unit_ticks:.1} ticks is under {MIN_TARGET_SPREADS} spreads"
+            ));
         }
         let entry = if side.is_buy() { v.ask } else { v.bid };
-        let stop = if side.is_buy() { entry - safety_ticks * v.tick } else { entry + safety_ticks * v.tick };
+        let stop = if side.is_buy() {
+            entry - safety_ticks * v.tick
+        } else {
+            entry + safety_ticks * v.tick
+        };
         let i = v.inst as usize;
         let p = Position {
             inst: v.inst,
@@ -1574,7 +2322,13 @@ impl PaperBook {
         };
         let tr = &mut self.traders[t];
         tr.cooldown_until[i] = v.now;
-        tr.note(format!("{} {} at {}: {}", v.inst.symbol(), side_str(side), fmt_px(v.inst, entry), why));
+        tr.note(format!(
+            "{} {} at {}: {}",
+            v.inst.symbol(),
+            side_str(side),
+            fmt_px(v.inst, entry),
+            why
+        ));
         tr.position = Some(p);
         self.revision += 1;
         Ok(())
@@ -1587,7 +2341,13 @@ impl PaperBook {
         let i = v.inst as usize;
         // Exits first, for everyone holding this pit.
         for t in 0..self.traders.len() {
-            let Some(mut p) = self.traders[t].position.clone().filter(|p| p.inst == v.inst) else { continue };
+            let Some(mut p) = self.traders[t]
+                .position
+                .clone()
+                .filter(|p| p.inst == v.inst)
+            else {
+                continue;
+            };
             match exit_check(&mut p, v.bid, v.ask, v.tick, v.now, minute) {
                 Some((reason, exit)) => self.close_position(t, p, v, reason, exit, log),
                 None => self.traders[t].position = Some(p),
@@ -1626,10 +2386,20 @@ impl PaperBook {
             match decided {
                 Ok(e) => {
                     let entry = if e.side.is_buy() { v.ask } else { v.bid };
-                    let stop = if e.side.is_buy() { entry - e.stop_ticks * v.tick } else { entry + e.stop_ticks * v.tick };
+                    let stop = if e.side.is_buy() {
+                        entry - e.stop_ticks * v.tick
+                    } else {
+                        entry + e.stop_ticks * v.tick
+                    };
                     // A target nearer than the stop is a bad bet by construction: push it out.
                     let min_reach = e.stop_ticks * MIN_REWARD_TO_RISK * v.tick;
-                    let target = e.target.map(|t| if e.side.is_buy() { t.max(entry + min_reach) } else { t.min(entry - min_reach) });
+                    let target = e.target.map(|t| {
+                        if e.side.is_buy() {
+                            t.max(entry + min_reach)
+                        } else {
+                            t.min(entry - min_reach)
+                        }
+                    });
                     let p = Position {
                         inst: v.inst,
                         side: e.side,
@@ -1644,17 +2414,38 @@ impl PaperBook {
                         stop_ticks: e.stop_ticks,
                         spread_ticks_in: v.spread_ticks,
                         why: e.why.clone(),
-                        observation_hash: v.read.map(|r| r.observation_hash.clone()).unwrap_or_default(),
+                        observation_hash: v
+                            .read
+                            .map(|r| r.observation_hash.clone())
+                            .unwrap_or_default(),
                         read_source: v.read.map(|r| r.source),
                         overnight: false,
                     };
                     let tr = &mut self.traders[t];
                     tr.cooldown_until[i] = v.now + e.cooldown_secs;
-                    tr.note(format!("{} {} at {}: {}", v.inst.symbol(), side_str(e.side), fmt_px(v.inst, entry), e.why));
+                    tr.note(format!(
+                        "{} {} at {}: {}",
+                        v.inst.symbol(),
+                        side_str(e.side),
+                        fmt_px(v.inst, entry),
+                        e.why
+                    ));
                     tr.position = Some(p);
                     self.revision += 1;
                     if log {
-                        let d = Decision { trader: arch.name(), archetype: arch, symbol: v.inst.symbol(), at_ms: v.wall_ms, action: "enter", side: Some(side_str(e.side)), price: entry, bid: v.bid, ask: v.ask, why: e.why, observation_hash: v.read.map(|r| r.observation_hash.clone()) };
+                        let d = Decision {
+                            trader: arch.name(),
+                            archetype: arch,
+                            symbol: v.inst.symbol(),
+                            at_ms: v.wall_ms,
+                            action: "enter",
+                            side: Some(side_str(e.side)),
+                            price: entry,
+                            bid: v.bid,
+                            ask: v.ask,
+                            why: e.why,
+                            observation_hash: v.read.map(|r| r.observation_hash.clone()),
+                        };
                         self.log("paper_decisions", &d);
                     }
                 }
@@ -1684,7 +2475,13 @@ impl PaperBook {
 
     /// Open a genome's entry at this tick, under the same cost rules as everyone else. The
     /// genome's own rule (`crate::genome::evaluate`) has already said yes at the bar close.
-    pub fn enter_genome(&mut self, t: usize, v: &View, mut e: Entry, log: bool) -> Result<(), String> {
+    pub fn enter_genome(
+        &mut self,
+        t: usize,
+        v: &View,
+        mut e: Entry,
+        log: bool,
+    ) -> Result<(), String> {
         let i = v.inst as usize;
         let arch = self.traders[t].archetype;
         if self.traders[t].position.is_some() {
@@ -1692,9 +2489,19 @@ impl PaperBook {
         }
         let entry = if e.side.is_buy() { v.ask } else { v.bid };
         apply_cost_rules(&mut e, &arch.rules(), v.spread_ticks, entry, v.tick)?;
-        let stop = if e.side.is_buy() { entry - e.stop_ticks * v.tick } else { entry + e.stop_ticks * v.tick };
+        let stop = if e.side.is_buy() {
+            entry - e.stop_ticks * v.tick
+        } else {
+            entry + e.stop_ticks * v.tick
+        };
         let min_reach = e.stop_ticks * MIN_REWARD_TO_RISK * v.tick;
-        let target = e.target.map(|t| if e.side.is_buy() { t.max(entry + min_reach) } else { t.min(entry - min_reach) });
+        let target = e.target.map(|t| {
+            if e.side.is_buy() {
+                t.max(entry + min_reach)
+            } else {
+                t.min(entry - min_reach)
+            }
+        });
         let p = Position {
             inst: v.inst,
             side: e.side,
@@ -1715,11 +2522,29 @@ impl PaperBook {
         };
         let tr = &mut self.traders[t];
         tr.cooldown_until[i] = v.now + e.cooldown_secs;
-        tr.note(format!("{} {} at {}: {}", v.inst.symbol(), side_str(e.side), fmt_px(v.inst, entry), e.why));
+        tr.note(format!(
+            "{} {} at {}: {}",
+            v.inst.symbol(),
+            side_str(e.side),
+            fmt_px(v.inst, entry),
+            e.why
+        ));
         tr.position = Some(p);
         self.revision += 1;
         if log {
-            let d = Decision { trader: arch.name(), archetype: arch, symbol: v.inst.symbol(), at_ms: v.wall_ms, action: "enter", side: Some(side_str(e.side)), price: entry, bid: v.bid, ask: v.ask, why: e.why, observation_hash: None };
+            let d = Decision {
+                trader: arch.name(),
+                archetype: arch,
+                symbol: v.inst.symbol(),
+                at_ms: v.wall_ms,
+                action: "enter",
+                side: Some(side_str(e.side)),
+                price: entry,
+                bid: v.bid,
+                ask: v.ask,
+                why: e.why,
+                observation_hash: None,
+            };
             self.log("paper_decisions", &d);
         }
         Ok(())
@@ -1757,16 +2582,29 @@ pub fn update_paper_book(
     let wall_ms = wall_clock_ms();
     for inst in Instrument::ALL {
         let i = inst as usize;
-        let PitFeedStatus::Live { rate, .. } = feed.pit_status(inst, now) else { continue };
+        let PitFeedStatus::Live { rate, .. } = feed.pit_status(inst, now) else {
+            continue;
+        };
         let Some(q) = feed.quote(inst) else { continue };
         if q.updates == book.last_updates[i] {
             continue;
         }
-        let prev_bid = if book.last_updates[i] == 0 { q.price as f32 } else { book.prev_bid[i] };
+        let prev_bid = if book.last_updates[i] == 0 {
+            q.price as f32
+        } else {
+            book.prev_bid[i]
+        };
         book.last_updates[i] = q.updates;
         let tick = tick_size(inst);
         let series = store.series(inst, Timeframe::M1, FeedMode::Live);
-        let bars: Vec<Candle> = series.bars.iter().rev().take(VIEW_BARS).rev().copied().collect();
+        let bars: Vec<Candle> = series
+            .bars
+            .iter()
+            .rev()
+            .take(VIEW_BARS)
+            .rev()
+            .copied()
+            .collect();
         let read = desk
             .read(inst)
             .filter(|r| r.source == ReadSource::Jev && now - r.at <= READ_FRESH_SECS);
@@ -1836,9 +2674,17 @@ pub fn setup_paper_panel(mut commands: Commands) {
                     row.spawn((
                         PaperHeader,
                         Text::new(PANEL_HEADER),
-                        TextFont { font_size: 11.0, ..default() },
+                        TextFont {
+                            font_size: 11.0,
+                            ..default()
+                        },
                         TextColor(Color::srgb(0.85, 0.80, 0.60)),
-                        Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: Val::Px(0.0), ..default() },
+                        Node {
+                            flex_grow: 1.0,
+                            flex_shrink: 1.0,
+                            min_width: Val::Px(0.0),
+                            ..default()
+                        },
                     ));
                     crate::panels::spawn_close_button(row, me);
                 });
@@ -1847,19 +2693,38 @@ pub fn setup_paper_panel(mut commands: Commands) {
                     .spawn((
                         Button,
                         PaperRow(i),
-                        Node { padding: UiRect::axes(Val::Px(4.0), Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(3.0)), ..default() },
+                        Node {
+                            padding: UiRect::axes(Val::Px(4.0), Val::Px(1.0)),
+                            border_radius: BorderRadius::all(Val::Px(3.0)),
+                            ..default()
+                        },
                         BackgroundColor(Color::NONE),
                     ))
                     .with_children(|row| {
-                        row.spawn((PaperRow(i), Text::new(""), TextFont { font_size: 10.0, ..default() }, TextColor(Color::WHITE)));
+                        row.spawn((
+                            PaperRow(i),
+                            Text::new(""),
+                            TextFont {
+                                font_size: 10.0,
+                                ..default()
+                            },
+                            TextColor(Color::WHITE),
+                        ));
                     });
             }
             panel.spawn((
                 PaperDetail,
                 Text::new(""),
-                TextFont { font_size: 10.0, ..default() },
+                TextFont {
+                    font_size: 10.0,
+                    ..default()
+                },
                 TextColor(Color::srgb(0.75, 0.80, 0.88)),
-                Node { margin: UiRect::top(Val::Px(4.0)), max_width: Val::Px(540.0), ..default() },
+                Node {
+                    margin: UiRect::top(Val::Px(4.0)),
+                    max_width: Val::Px(540.0),
+                    ..default()
+                },
             ));
         });
 }
@@ -1869,9 +2734,16 @@ pub fn setup_paper_panel(mut commands: Commands) {
 const PANEL_ROWS: usize = 64;
 
 /// Only as many rows as there are traders to list take up room in the panel.
-fn show_rows(rows: &mut Query<(&PaperRow, &mut Node), (With<Button>, Without<PaperPanel>)>, n: usize) {
+fn show_rows(
+    rows: &mut Query<(&PaperRow, &mut Node), (With<Button>, Without<PaperPanel>)>,
+    n: usize,
+) {
     for (row, mut node) in rows.iter_mut() {
-        let want = if row.0 < n { Display::Flex } else { Display::None };
+        let want = if row.0 < n {
+            Display::Flex
+        } else {
+            Display::None
+        };
         if node.display != want {
             node.display = want;
         }
@@ -1880,12 +2752,15 @@ fn show_rows(rows: &mut Query<(&PaperRow, &mut Node), (With<Button>, Without<Pap
 
 /// A genome's colour on a page that does not hold the genome registry: from its name.
 fn genome_color(name: &str) -> Color {
-    let h = name.bytes().fold(7u32, |a, b| a.wrapping_mul(31).wrapping_add(b as u32));
+    let h = name
+        .bytes()
+        .fold(7u32, |a, b| a.wrapping_mul(31).wrapping_add(b as u32));
     let (r, g, b) = crate::genome::seat_rgb((h % 1000) as u16);
     Color::srgb(r, g, b)
 }
 
-const PANEL_HEADER: &str = "PAPER TRADERS  |  realised R (profit / initial stop), spread paid  |  T hides";
+const PANEL_HEADER: &str =
+    "PAPER TRADERS  |  realised R (profit / initial stop), spread paid  |  T hides";
 
 /// System: the leaderboard, four times a second. While the headless desk is alive its board
 /// is shown instead of the in-tab book (see `desk_feed`).
@@ -1897,14 +2772,21 @@ pub fn update_paper_panel(
     mut next: Local<f32>,
     mut root: Query<&mut Node, With<PaperPanel>>,
     mut header: Query<&mut Text, (With<PaperHeader>, Without<PaperRow>, Without<PaperDetail>)>,
-    mut rows: Query<(&PaperRow, &mut Text, &mut TextColor), (Without<PaperDetail>, Without<PaperHeader>)>,
+    mut rows: Query<
+        (&PaperRow, &mut Text, &mut TextColor),
+        (Without<PaperDetail>, Without<PaperHeader>),
+    >,
     mut detail: Query<&mut Text, (With<PaperDetail>, Without<PaperRow>)>,
     mut row_nodes: Query<(&PaperRow, &mut Node), (With<Button>, Without<PaperPanel>)>,
     mut stale_since: Local<Option<f64>>,
     mut last_reload_at: Local<f64>,
 ) {
     for mut node in root.iter_mut() {
-        let want = if book.show { Display::Flex } else { Display::None };
+        let want = if book.show {
+            Display::Flex
+        } else {
+            Display::None
+        };
         if node.display != want {
             node.display = want;
         }
@@ -1920,15 +2802,23 @@ pub fn update_paper_panel(
         // twenty seconds reload, at most once every three minutes in case the new bundle is
         // still compiling.
         let now = time.elapsed_secs_f64();
-        let unknown = board.traders.iter().filter(|t| t.archetype().is_none() && !t.is_genome()).count();
+        let unknown = board
+            .traders
+            .iter()
+            .filter(|t| t.archetype().is_none() && !t.is_genome())
+            .count();
         let header_line = if unknown > 0 {
             let since = *stale_since.get_or_insert(now);
             if now - since > 20.0 && now - *last_reload_at > 180.0 {
                 *last_reload_at = now;
-                warn!("paper panel: the desk has {unknown} traders this build does not know; reloading the page");
+                warn!(
+                    "paper panel: the desk has {unknown} traders this build does not know; reloading the page"
+                );
                 crate::ui::reload_page();
             }
-            format!("THIS PAGE IS OUT OF DATE: the desk runs {unknown} traders this build does not know. Reloading shortly, or press Cmd-R.")
+            format!(
+                "THIS PAGE IS OUT OF DATE: the desk runs {unknown} traders this build does not know. Reloading shortly, or press Cmd-R."
+            )
         } else {
             *stale_since = None;
             board.header_line()
@@ -1955,18 +2845,37 @@ pub fn update_paper_panel(
                 let q = feed.quote(inst)?;
                 let tick = tick_size(inst);
                 let stop_ticks = ((o.entry - o.stop).abs() / tick).max(1.0);
-                let open_ticks = if o.side == "long" { (q.price as f32 - o.entry) / tick } else { (o.entry - q.ask as f32) / tick };
+                let open_ticks = if o.side == "long" {
+                    (q.price as f32 - o.entry) / tick
+                } else {
+                    (o.entry - q.ask as f32) / tick
+                };
                 Some(open_ticks / stop_ticks)
             });
             set_ui_text(&mut text, board.row_line(row.0, tr, live_r));
-            let picked = if tr.is_genome() { book.board_focus.as_deref() == Some(tr.trader.as_str()) } else { book.board_focus.is_none() && tr.archetype() == Some(focus) };
-            let c = if picked { Color::WHITE } else if tr.is_genome() { genome_color(&tr.trader) } else { tr.archetype().map(|a| a.color()).unwrap_or(Color::WHITE) };
+            let picked = if tr.is_genome() {
+                book.board_focus.as_deref() == Some(tr.trader.as_str())
+            } else {
+                book.board_focus.is_none() && tr.archetype() == Some(focus)
+            };
+            let c = if picked {
+                Color::WHITE
+            } else if tr.is_genome() {
+                genome_color(&tr.trader)
+            } else {
+                tr.archetype().map(|a| a.color()).unwrap_or(Color::WHITE)
+            };
             if color.0 != c {
                 *color = TextColor(c);
             }
         }
         for mut text in detail.iter_mut() {
-            set_ui_text(&mut text, board.detail_lines_for(focus, book.board_focus.as_deref()).join("\n"));
+            set_ui_text(
+                &mut text,
+                board
+                    .detail_lines_for(focus, book.board_focus.as_deref())
+                    .join("\n"),
+            );
         }
         return;
     }
@@ -1976,7 +2885,9 @@ pub fn update_paper_panel(
     let ranking = book.ranking();
     show_rows(&mut row_nodes, ranking.len());
     for (row, mut text, mut color) in rows.iter_mut() {
-        let Some(&t) = ranking.get(row.0) else { continue };
+        let Some(&t) = ranking.get(row.0) else {
+            continue;
+        };
         let tr = &book.traders[t];
         let open = match (&tr.position, book.open_r(t, &feed)) {
             (Some(p), Some(r)) => format!("{} {} {:+.2}R", p.inst.symbol(), side_str(p.side), r),
@@ -1994,13 +2905,22 @@ pub fn update_paper_panel(
             open
         );
         set_ui_text(&mut text, line);
-        let c = if book.focus == t { Color::WHITE } else { tr.archetype.color() };
+        let c = if book.focus == t {
+            Color::WHITE
+        } else {
+            tr.archetype.color()
+        };
         if color.0 != c {
             *color = TextColor(c);
         }
     }
     let tr = &book.traders[book.focus];
-    let mut lines = vec![format!("{} ({}): {}", tr.name(), tr.archetype.label(), tr.archetype.describe())];
+    let mut lines = vec![format!(
+        "{} ({}): {}",
+        tr.name(),
+        tr.archetype.label(),
+        tr.archetype.describe()
+    )];
     if let Some(p) = &tr.position {
         lines.push(format!(
             "OPEN {} {} from {}  stop {}  target {}  |  {}",
@@ -2008,7 +2928,9 @@ pub fn update_paper_panel(
             side_str(p.side),
             fmt_px(p.inst, p.entry),
             fmt_px(p.inst, p.stop),
-            p.target.map(|t| fmt_px(p.inst, t)).unwrap_or_else(|| "trail".into()),
+            p.target
+                .map(|t| fmt_px(p.inst, t))
+                .unwrap_or_else(|| "trail".into()),
             p.why
         ));
     }
@@ -2024,7 +2946,11 @@ pub fn update_paper_panel(
             })
             .take(3)
             .collect();
-        lines.push(if waiting.is_empty() { "- waiting for the first setup".into() } else { format!("- passing: {}", waiting.join("; ")) });
+        lines.push(if waiting.is_empty() {
+            "- waiting for the first setup".into()
+        } else {
+            format!("- passing: {}", waiting.join("; "))
+        });
     }
     for mut text in detail.iter_mut() {
         set_ui_text(&mut text, lines.join("\n"));
@@ -2043,7 +2969,9 @@ pub fn handle_paper_rows(
         }
         // Rows follow whichever board is showing; traders sit in `Archetype::ALL` order.
         if let Some(board) = desk.live_board(time.elapsed_secs_f64()) {
-            let Some(picked) = board.ranking().get(row.0).map(|&t| &board.traders[t]) else { continue };
+            let Some(picked) = board.ranking().get(row.0).map(|&t| &board.traders[t]) else {
+                continue;
+            };
             if picked.is_genome() {
                 // Genomes have no in-tab twin: the detail block follows them by name, and the
                 // avatar's panel opens as it does for anyone else.
@@ -2053,7 +2981,9 @@ pub fn handle_paper_rows(
                 continue;
             }
             book.board_focus = None;
-            let focus = picked.archetype().and_then(|a| book.traders.iter().position(|tr| tr.archetype == a));
+            let focus = picked
+                .archetype()
+                .and_then(|a| book.traders.iter().position(|tr| tr.archetype == a));
             if let Some(t) = focus {
                 book.focus = t;
                 book.panel_request = Some(book.traders[t].archetype);
@@ -2081,7 +3011,10 @@ pub fn handle_paper_keys(
 }
 
 pub fn handle_paper_buttons(
-    interaction: Query<(&Interaction, &crate::ui::TouchButtonAction), (Changed<Interaction>, With<Button>)>,
+    interaction: Query<
+        (&Interaction, &crate::ui::TouchButtonAction),
+        (Changed<Interaction>, With<Button>),
+    >,
     mut book: ResMut<PaperBook>,
     mut controller: ResMut<MarketScenarioController>,
 ) {
@@ -2094,7 +3027,14 @@ pub fn handle_paper_buttons(
 
 pub fn update_paper_button_style(
     book: Res<PaperBook>,
-    mut buttons: Query<(&crate::ui::TouchButtonAction, &mut BackgroundColor, &mut BorderColor), With<Button>>,
+    mut buttons: Query<
+        (
+            &crate::ui::TouchButtonAction,
+            &mut BackgroundColor,
+            &mut BorderColor,
+        ),
+        With<Button>,
+    >,
 ) {
     if !book.is_changed() {
         return;
@@ -2126,12 +3066,26 @@ mod tests {
             .map(|i| {
                 let o = start + step * i as f32;
                 // Range 0.08 for a 0.01 step: the risk unit is 8 ticks.
-                Candle { time_ms: i as i64 * 60_000, open: o, high: o.max(o + step) + 0.035, low: o.min(o + step) - 0.035, close: o + step, volume: 10.0, delta: step.signum() * 4.0, sweep: 1.0 }
+                Candle {
+                    time_ms: i as i64 * 60_000,
+                    open: o,
+                    high: o.max(o + step) + 0.035,
+                    low: o.min(o + step) - 0.035,
+                    close: o + step,
+                    volume: 10.0,
+                    delta: step.signum() * 4.0,
+                    sweep: 1.0,
+                }
             })
             .collect()
     }
 
-    fn read(dir: Direction, conviction: f32, continuation: f32, exhaustion: f32) -> MarketInterpretation {
+    fn read(
+        dir: Direction,
+        conviction: f32,
+        continuation: f32,
+        exhaustion: f32,
+    ) -> MarketInterpretation {
         MarketInterpretation {
             direction: dir,
             direction_confidence: 0.9,
@@ -2155,7 +3109,13 @@ mod tests {
         }
     }
 
-    fn view<'a>(bars: &'a [Candle], levels: &'a [Level], read: Option<&'a MarketInterpretation>, bid: f32, now: f64) -> View<'a> {
+    fn view<'a>(
+        bars: &'a [Candle],
+        levels: &'a [Level],
+        read: Option<&'a MarketInterpretation>,
+        bid: f32,
+        now: f64,
+    ) -> View<'a> {
         View {
             inst: Instrument::Silver,
             bid,
@@ -2165,7 +3125,12 @@ mod tests {
             now,
             wall_ms: MIDNIGHT + 9 * 3_600_000, // 09:00 UTC
             bars,
-            flow: TickFlow { direction: 0.5, up_share: 0.7, ticks: 20, burst_ticks: 1.0 },
+            flow: TickFlow {
+                direction: 0.5,
+                up_share: 0.7,
+                ticks: 20,
+                burst_ticks: 1.0,
+            },
             rate: 2.0,
             levels,
             read,
@@ -2174,10 +3139,11 @@ mod tests {
     }
 
     fn book() -> PaperBook {
-        let mut b = PaperBook::default();
-        b.log_to_relay = false;
-        b.rng = XorShift::new(7);
-        b
+        PaperBook {
+            log_to_relay: false,
+            rng: XorShift::new(7),
+            ..Default::default()
+        }
     }
 
     fn trader(b: &PaperBook, a: Archetype) -> &Trader {
@@ -2206,10 +3172,16 @@ mod tests {
         let p = v.position.as_ref().expect("Vinnie is long");
         assert_eq!(p.side, Side::Buy);
         assert!((p.entry - 48.32).abs() < 1e-5, "filled at the ask");
-        assert!((p.open_ticks(48.30, 48.32, TICK) + 2.0).abs() < 1e-3, "two ticks down the moment it fills");
+        assert!(
+            (p.open_ticks(48.30, 48.32, TICK) + 2.0).abs() < 1e-3,
+            "two ticks down the moment it fills"
+        );
         // Vinnie's idea is a 6-tick stop and a 48.40 target; on a 2-tick spread the floor widens
         // the stop to 40 ticks and the target is pushed out to a full R.
-        assert!((p.stop - 47.92).abs() < 1e-5 && (p.target.unwrap() - 48.72).abs() < 1e-5, "{p:?}");
+        assert!(
+            (p.stop - 47.92).abs() < 1e-5 && (p.target.unwrap() - 48.72).abs() < 1e-5,
+            "{p:?}"
+        );
         assert!(p.why.contains("widened from 6.0 to 40.0"), "{}", p.why);
 
         // Short of the target nothing happens.
@@ -2220,8 +3192,16 @@ mod tests {
         let v = trader(&book, Archetype::MomentumScalper);
         assert!(v.position.is_none());
         assert_eq!(v.trades.len(), 1);
-        assert!((v.trades[0].pnl_ticks - 40.0).abs() < 1e-3, "{:?}", v.trades[0]);
-        assert!((v.trades[0].pnl_r - 1.0).abs() < 1e-3, "40 ticks on a 40-tick stop: {:?}", v.trades[0]);
+        assert!(
+            (v.trades[0].pnl_ticks - 40.0).abs() < 1e-3,
+            "{:?}",
+            v.trades[0]
+        );
+        assert!(
+            (v.trades[0].pnl_r - 1.0).abs() < 1e-3,
+            "40 ticks on a 40-tick stop: {:?}",
+            v.trades[0]
+        );
         assert_eq!(v.trades[0].why_out, "target");
         assert_eq!(v.wins, 1);
     }
@@ -2236,14 +3216,24 @@ mod tests {
         let p = v.position.as_ref().expect("short");
         assert_eq!(p.side, Side::Sell);
         assert!((p.entry - 48.00).abs() < 1e-5, "sold at the bid");
-        assert!(trader(&book, Archetype::Control).position.is_some(), "Colin flipped a coin");
-        assert!((p.stop - 48.40).abs() < 1e-5, "20 spreads of 2 ticks: {p:?}");
+        assert!(
+            trader(&book, Archetype::Control).position.is_some(),
+            "Colin flipped a coin"
+        );
+        assert!(
+            (p.stop - 48.40).abs() < 1e-5,
+            "20 spreads of 2 ticks: {p:?}"
+        );
         // The ask runs through the short's stop (48.40): exit at the ask.
         book.step_pit(&view(&b, &[], Some(&r), 48.39, 11.0), false);
         let v = trader(&book, Archetype::MomentumScalper);
         assert_eq!(v.trades.len(), 1);
         assert_eq!(v.trades[0].why_out, "stop");
-        assert!((v.trades[0].pnl_ticks + 41.0).abs() < 1e-3, "{:?}", v.trades[0]);
+        assert!(
+            (v.trades[0].pnl_ticks + 41.0).abs() < 1e-3,
+            "{:?}",
+            v.trades[0]
+        );
     }
 
     #[test]
@@ -2265,7 +3255,12 @@ mod tests {
         v.wall_ms = MIDNIGHT + 20 * 3_600_000 + 56 * 60_000; // 20:56 UTC
         book.step_pit(&v, false);
         assert!(book.traders.iter().all(|t| t.position.is_none()));
-        assert!(book.traders.iter().flat_map(|t| t.trades.iter()).all(|t| t.why_out == "session close"));
+        assert!(
+            book.traders
+                .iter()
+                .flat_map(|t| t.trades.iter())
+                .all(|t| t.why_out == "session close")
+        );
     }
 
     #[test]
@@ -2278,11 +3273,22 @@ mod tests {
         let p = g.position.as_ref().expect("Grace rides");
         assert!(p.trail.is_some() && p.target.is_none());
         let stop0 = p.stop;
-        assert!(trader(&book, Archetype::ExhaustionFader).position.is_none(), "Harold waits for exhaustion");
+        assert!(
+            trader(&book, Archetype::ExhaustionFader).position.is_none(),
+            "Harold waits for exhaustion"
+        );
         // +12 ticks: stop locks above entry.
         book.step_pit(&view(&b, &[], Some(&r), 48.44, 11.0), false);
-        let p = trader(&book, Archetype::TrendRider).position.as_ref().unwrap();
-        assert!(p.stop > stop0 && p.stop > p.entry, "stop {} entry {}", p.stop, p.entry);
+        let p = trader(&book, Archetype::TrendRider)
+            .position
+            .as_ref()
+            .unwrap();
+        assert!(
+            p.stop > stop0 && p.stop > p.entry,
+            "stop {} entry {}",
+            p.stop,
+            p.entry
+        );
 
         let tired = read(Direction::Up, 1.0, 0.4, 0.8);
         let mut book2 = book_with_seed(9);
@@ -2302,22 +3308,72 @@ mod tests {
         // Swing low at 47.90 swept by a wick to 47.85 that closed at 47.95; a fresh bull OB
         // 47.88..47.92 under price; price now 47.92 (at the block).
         let mut b = bars(20, 48.0, 0.0);
-        b[15] = Candle { time_ms: 15 * 60_000, open: 47.93, high: 47.96, low: 47.85, close: 47.95, volume: 10.0, delta: -2.0, sweep: 3.0 };
-        let swing = Level { kind: LevelKind::SwingLow, lo: 47.895, hi: 47.905, strength: 0.6, time_ms: 5 * 60_000, touched: false, pct: 0.0 };
-        let block = Level { kind: LevelKind::BullOrderBlock, lo: 47.88, hi: 47.92, strength: 0.9, time_ms: 4 * 60_000, touched: false, pct: 0.0 };
-        let high = Level { kind: LevelKind::SwingHigh, lo: 48.295, hi: 48.305, strength: 0.6, time_ms: 2 * 60_000, touched: false, pct: 0.0 };
+        b[15] = Candle {
+            time_ms: 15 * 60_000,
+            open: 47.93,
+            high: 47.96,
+            low: 47.85,
+            close: 47.95,
+            volume: 10.0,
+            delta: -2.0,
+            sweep: 3.0,
+        };
+        let swing = Level {
+            kind: LevelKind::SwingLow,
+            lo: 47.895,
+            hi: 47.905,
+            strength: 0.6,
+            time_ms: 5 * 60_000,
+            touched: false,
+            pct: 0.0,
+        };
+        let block = Level {
+            kind: LevelKind::BullOrderBlock,
+            lo: 47.88,
+            hi: 47.92,
+            strength: 0.9,
+            time_ms: 4 * 60_000,
+            touched: false,
+            pct: 0.0,
+        };
+        let high = Level {
+            kind: LevelKind::SwingHigh,
+            lo: 48.295,
+            hi: 48.305,
+            strength: 0.6,
+            time_ms: 2 * 60_000,
+            touched: false,
+            pct: 0.0,
+        };
         let levels = vec![swing, block, high];
         let mut book = book();
         let v = view(&b, &levels, None, 47.92, 10.0);
         let mut rng = XorShift::new(1);
         let e = decide(Archetype::IctLevelTrader, &v, &mut rng).expect("Priya buys the return");
         assert_eq!(e.side, Side::Buy);
-        assert!((e.stop_ticks - 8.0).abs() < 1e-3, "stop two ticks under the block, eight under the ask: {}", e.stop_ticks);
-        assert!((e.target.unwrap() - 48.295).abs() < 1e-4, "target the swing high: {:?}", e.target);
+        assert!(
+            (e.stop_ticks - 8.0).abs() < 1e-3,
+            "stop two ticks under the block, eight under the ask: {}",
+            e.stop_ticks
+        );
+        assert!(
+            (e.target.unwrap() - 48.295).abs() < 1e-4,
+            "target the swing high: {:?}",
+            e.target
+        );
         book.step_pit(&v, false);
-        let p = trader(&book, Archetype::IctLevelTrader).position.as_ref().expect("Priya buys the return");
-        assert!((p.stop_ticks - 40.0).abs() < 1e-3 && (p.target.unwrap() - 48.34).abs() < 1e-4, "the floor widens the stop to 20 spreads and pushes the target to 1 R: {p:?}");
-        assert!(trader(&book, Archetype::MomentumScalper).position.is_none(), "no Jev read, no scalp");
+        let p = trader(&book, Archetype::IctLevelTrader)
+            .position
+            .as_ref()
+            .expect("Priya buys the return");
+        assert!(
+            (p.stop_ticks - 40.0).abs() < 1e-3 && (p.target.unwrap() - 48.34).abs() < 1e-4,
+            "the floor widens the stop to 20 spreads and pushes the target to 1 R: {p:?}"
+        );
+        assert!(
+            trader(&book, Archetype::MomentumScalper).position.is_none(),
+            "no Jev read, no scalp"
+        );
 
         // Without the sweep there is no trade.
         let plain = bars(20, 48.0, 0.0);
@@ -2326,18 +3382,35 @@ mod tests {
         assert!(trader(&book, Archetype::IctLevelTrader).position.is_none());
 
         // Gap filler: first tick inside an untouched bull gap from above, in his first hour.
-        let gap = Level { kind: LevelKind::BullFvg, lo: 47.90, hi: 47.99, strength: 0.8, time_ms: 6 * 60_000, touched: false, pct: 0.0 };
+        let gap = Level {
+            kind: LevelKind::BullFvg,
+            lo: 47.90,
+            hi: 47.99,
+            strength: 0.8,
+            time_ms: 6 * 60_000,
+            touched: false,
+            pct: 0.0,
+        };
         let mut book = book_with_seed(4);
         let mut v = view(&plain, std::slice::from_ref(&gap), None, 47.98, 10.0);
         v.wall_ms = at(7, 30);
         v.prev_bid = 48.02;
         book.step_pit(&v, false);
-        let p = trader(&book, Archetype::GapFiller).position.as_ref().expect("Tomasz buys the gap");
+        let p = trader(&book, Archetype::GapFiller)
+            .position
+            .as_ref()
+            .expect("Tomasz buys the gap");
         assert_eq!(p.side, Side::Buy);
         // Gap top plus its height is 48.08, eight ticks out (four spreads: allowed) but inside
         // the twelve-tick stop: pushed out to 1R.
         let r = (p.entry - p.stop).abs();
-        assert!((p.target.unwrap() - (p.entry + r)).abs() < 1e-4, "target {:?} entry {} stop {}", p.target, p.entry, p.stop);
+        assert!(
+            (p.target.unwrap() - (p.entry + r)).abs() < 1e-4,
+            "target {:?} entry {} stop {}",
+            p.target,
+            p.entry,
+            p.stop
+        );
         let mut book = book_with_seed(5);
         let mut v = view(&plain, std::slice::from_ref(&gap), None, 47.98, 10.0);
         v.wall_ms = at(7, 30);
@@ -2353,18 +3426,39 @@ mod tests {
 
     /// A 1m bar opening at `at(h, m)`.
     fn bar(h: i64, m: i64, open: f32, high: f32, low: f32, close: f32, volume: f32) -> Candle {
-        Candle { time_ms: at(h, m), open, high, low, close, volume, delta: 0.0, sweep: 0.0 }
+        Candle {
+            time_ms: at(h, m),
+            open,
+            high,
+            low,
+            close,
+            volume,
+            delta: 0.0,
+            sweep: 0.0,
+        }
     }
 
     #[test]
     fn rules_respect_the_global_floors() {
         for a in Archetype::ALL {
             let r = a.rules();
-            assert!(r.min_stop_spreads >= MIN_STOP_SPREADS, "{} risks under {MIN_STOP_SPREADS} spreads", a.name());
-            assert!(r.min_target_spreads >= MIN_TARGET_SPREADS, "{} aims under {MIN_TARGET_SPREADS} spreads", a.name());
+            assert!(
+                r.min_stop_spreads >= MIN_STOP_SPREADS,
+                "{} risks under {MIN_STOP_SPREADS} spreads",
+                a.name()
+            );
+            assert!(
+                r.min_target_spreads >= MIN_TARGET_SPREADS,
+                "{} aims under {MIN_TARGET_SPREADS} spreads",
+                a.name()
+            );
             assert!(!r.sessions.is_empty(), "{} has no session", a.name());
             for s in r.sessions {
-                assert!(s.from < s.until && s.from >= ENTRY_FROM && s.until <= ENTRY_UNTIL, "{} session {s:?} is outside the entry window", a.name());
+                assert!(
+                    s.from < s.until && s.from >= ENTRY_FROM && s.until <= ENTRY_UNTIL,
+                    "{} session {s:?} is outside the entry window",
+                    a.name()
+                );
             }
         }
     }
@@ -2387,12 +3481,27 @@ mod tests {
             assert_eq!(s.arch.label(), s.label);
             assert_eq!(s.arch.describe(), s.creed);
             assert!(s.arch.uses_jev());
-            assert_eq!(s.arch.rules().sessions, &[ALL_DAY], "{} has hours other than the whole window", s.name);
-            assert!(s.stop_units > 0.0 && (s.target_units > 0.0 || s.trail_units > 0.0 || s.time_stop_secs > 0.0), "{} has no way out", s.name);
+            assert_eq!(
+                s.arch.rules().sessions,
+                &[ALL_DAY],
+                "{} has hours other than the whole window",
+                s.name
+            );
+            assert!(
+                s.stop_units > 0.0
+                    && (s.target_units > 0.0 || s.trail_units > 0.0 || s.time_stop_secs > 0.0),
+                "{} has no way out",
+                s.name
+            );
         }
         assert_eq!(Archetype::ALL.len(), 9 + JEV_CREW.len());
         for s in JEV_CREW.iter() {
-            assert_eq!(Archetype::ALL.iter().filter(|a| **a == s.arch).count(), 1, "{} is in ALL once", s.name);
+            assert_eq!(
+                Archetype::ALL.iter().filter(|a| **a == s.arch).count(),
+                1,
+                "{} is in ALL once",
+                s.name
+            );
         }
         assert!(Archetype::Control.crew().is_none() && Archetype::MomentumScalper.crew().is_none());
     }
@@ -2400,15 +3509,30 @@ mod tests {
     #[test]
     fn crew_rules_read_back_in_words() {
         let tess = Archetype::JevEverything.strategy_text();
-        assert!(tess.starts_with("Enters with Jev's lean, direction confidence >= 10%."), "{tess}");
-        assert!(tess.contains("stop 1.00 units, target 1.00 units, time stop 10 min, 20 s cooldown"), "{tess}");
+        assert!(
+            tess.starts_with("Enters with Jev's lean, direction confidence >= 10%."),
+            "{tess}"
+        );
+        assert!(
+            tess.contains("stop 1.00 units, target 1.00 units, time stop 10 min, 20 s cooldown"),
+            "{tess}"
+        );
         let sol = Archetype::JevFlatFader.strategy_text();
         assert!(sol.starts_with("Enters only on a FLAT read"), "{sol}");
         let vera = Archetype::JevOracle.strategy_text();
         assert!(vera.starts_with("Enters on Jev's answer to its own question, asked when price has just touched a level,"), "{vera}");
-        assert!(vera.contains("reject: away from the level") && vera.contains("break: through the level"), "{vera}");
+        assert!(
+            vera.contains("reject: away from the level")
+                && vera.contains("break: through the level"),
+            "{vera}"
+        );
         let yusuf = Archetype::JevCarry.strategy_text();
-        assert!(yusuf.contains("trail 1.00 units") && !yusuf.contains("target") && yusuf.contains("yes at 65% or more"), "{yusuf}");
+        assert!(
+            yusuf.contains("trail 1.00 units")
+                && !yusuf.contains("target")
+                && yusuf.contains("yes at 65% or more"),
+            "{yusuf}"
+        );
         assert!(Archetype::Control.strategy_text().contains("coin"));
     }
 
@@ -2420,25 +3544,59 @@ mod tests {
         let mut r = read(Direction::Up, 0.4, 0.42, 0.48);
         r.direction_confidence = 0.30;
         let v = view(&b, &[], Some(&r), 48.30, 20.0);
-        assert!(decide(Archetype::MomentumScalper, &v, &mut rng).is_err(), "Vinnie wants conviction 1.2");
+        assert!(
+            decide(Archetype::MomentumScalper, &v, &mut rng).is_err(),
+            "Vinnie wants conviction 1.2"
+        );
         let tess = decide(Archetype::JevEverything, &v, &mut rng).unwrap();
         assert_eq!(tess.side, Side::Buy);
         assert!(tess.why.starts_with("with Jev UP 30%"), "{}", tess.why);
-        assert!((tess.stop_ticks - 8.0).abs() < 1e-2 && (tess.target.unwrap() - (v.ask + 8.0 * TICK)).abs() < 1e-3, "a unit each way: {tess:?}");
+        assert!(
+            (tess.stop_ticks - 8.0).abs() < 1e-2
+                && (tess.target.unwrap() - (v.ask + 8.0 * TICK)).abs() < 1e-3,
+            "a unit each way: {tess:?}"
+        );
         let gus = decide(Archetype::JevContrarian, &v, &mut rng).unwrap();
         assert_eq!(gus.side, Side::Sell, "Gus fades the same read");
         assert!(gus.why.starts_with("against Jev UP"));
-        assert!(decide(Archetype::JevDoubtFader, &v, &mut rng).unwrap_err().contains("too sure to fade"));
-        assert!(decide(Archetype::JevFlatFader, &v, &mut rng).unwrap_err().contains("waits for flat"));
-        assert!(decide(Archetype::JevSweeper, &v, &mut rng).unwrap_err().contains("level no_level; wants sweeping"));
+        assert!(
+            decide(Archetype::JevDoubtFader, &v, &mut rng)
+                .unwrap_err()
+                .contains("too sure to fade")
+        );
+        assert!(
+            decide(Archetype::JevFlatFader, &v, &mut rng)
+                .unwrap_err()
+                .contains("waits for flat")
+        );
+        assert!(
+            decide(Archetype::JevSweeper, &v, &mut rng)
+                .unwrap_err()
+                .contains("level no_level; wants sweeping")
+        );
         let mut rs = r.clone();
         rs.reaction = "sweeping".into();
         let vs = view(&b, &[], Some(&rs), 48.30, 20.0);
-        assert_eq!(decide(Archetype::JevSweeper, &vs, &mut rng).unwrap().side, Side::Sell, "Kit fades the up lean on a sweep");
-        assert!(decide(Archetype::JevAbsorber, &vs, &mut rng).is_err(), "Lena wants absorbing");
+        assert_eq!(
+            decide(Archetype::JevSweeper, &vs, &mut rng).unwrap().side,
+            Side::Sell,
+            "Kit fades the up lean on a sweep"
+        );
+        assert!(
+            decide(Archetype::JevAbsorber, &vs, &mut rng).is_err(),
+            "Lena wants absorbing"
+        );
         // The question traders were not asked anything on this read: they all pass.
-        assert!(decide(Archetype::JevOracle, &v, &mut rng).unwrap_err().contains("waits for a touch read"));
-        assert!(decide(Archetype::JevTape, &v, &mut rng).unwrap_err().contains("was not asked tape_state"));
+        assert!(
+            decide(Archetype::JevOracle, &v, &mut rng)
+                .unwrap_err()
+                .contains("waits for a touch read")
+        );
+        assert!(
+            decide(Archetype::JevTape, &v, &mut rng)
+                .unwrap_err()
+                .contains("was not asked tape_state")
+        );
 
         // Flat read after a rising five bars: Sol sells; everyone else on a lean passes.
         let mut rf = read(Direction::Flat, 0.2, 0.4, 0.5);
@@ -2447,14 +3605,27 @@ mod tests {
         let sol = decide(Archetype::JevFlatFader, &vf, &mut rng).unwrap();
         assert_eq!(sol.side, Side::Sell);
         assert!(sol.why.contains("fading it"), "{}", sol.why);
-        assert!(decide(Archetype::JevEverything, &vf, &mut rng).unwrap_err().contains("flat"));
+        assert!(
+            decide(Archetype::JevEverything, &vf, &mut rng)
+                .unwrap_err()
+                .contains("flat")
+        );
         let flat_bars = bars(30, 48.0, 0.0);
         let vq = view(&flat_bars, &[], Some(&rf), 48.0, 20.0);
-        assert!(decide(Archetype::JevFlatFader, &vq, &mut rng).unwrap_err().contains("under half a unit"));
+        assert!(
+            decide(Archetype::JevFlatFader, &vq, &mut rng)
+                .unwrap_err()
+                .contains("under half a unit")
+        );
         // No read, nobody in the crew trades.
         let vn = view(&b, &[], None, 48.30, 20.0);
         for s in JEV_CREW {
-            assert_eq!(decide(s.arch, &vn, &mut rng).unwrap_err(), "no fresh Jev read", "{}", s.name);
+            assert_eq!(
+                decide(s.arch, &vn, &mut rng).unwrap_err(),
+                "no fresh Jev read",
+                "{}",
+                s.name
+            );
         }
     }
 
@@ -2463,39 +3634,108 @@ mod tests {
         use crate::jev::{JevAnswer, ObsTrigger};
         let b = bars(30, 48.0, 0.01);
         let mut rng = XorShift::new(3);
-        let choice = |c: &str| JevAnswer::Choice { choice: c.into(), confidence: 0.7, probabilities: Default::default() };
+        let choice = |c: &str| JevAnswer::Choice {
+            choice: c.into(),
+            confidence: 0.7,
+            probabilities: Default::default(),
+        };
         // A touch read: price came down onto a bull block 47.90..48.00 and Jev says it rejects.
         let mut r = read(Direction::Flat, 0.4, 0.5, 0.5);
-        r.trigger = Some(ObsTrigger { kind: "touch".into(), level: "OB BULL".into(), lo: 47.90, hi: 48.00, side: "from above".into(), secs_since: 0.0 });
+        r.trigger = Some(ObsTrigger {
+            kind: "touch".into(),
+            level: "OB BULL".into(),
+            lo: 47.90,
+            hi: 48.00,
+            side: "from above".into(),
+            secs_since: 0.0,
+        });
         r.answers.insert("touch_outcome".into(), choice("reject"));
-        r.answers.insert("absorbing".into(), JevAnswer::Noul { noul: 0.75 });
-        r.answers.insert("stop_run".into(), JevAnswer::Noul { noul: 0.2 });
-        r.answers.insert("carry_through".into(), JevAnswer::Noul { noul: 0.3 });
-        r.answers.insert("tape_state".into(), choice("one_way_selling"));
+        r.answers
+            .insert("absorbing".into(), JevAnswer::Noul { noul: 0.75 });
+        r.answers
+            .insert("stop_run".into(), JevAnswer::Noul { noul: 0.2 });
+        r.answers
+            .insert("carry_through".into(), JevAnswer::Noul { noul: 0.3 });
+        r.answers
+            .insert("tape_state".into(), choice("one_way_selling"));
         r.answers.insert("bar_shape".into(), choice("climax_up"));
         r.answers.insert("magnet".into(), choice("neither"));
-        r.answers.insert("delta_divergence".into(), JevAnswer::Noul { noul: 0.9 });
+        r.answers
+            .insert("delta_divergence".into(), JevAnswer::Noul { noul: 0.9 });
         let v = view(&b, &[], Some(&r), 48.02, 20.0); // bid 48.02, ask 48.04, unit 8 ticks
         let vera = decide(Archetype::JevOracle, &v, &mut rng).unwrap();
         assert_eq!(vera.side, Side::Buy, "it held, so away from it is up");
-        assert!(vera.why.starts_with("Jev touch_outcome = reject 70% at OB BULL 47.900..48.000 from above"), "{}", vera.why);
+        assert!(
+            vera.why
+                .starts_with("Jev touch_outcome = reject 70% at OB BULL 47.900..48.000 from above"),
+            "{}",
+            vera.why
+        );
         // The stop sits a quarter unit under the block's far edge: 48.04 - 47.90 = 14 ticks + 2.
         assert!((vera.stop_ticks - 16.0).abs() < 1e-3, "{}", vera.stop_ticks);
-        assert!((vera.target.unwrap() - (48.04 + 12.0 * TICK)).abs() < 1e-3, "1.5 units: {:?}", vera.target);
-        assert_eq!(decide(Archetype::JevAbsorption, &v, &mut rng).unwrap().side, Side::Buy);
-        assert!(decide(Archetype::JevStopRun, &v, &mut rng).unwrap_err().contains("20% < 60%"));
-        assert!(decide(Archetype::JevCarry, &v, &mut rng).unwrap_err().contains("30% < 65%"));
-        assert_eq!(decide(Archetype::JevTape, &v, &mut rng).unwrap().side, Side::Sell);
+        assert!(
+            (vera.target.unwrap() - (48.04 + 12.0 * TICK)).abs() < 1e-3,
+            "1.5 units: {:?}",
+            vera.target
+        );
+        assert_eq!(
+            decide(Archetype::JevAbsorption, &v, &mut rng).unwrap().side,
+            Side::Buy
+        );
+        assert!(
+            decide(Archetype::JevStopRun, &v, &mut rng)
+                .unwrap_err()
+                .contains("20% < 60%")
+        );
+        assert!(
+            decide(Archetype::JevCarry, &v, &mut rng)
+                .unwrap_err()
+                .contains("30% < 65%")
+        );
+        assert_eq!(
+            decide(Archetype::JevTape, &v, &mut rng).unwrap().side,
+            Side::Sell
+        );
         let ana = decide(Archetype::JevClimax, &v, &mut rng).unwrap();
         assert_eq!(ana.side, Side::Sell);
-        assert!(ana.why.starts_with("Jev bar_shape = climax_up 70%"), "{}", ana.why);
-        assert!(decide(Archetype::JevLeg, &v, &mut rng).unwrap_err().contains("climax_up: no trade"), "Ben reads the same answer and passes");
-        assert!(decide(Archetype::JevMagnet, &v, &mut rng).unwrap_err().contains("neither: no trade"));
+        assert!(
+            ana.why.starts_with("Jev bar_shape = climax_up 70%"),
+            "{}",
+            ana.why
+        );
+        assert!(
+            decide(Archetype::JevLeg, &v, &mut rng)
+                .unwrap_err()
+                .contains("climax_up: no trade"),
+            "Ben reads the same answer and passes"
+        );
+        assert!(
+            decide(Archetype::JevMagnet, &v, &mut rng)
+                .unwrap_err()
+                .contains("neither: no trade")
+        );
         let mut faint = r.clone();
-        faint.answers.insert("magnet".into(), JevAnswer::Choice { choice: "below".into(), confidence: 0.38, probabilities: Default::default() });
+        faint.answers.insert(
+            "magnet".into(),
+            JevAnswer::Choice {
+                choice: "below".into(),
+                confidence: 0.38,
+                probabilities: Default::default(),
+            },
+        );
         let vf = view(&b, &[], Some(&faint), 48.02, 20.0);
-        assert!(decide(Archetype::JevMagnet, &vf, &mut rng).unwrap_err().contains("below at 38% < 50%"), "Cy needs Jev half sure");
-        assert!(decide(Archetype::JevDivergence, &v, &mut rng).unwrap_err().contains("no lean"), "a flat read gives Dee nothing to fade");
+        assert!(
+            decide(Archetype::JevMagnet, &vf, &mut rng)
+                .unwrap_err()
+                .contains("below at 38% < 50%"),
+            "Cy needs Jev half sure"
+        );
+        assert!(
+            decide(Archetype::JevDivergence, &v, &mut rng)
+                .unwrap_err()
+                .contains("no lean"),
+            "a flat read gives Dee nothing to fade"
+        );
         // Through the level: Vera sells a break from above, stop past the near edge.
         r.answers.insert("touch_outcome".into(), choice("break"));
         let v2 = view(&b, &[], Some(&r), 47.95, 20.0);
@@ -2505,26 +3745,58 @@ mod tests {
         assert!((vera.stop_ticks - 8.0).abs() < 1e-3, "{}", vera.stop_ticks);
         // Too late: Vera acts within a minute of a touch read.
         let v3 = view(&b, &[], Some(&r), 47.95, 80.0);
-        assert!(decide(Archetype::JevOracle, &v3, &mut rng).unwrap_err().contains("80s old"));
+        assert!(
+            decide(Archetype::JevOracle, &v3, &mut rng)
+                .unwrap_err()
+                .contains("80s old")
+        );
         // A timed read with a lean: Dee fades it, the touch traders wait.
         let mut rt = read(Direction::Up, 0.4, 0.5, 0.5);
-        rt.answers.insert("delta_divergence".into(), JevAnswer::Noul { noul: 0.9 });
+        rt.answers
+            .insert("delta_divergence".into(), JevAnswer::Noul { noul: 0.9 });
         rt.answers.insert("touch_outcome".into(), choice("reject"));
         let vt = view(&b, &[], Some(&rt), 48.02, 20.0);
-        assert_eq!(decide(Archetype::JevDivergence, &vt, &mut rng).unwrap().side, Side::Sell);
-        assert!(decide(Archetype::JevOracle, &vt, &mut rng).unwrap_err().contains("waits for a touch"));
+        assert_eq!(
+            decide(Archetype::JevDivergence, &vt, &mut rng)
+                .unwrap()
+                .side,
+            Side::Sell
+        );
+        assert!(
+            decide(Archetype::JevOracle, &vt, &mut rng)
+                .unwrap_err()
+                .contains("waits for a touch")
+        );
     }
 
     #[test]
     fn the_control_shares_the_widest_opportunity_set() {
         let colin = Archetype::Control.rules();
-        let others: Vec<Rules> = Archetype::ALL.iter().filter(|a| **a != Archetype::Control).map(|a| a.rules()).collect();
+        let others: Vec<Rules> = Archetype::ALL
+            .iter()
+            .filter(|a| **a != Archetype::Control)
+            .map(|a| a.rules())
+            .collect();
         for minute in 0..1440 {
             let union = others.iter().any(|r| r.in_session(minute));
-            assert_eq!(colin.in_session(minute), union, "minute {minute}: the control's hours must be exactly the union of the others'");
+            assert_eq!(
+                colin.in_session(minute),
+                union,
+                "minute {minute}: the control's hours must be exactly the union of the others'"
+            );
         }
-        assert_eq!(Archetype::OpeningRangeBreakout.rules().secs_to_session_end(7 * 60 + 16), (89 * 60) as f64);
-        assert_eq!(Archetype::OpeningRangeBreakout.rules().secs_to_session_end(12 * 60), 0.0);
+        assert_eq!(
+            Archetype::OpeningRangeBreakout
+                .rules()
+                .secs_to_session_end(7 * 60 + 16),
+            (89 * 60) as f64
+        );
+        assert_eq!(
+            Archetype::OpeningRangeBreakout
+                .rules()
+                .secs_to_session_end(12 * 60),
+            0.0
+        );
     }
 
     #[test]
@@ -2536,20 +3808,40 @@ mod tests {
         v.wall_ms = at(12, 0);
         book.step_pit(&v, false);
         let vinnie = trader(&book, Archetype::MomentumScalper);
-        assert!(vinnie.position.is_none(), "London is shut and New York has not opened");
-        assert_eq!(vinnie.last_pass[Instrument::Silver as usize], "outside session hours");
-        assert!(trader(&book, Archetype::Control).position.is_some(), "the control is on whenever anyone is");
+        assert!(
+            vinnie.position.is_none(),
+            "London is shut and New York has not opened"
+        );
+        assert_eq!(
+            vinnie.last_pass[Instrument::Silver as usize],
+            "outside session hours"
+        );
+        assert!(
+            trader(&book, Archetype::Control).position.is_some(),
+            "the control is on whenever anyone is"
+        );
 
         let mut book = book_with_seed(8);
         v.wall_ms = at(14, 0);
         book.step_pit(&v, false);
-        assert!(trader(&book, Archetype::MomentumScalper).position.is_some(), "New York is open");
+        assert!(
+            trader(&book, Archetype::MomentumScalper).position.is_some(),
+            "New York is open"
+        );
     }
 
     #[test]
     fn cost_rules_widen_tight_stops_and_veto_small_targets() {
         let rules = Archetype::GapFiller.rules();
-        let entry = |stop_ticks: f32, target: Option<f32>| Entry { side: Side::Buy, stop_ticks, target, trail: None, time_stop_secs: 60.0, cooldown_secs: 60.0, why: "test".into() };
+        let entry = |stop_ticks: f32, target: Option<f32>| Entry {
+            side: Side::Buy,
+            stop_ticks,
+            target,
+            trail: None,
+            time_stop_secs: 60.0,
+            cooldown_secs: 60.0,
+            why: "test".into(),
+        };
         // Two-tick stop on a two-tick spread: widened to forty, and the record says so.
         let mut e = entry(2.0, Some(48.20));
         apply_cost_rules(&mut e, &rules, 2.0, 48.00, TICK).unwrap();
@@ -2576,7 +3868,11 @@ mod tests {
         book.step_pit(&v, false);
         let vinnie = trader(&book, Archetype::MomentumScalper);
         assert!(vinnie.position.is_none());
-        assert!(vinnie.last_pass[Instrument::Silver as usize].contains("under 4 spreads"), "{}", vinnie.last_pass[Instrument::Silver as usize]);
+        assert!(
+            vinnie.last_pass[Instrument::Silver as usize].contains("under 4 spreads"),
+            "{}",
+            vinnie.last_pass[Instrument::Silver as usize]
+        );
     }
 
     #[test]
@@ -2610,7 +3906,19 @@ mod tests {
 
     /// Fifteen bars from 07:00 boxed in 48.00..48.10, then one closing at `brk` at 07:15.
     fn opening_range_bars(brk: f32) -> Vec<Candle> {
-        let mut b: Vec<Candle> = (0..15).map(|i| bar(7, i, 48.03, 48.10 - 0.002 * i as f32, 48.00 + 0.002 * i as f32, 48.05, 10.0)).collect();
+        let mut b: Vec<Candle> = (0..15)
+            .map(|i| {
+                bar(
+                    7,
+                    i,
+                    48.03,
+                    48.10 - 0.002 * i as f32,
+                    48.00 + 0.002 * i as f32,
+                    48.05,
+                    10.0,
+                )
+            })
+            .collect();
         b.push(bar(7, 15, 48.06, brk.max(48.09), brk.min(48.01), brk, 12.0));
         b
     }
@@ -2624,38 +3932,73 @@ mod tests {
         assert_eq!(v.opening_range(LONDON_OPEN), Some((48.10, 48.00)));
         assert_eq!(v.opening_range(NEW_YORK_OPEN), None);
         let mut rng = XorShift::new(1);
-        let e = decide(Archetype::OpeningRangeBreakout, &v, &mut rng).expect("Maggie buys the break");
+        let e =
+            decide(Archetype::OpeningRangeBreakout, &v, &mut rng).expect("Maggie buys the break");
         assert_eq!(e.side, Side::Buy);
-        assert!((e.stop_ticks - 9.0).abs() < 1e-3, "stop at the range middle, nine ticks under the 48.14 ask: {e:?}");
-        assert!((e.target.unwrap() - (48.14 + 0.135)).abs() < 1e-4, "1.5 R: {:?}", e.target);
+        assert!(
+            (e.stop_ticks - 9.0).abs() < 1e-3,
+            "stop at the range middle, nine ticks under the 48.14 ask: {e:?}"
+        );
+        assert!(
+            (e.target.unwrap() - (48.14 + 0.135)).abs() < 1e-4,
+            "1.5 R: {:?}",
+            e.target
+        );
         book.step_pit(&v, false);
         let m = trader(&book, Archetype::OpeningRangeBreakout);
         let p = m.position.as_ref().expect("Maggie buys the break");
-        assert!((p.entry - 48.14).abs() < 1e-5 && (p.stop_ticks - 40.0).abs() < 1e-3 && (p.target.unwrap() - 48.54).abs() < 1e-4, "widened to 20 spreads, target at 1 R: {p:?}");
+        assert!(
+            (p.entry - 48.14).abs() < 1e-5
+                && (p.stop_ticks - 40.0).abs() < 1e-3
+                && (p.target.unwrap() - 48.54).abs() < 1e-4,
+            "widened to 20 spreads, target at 1 R: {p:?}"
+        );
         assert!((p.time_stop_secs - 5400.0).abs() < 1e-6);
         // Once a session: the cooldown runs to 08:45.
-        assert!((m.cooldown_until[Instrument::Silver as usize] - (10.0 + 89.0 * 60.0)).abs() < 1e-6);
+        assert!(
+            (m.cooldown_until[Instrument::Silver as usize] - (10.0 + 89.0 * 60.0)).abs() < 1e-6
+        );
 
         let mut rng = XorShift::new(1);
         // A close inside the box is nothing.
         let inside = opening_range_bars(48.08);
         let mut v = view(&inside, &[], None, 48.08, 10.0);
         v.wall_ms = at(7, 16) + 30_000;
-        assert!(decide(Archetype::OpeningRangeBreakout, &v, &mut rng).unwrap_err().contains("no first close outside"));
+        assert!(
+            decide(Archetype::OpeningRangeBreakout, &v, &mut rng)
+                .unwrap_err()
+                .contains("no first close outside")
+        );
         // The second bar outside is not the first.
         let mut second = opening_range_bars(48.12);
         second.push(bar(7, 16, 48.12, 48.16, 48.11, 48.15, 9.0));
         let mut v = view(&second, &[], None, 48.15, 10.0);
         v.wall_ms = at(7, 17) + 30_000;
-        assert!(decide(Archetype::OpeningRangeBreakout, &v, &mut rng).unwrap_err().contains("no first close outside"));
+        assert!(
+            decide(Archetype::OpeningRangeBreakout, &v, &mut rng)
+                .unwrap_err()
+                .contains("no first close outside")
+        );
         // Before 07:15 there is no range, and with too few of its minutes printed there is none either.
         let mut v = view(&b, &[], None, 48.12, 10.0);
         v.wall_ms = at(7, 10);
-        assert!(decide(Archetype::OpeningRangeBreakout, &v, &mut rng).unwrap_err().contains("no opening range yet"));
-        let sparse: Vec<Candle> = b.iter().filter(|c| c.time_ms < at(7, 5) || c.time_ms >= at(7, 15)).copied().collect();
+        assert!(
+            decide(Archetype::OpeningRangeBreakout, &v, &mut rng)
+                .unwrap_err()
+                .contains("no opening range yet")
+        );
+        let sparse: Vec<Candle> = b
+            .iter()
+            .filter(|c| c.time_ms < at(7, 5) || c.time_ms >= at(7, 15))
+            .copied()
+            .collect();
         let mut v = view(&sparse, &[], None, 48.12, 10.0);
         v.wall_ms = at(7, 16) + 30_000;
-        assert!(decide(Archetype::OpeningRangeBreakout, &v, &mut rng).unwrap_err().contains("still forming"));
+        assert!(
+            decide(Archetype::OpeningRangeBreakout, &v, &mut rng)
+                .unwrap_err()
+                .contains("still forming")
+        );
         // A short, through the bid.
         let down = opening_range_bars(47.97);
         let mut v = view(&down, &[], None, 47.97, 10.0);
@@ -2668,7 +4011,9 @@ mod tests {
     /// Ten quiet bars at `base` from 07:00, then a spike to a new session high at 48.45 with
     /// a long upper wick, on tick counts 14, 11 and `last_vol`.
     fn extreme_bars(base: f32, spike_close: f32, last_vol: f32) -> Vec<Candle> {
-        let mut b: Vec<Candle> = (0..10).map(|i| bar(7, i, base, base + 0.04, base - 0.04, base, 10.0)).collect();
+        let mut b: Vec<Candle> = (0..10)
+            .map(|i| bar(7, i, base, base + 0.04, base - 0.04, base, 10.0))
+            .collect();
         b.push(bar(7, 10, 48.15, 48.45, 48.13, spike_close, 14.0));
         b.push(bar(7, 11, 48.25, 48.33, 48.21, 48.27, 11.0));
         b.push(bar(7, 12, 48.27, 48.30, 48.19, 48.23, last_vol));
@@ -2686,14 +4031,34 @@ mod tests {
         let mut rng = XorShift::new(1);
         let e = decide(Archetype::SessionExtremeFader, &v, &mut rng).expect("Dev fades the high");
         assert_eq!(e.side, Side::Sell);
-        assert!((e.stop_ticks - (7.0 + u)).abs() < 1e-3, "a unit beyond the 48.45 extreme from the 48.38 bid: {e:?}");
-        assert!(w < 48.38 - 2.0 * u * TICK, "VWAP {w} is the far side of two units here");
-        assert!((e.target.unwrap() - (48.38 - 2.0 * u * TICK)).abs() < 1e-4, "two units: {:?}", e.target);
-        assert!(e.why.contains("rejection wick") && e.why.contains("two units"), "{}", e.why);
+        assert!(
+            (e.stop_ticks - (7.0 + u)).abs() < 1e-3,
+            "a unit beyond the 48.45 extreme from the 48.38 bid: {e:?}"
+        );
+        assert!(
+            w < 48.38 - 2.0 * u * TICK,
+            "VWAP {w} is the far side of two units here"
+        );
+        assert!(
+            (e.target.unwrap() - (48.38 - 2.0 * u * TICK)).abs() < 1e-4,
+            "two units: {:?}",
+            e.target
+        );
+        assert!(
+            e.why.contains("rejection wick") && e.why.contains("two units"),
+            "{}",
+            e.why
+        );
         book.step_pit(&v, false);
-        let p = trader(&book, Archetype::SessionExtremeFader).position.as_ref().expect("Dev fades the high");
+        let p = trader(&book, Archetype::SessionExtremeFader)
+            .position
+            .as_ref()
+            .expect("Dev fades the high");
         assert!((p.entry - 48.38).abs() < 1e-5);
-        assert!((p.stop_ticks - 40.0).abs() < 1e-3 && (p.target.unwrap() - 47.98).abs() < 1e-4, "widened to 20 spreads, target at 1 R: {p:?}");
+        assert!(
+            (p.stop_ticks - 40.0).abs() < 1e-3 && (p.target.unwrap() - 47.98).abs() < 1e-4,
+            "widened to 20 spreads, target at 1 R: {p:?}"
+        );
 
         // With VWAP inside two units, VWAP is the target.
         let near = extreme_bars(48.19, 48.25, 6.0);
@@ -2703,42 +4068,91 @@ mod tests {
         assert!(w > 48.39 - 2.0 * v.unit() * TICK);
         let e = decide(Archetype::SessionExtremeFader, &v, &mut rng).unwrap();
         assert_eq!(e.side, Side::Sell);
-        assert!((e.target.unwrap() - w).abs() < 1e-5 && e.why.contains("VWAP"), "{e:?}");
+        assert!(
+            (e.target.unwrap() - w).abs() < 1e-5 && e.why.contains("VWAP"),
+            "{e:?}"
+        );
         // Too far below the high: the target would sit inside the stop.
         let mut v = view(&b, &[], None, 48.18, 10.0);
         v.wall_ms = at(8, 13) + 30_000;
-        assert!(decide(Archetype::SessionExtremeFader, &v, &mut rng).unwrap_err().contains("too far from it"));
+        assert!(
+            decide(Archetype::SessionExtremeFader, &v, &mut rng)
+                .unwrap_err()
+                .contains("too far from it")
+        );
         // Tick rate not fading.
         let busy = extreme_bars(48.10, 48.25, 12.0);
         let mut v = view(&busy, &[], None, 48.38, 10.0);
         v.wall_ms = at(8, 13) + 30_000;
-        assert!(decide(Archetype::SessionExtremeFader, &v, &mut rng).unwrap_err().contains("not fading"));
+        assert!(
+            decide(Archetype::SessionExtremeFader, &v, &mut rng)
+                .unwrap_err()
+                .contains("not fading")
+        );
         // No rejection: the spike bar closed on its high.
         let strong = extreme_bars(48.10, 48.44, 6.0);
         let mut v = view(&strong, &[], None, 48.38, 10.0);
         v.wall_ms = at(8, 13) + 30_000;
-        assert!(decide(Archetype::SessionExtremeFader, &v, &mut rng).unwrap_err().contains("no rejection wick"));
+        assert!(
+            decide(Archetype::SessionExtremeFader, &v, &mut rng)
+                .unwrap_err()
+                .contains("no rejection wick")
+        );
         // A bull order block just under price is in the way.
-        let block = Level { kind: LevelKind::BullOrderBlock, lo: 48.30, hi: 48.34, strength: 0.9, time_ms: 0, touched: false, pct: 0.0 };
+        let block = Level {
+            kind: LevelKind::BullOrderBlock,
+            lo: 48.30,
+            hi: 48.34,
+            strength: 0.9,
+            time_ms: 0,
+            touched: false,
+            pct: 0.0,
+        };
         let mut v = view(&b, std::slice::from_ref(&block), None, 48.38, 10.0);
         v.wall_ms = at(8, 13) + 30_000;
-        assert!(decide(Archetype::SessionExtremeFader, &v, &mut rng).unwrap_err().contains("within a unit"));
+        assert!(
+            decide(Archetype::SessionExtremeFader, &v, &mut rng)
+                .unwrap_err()
+                .contains("within a unit")
+        );
         // Still printing the high: nothing to fade yet.
         let mut v = view(&b, &[], None, 48.46, 10.0);
         v.wall_ms = at(8, 13) + 30_000;
-        assert!(decide(Archetype::SessionExtremeFader, &v, &mut rng).unwrap_err().contains("still printing"));
+        assert!(
+            decide(Archetype::SessionExtremeFader, &v, &mut rng)
+                .unwrap_err()
+                .contains("still printing")
+        );
     }
 
     /// `flat` bars at 48.00 from 08:00, then `trend` bars stepping up 2 ticks a minute, then
     /// one pullback bar closing at `pull_close`.
     fn trend_bars(flat: usize, trend: usize, pull_close: f32) -> Vec<Candle> {
-        let mut b: Vec<Candle> = (0..flat).map(|i| bar(8, i as i64, 48.00, 48.04, 47.96, 48.00, 10.0)).collect();
+        let mut b: Vec<Candle> = (0..flat)
+            .map(|i| bar(8, i as i64, 48.00, 48.04, 47.96, 48.00, 10.0))
+            .collect();
         for k in 0..trend {
             let close = 48.10 + 0.02 * k as f32;
-            b.push(bar(8, (flat + k) as i64, close - 0.02, close + 0.03, close - 0.05, close, 10.0));
+            b.push(bar(
+                8,
+                (flat + k) as i64,
+                close - 0.02,
+                close + 0.03,
+                close - 0.05,
+                close,
+                10.0,
+            ));
         }
         let last = b.len() as i64;
-        b.push(bar(8, last, pull_close + 0.03, pull_close + 0.05, pull_close - 0.03, pull_close, 10.0));
+        b.push(bar(
+            8,
+            last,
+            pull_close + 0.03,
+            pull_close + 0.05,
+            pull_close - 0.03,
+            pull_close,
+            10.0,
+        ));
         b
     }
 
@@ -2754,29 +4168,55 @@ mod tests {
         let mut rng = XorShift::new(1);
         let e = decide(Archetype::VwapPullback, &v, &mut rng).expect("Rosa buys the touch");
         assert_eq!(e.side, Side::Buy);
-        assert!((e.stop_ticks - (u + 2.0)).abs() < 1e-3, "a unit beyond VWAP {w} from the ask two ticks above it: {e:?}");
+        assert!(
+            (e.stop_ticks - (u + 2.0)).abs() < 1e-3,
+            "a unit beyond VWAP {w} from the ask two ticks above it: {e:?}"
+        );
         let (hi, _) = v.session_extremes().unwrap();
-        assert!((e.target.unwrap() - hi).abs() < 1e-4, "the session high: {:?} vs {hi}", e.target);
+        assert!(
+            (e.target.unwrap() - hi).abs() < 1e-4,
+            "the session high: {:?} vs {hi}",
+            e.target
+        );
         assert!(e.why.contains("25 bars above VWAP"), "{}", e.why);
         book.step_pit(&v, false);
-        let p = trader(&book, Archetype::VwapPullback).position.as_ref().expect("Rosa buys the touch");
-        assert!((p.stop_ticks - 40.0).abs() < 1e-3 && (p.target.unwrap() - (p.entry + 0.40)).abs() < 1e-4, "widened to 20 spreads, the session high is inside 1 R so the target is pushed out: {p:?}");
+        let p = trader(&book, Archetype::VwapPullback)
+            .position
+            .as_ref()
+            .expect("Rosa buys the touch");
+        assert!(
+            (p.stop_ticks - 40.0).abs() < 1e-3
+                && (p.target.unwrap() - (p.entry + 0.40)).abs() < 1e-4,
+            "widened to 20 spreads, the session high is inside 1 R so the target is pushed out: {p:?}"
+        );
 
         // The last bar already closed inside the band: not the first touch.
         let late = trend_bars(5, 25, w0 + 0.01);
         let mut v = view(&late, &[], None, vwap_of(&late).unwrap(), 10.0);
         v.wall_ms = at(8, 31) + 30_000;
-        assert!(decide(Archetype::VwapPullback, &v, &mut rng).unwrap_err().contains("first touch"));
+        assert!(
+            decide(Archetype::VwapPullback, &v, &mut rng)
+                .unwrap_err()
+                .contains("first touch")
+        );
         // Price not at VWAP yet.
         let mut v = view(&b, &[], None, w + 0.05, 10.0);
         v.wall_ms = at(8, 31) + 30_000;
-        assert!(decide(Archetype::VwapPullback, &v, &mut rng).unwrap_err().contains("first touch"));
+        assert!(
+            decide(Archetype::VwapPullback, &v, &mut rng)
+                .unwrap_err()
+                .contains("first touch")
+        );
         // Fifteen bars clear is not a trend.
         let short = trend_bars(10, 15, 48.20);
         let ws = vwap_of(&short).unwrap();
         let mut v = view(&short, &[], None, ws, 10.0);
         v.wall_ms = at(8, 26) + 30_000;
-        assert!(decide(Archetype::VwapPullback, &v, &mut rng).unwrap_err().contains("only 15 bars above"));
+        assert!(
+            decide(Archetype::VwapPullback, &v, &mut rng)
+                .unwrap_err()
+                .contains("only 15 bars above")
+        );
     }
 
     #[test]
@@ -2787,7 +4227,14 @@ mod tests {
         let r = book.ranking();
         assert_eq!(r[0], 2);
         assert_eq!(*r.last().unwrap(), 4);
-        assert_eq!(minute_of_day_utc(MIDNIGHT + 9 * 3_600_000 + 40 * 60_000), 9 * 60 + 40);
-        assert!(entries_allowed(7 * 60) && !entries_allowed(20 * 60 + 30) && !entries_allowed(6 * 60 + 59));
+        assert_eq!(
+            minute_of_day_utc(MIDNIGHT + 9 * 3_600_000 + 40 * 60_000),
+            9 * 60 + 40
+        );
+        assert!(
+            entries_allowed(7 * 60)
+                && !entries_allowed(20 * 60 + 30)
+                && !entries_allowed(6 * 60 + 59)
+        );
     }
 }

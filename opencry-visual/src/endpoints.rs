@@ -48,12 +48,13 @@ fn percent_decode(s: &str) -> String {
     let mut out = Vec::with_capacity(b.len());
     let mut i = 0;
     while i < b.len() {
-        if b[i] == b'%' && i + 2 < b.len() {
-            if let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
-                out.push(v);
-                i += 3;
-                continue;
-            }
+        if b[i] == b'%'
+            && i + 2 < b.len()
+            && let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16)
+        {
+            out.push(v);
+            i += 3;
+            continue;
         }
         out.push(if b[i] == b'+' { b' ' } else { b[i] });
         i += 1;
@@ -65,7 +66,10 @@ fn percent_decode(s: &str) -> String {
 pub fn page_host() -> String {
     #[cfg(target_arch = "wasm32")]
     {
-        web_sys::window().and_then(|w| w.location().hostname().ok()).filter(|h| !h.is_empty()).unwrap_or_else(|| "localhost".to_string())
+        web_sys::window()
+            .and_then(|w| w.location().hostname().ok())
+            .filter(|h| !h.is_empty())
+            .unwrap_or_else(|| "localhost".to_string())
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
@@ -130,7 +134,7 @@ pub fn relay_url() -> String {
 
 /// The Level 2 socket, or `None` when it is switched off.
 pub fn l2_url() -> Option<String> {
-    let choice = page_param("l2").or_else(|| {
+    let choice = page_param("l2").or({
         #[cfg(not(target_arch = "wasm32"))]
         {
             std::env::var("OPENCRY_L2_URL").ok()
@@ -171,25 +175,49 @@ mod tests {
     #[test]
     fn a_service_can_be_named_by_port_host_or_url() {
         assert_eq!(base_url("18083", "10.0.0.5"), "http://10.0.0.5:18083");
-        assert_eq!(base_url("prices.example:8083", "x"), "http://prices.example:8083");
-        assert_eq!(base_url("https://prices.example/", "x"), "https://prices.example");
-        assert_eq!(ws_from_http("https://prices.example"), "wss://prices.example");
+        assert_eq!(
+            base_url("prices.example:8083", "x"),
+            "http://prices.example:8083"
+        );
+        assert_eq!(
+            base_url("https://prices.example/", "x"),
+            "https://prices.example"
+        );
+        assert_eq!(
+            ws_from_http("https://prices.example"),
+            "wss://prices.example"
+        );
         assert_eq!(ws_from_http("http://h:8083"), "ws://h:8083");
     }
 
     #[test]
     fn the_query_string_is_read_and_decoded() {
-        assert_eq!(query_value("?tape=18083&l2=kraken", "l2").as_deref(), Some("kraken"));
-        assert_eq!(query_value("?tape=h%3A8083", "tape").as_deref(), Some("h:8083"));
+        assert_eq!(
+            query_value("?tape=18083&l2=kraken", "l2").as_deref(),
+            Some("kraken")
+        );
+        assert_eq!(
+            query_value("?tape=h%3A8083", "tape").as_deref(),
+            Some("h:8083")
+        );
         assert_eq!(query_value("?tape=1", "relay"), None);
         assert_eq!(query_value("", "tape"), None);
     }
 
     #[test]
     fn level_two_defaults_to_the_tape_and_can_be_kraken_or_off() {
-        assert_eq!(l2_choice(None, "http://h:8083").as_deref(), Some("ws://h:8083/l2"));
-        assert_eq!(l2_choice(Some("kraken"), "http://h:8083").as_deref(), Some(KRAKEN_WS));
+        assert_eq!(
+            l2_choice(None, "http://h:8083").as_deref(),
+            Some("ws://h:8083/l2")
+        );
+        assert_eq!(
+            l2_choice(Some("kraken"), "http://h:8083").as_deref(),
+            Some(KRAKEN_WS)
+        );
         assert_eq!(l2_choice(Some("off"), "http://h:8083"), None);
-        assert_eq!(l2_choice(Some("wss://my.feed/book"), "http://h:8083").as_deref(), Some("wss://my.feed/book"));
+        assert_eq!(
+            l2_choice(Some("wss://my.feed/book"), "http://h:8083").as_deref(),
+            Some("wss://my.feed/book")
+        );
     }
 }
