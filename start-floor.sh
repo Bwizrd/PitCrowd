@@ -267,7 +267,7 @@ start_relay() {
   local direct; direct=$(relay_port_direct)
   if [[ -n "$(port_pid "$direct")" ]]; then log "relay: already up on :$direct ($(relay_health))"; use_door && start_door; return 0; fi
   have_key || log "relay: no Jev key (JEV_KEY in jevfloor_learning_day/.env) — paper logs and the desk board work, Jev reads use the rule-of-thumb stand-in"
-  local bind="$(listen_addr):$direct"; use_door && bind="127.0.0.1:$direct"
+  local bind; bind="$(listen_addr):$direct"; use_door && bind="127.0.0.1:$direct"
   log "relay: starting  (JEV_RELAY_BIND=$bind jev_relay >> ${RELAY_LOG#"$FLOOR_ROOT"/})"
   if ! $DRY_RUN; then
     spawn "$RELAY_LOG" "$RELAY_DIR" env JEV_RELAY_BIND="$bind" "$RELAY_BIN"

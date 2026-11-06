@@ -78,6 +78,7 @@ the paper desk keeps it across restarts. You can also open the floor with
 | `jevfloor_learning_day/` | A Rust-plus-Jev learning course (lessons and examples) |
 | `docs/` | Data sources, services, and the design notes the floor grew from |
 | `research/` | What a web search found about trading with Jev (2026-10-25) |
+| `ci/`, `.github/` | The checks CI runs (see [Checks](#checks)) |
 
 ## Configuration
 
@@ -91,6 +92,28 @@ Nothing is required. Optional settings:
 
 - `INFLUX_URL` / `INFLUX_TOKEN` / `INFLUX_ORG` in a repo-root `.env` (or `OPENCRY_ENV_FILE`)
   only for the `replay` and `jev_score` research tools, which read recorded ticks from InfluxDB.
+
+## Checks
+
+CI (`.github/workflows/ci.yml`) runs on every push and pull request. It needs no account or
+key and makes no paid call. To see a change pass before you push, run the same checks:
+
+```sh
+# in each crate (floor_tape, jev_relay, opencry-visual, jevfloor_learning_day)
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings   # the learning-day lessons are exempt from -D
+cargo test --all-targets
+# and opencry-visual for the browser
+cargo clippy --target wasm32-unknown-unknown --lib --bin opencry-visual -- -D warnings
+
+node ci/check_pages.mjs   # syntax of the JavaScript inside the HTML pages
+ci/smoke.sh               # the launcher starts the tape and the relay, and they answer
+```
+
+`ci/smoke.sh` runs on ports of its own (28xxx), so it is safe beside a running floor, and it
+stops only the tape and relay on those ports. On Linux, `opencry-visual` needs Bevy's system
+libraries (`libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev`). The workflow also
+runs shellcheck and gitleaks.
 
 ## Licence
 

@@ -1,0 +1,132 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  # Each crate on its own: format, lints, tests. Nothing here needs a network service,
+  # an account or a key.
+  rust:
+    name: ${{ matrix.crate }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        crate: [floor_tape, jev_relay, opencry-visual, jevfloor_learning_day]
+        include:
+          - clippy: -D warnings
+          # The lessons are teaching code: fields kept to show a type, patterns shown on
+          # purpose. They must build and pass; their warnings are not failures.
+          - crate: jevfloor_learning_day
+            clippy: ""
+    defaults:
+      run:
+        working-directory: ${{ matrix.crate }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Bevy's Linux libraries
+        if: matrix.crate == 'opencry-visual'
+        working-directory: .
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev libx11-dev
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ${{ matrix.crate }}
+      - run: cargo fmt --check
+      - run: cargo clippy --locked --all-targets -- ${{ matrix.clippy }}
+      - run: cargo test --locked --all-targets
+
+  # The floor in the browser: the same crate built for wasm, with the browser-only code in it.
+  wasm:
+    name: opencry-visual (wasm)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: opencry-visual
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: opencry-visual
+          key: wasm
+      - run: cargo clippy --locked --target wasm32-unknown-unknown --lib --bin opencry-visual -- -D warnings
+
+  # What no compiler sees: the JavaScript in the pages, the launcher, the Python.
+  scripts:
+    name: pages, shell, python
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: JavaScript in the HTML pages
+        run: node ci/check_pages.mjs
+      - name: Shell scripts
+        run: |
+          bash -n start-floor.sh ci/smoke.sh
+          shellcheck -S warning start-floor.sh ci/smoke.sh
+      - name: Python compiles
+        run: python -m compileall -q adapters evolve
+
+  # The README's quick start, for real: the launcher builds the tape and the relay, writes the
+  # synthetic history, starts both, and they answer as docs/DATA_SOURCES.md says.
+  smoke:
+    name: launcher smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22 # the websocket check uses node's built-in WebSocket
+      - name: lsof
+        if: runner.os == 'Linux'
+        run: command -v lsof || { sudo apt-get update && sudo apt-get install -y lsof; }
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            floor_tape
+            jev_relay
+      - run: ci/smoke.sh
+
+  secrets:
+    name: no secrets committed
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
