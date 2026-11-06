@@ -373,7 +373,7 @@ mod tests {
 
     #[test]
     fn a_name_with_a_space_survives_the_query() {
-        assert_eq!(url_encode("Paul Leppard"), "Paul%20Leppard");
+        assert_eq!(url_encode("Ada Lovelace"), "Ada%20Lovelace");
         assert_eq!(url_encode("Zoë&Co"), "Zo%C3%AB%26Co");
     }
 

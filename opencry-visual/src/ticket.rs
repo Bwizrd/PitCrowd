@@ -5,7 +5,7 @@
 //! trader, with the desk's own costs and rules, so it is listed, walks the floor and is logged
 //! like any other trader's. Nothing here or on the desk talks to a broker.
 //!
-//! The trader is "Paul Leppard" (the author) until you name yourself: **Change name**, next
+//! The trader is "Guest" until you name yourself: **Change name**, next
 //! to "Your name" on the ticket, opens a box on the page (`#namebox` in `index.html`; not
 //! `window.prompt`, which browsers may suppress). This browser remembers the name, and the desk renames the seat and keeps the
 //! name across restarts. `?trader=Your%20Name` in the address does the same without a click,
@@ -32,7 +32,7 @@ pub const STOPS: [f32; 6] = [0.5, 1.0, 1.5, 2.0, 3.0, 5.0];
 pub const TARGETS: [f32; 5] = [1.0, 1.5, 2.0, 3.0, 5.0];
 /// The trader the desk books the ticket's orders to, unless `OPENCRY_TRADER_NAME` names
 /// another when the desk starts. The project's author, so the name is a credit too.
-pub const DEFAULT_TICKET_TRADER: &str = "Paul Leppard";
+pub const DEFAULT_TICKET_TRADER: &str = "Guest";
 
 /// The ticket's trader as the running desk names it, else the default.
 pub fn ticket_trader(board: Option<&crate::desk_feed::DeskBoard>) -> &str {
@@ -615,12 +615,12 @@ mod tests {
 
     #[test]
     fn the_traders_name_is_the_authors_unless_the_desk_names_another() {
-        assert_eq!(trader_name_from(None), "Paul Leppard");
-        assert_eq!(trader_name_from(Some("  ")), "Paul Leppard");
+        assert_eq!(trader_name_from(None), "Guest");
+        assert_eq!(trader_name_from(Some("  ")), "Guest");
         assert_eq!(trader_name_from(Some(" Ada Lovelace ")), "Ada Lovelace");
         assert_eq!(trader_name_from(Some(&"x".repeat(50))).len(), 32);
         let mut b = crate::desk_feed::DeskBoard::default();
-        assert_eq!(ticket_trader(Some(&b)), "Paul Leppard");
+        assert_eq!(ticket_trader(Some(&b)), "Guest");
         b.ticket_trader = Some("Ada Lovelace".into());
         assert_eq!(ticket_trader(Some(&b)), "Ada Lovelace");
         assert_eq!(
@@ -629,7 +629,7 @@ mod tests {
             "the running desk's name wins"
         );
         assert_eq!(shown_trader(None, Some("Grace")), "Grace");
-        assert_eq!(shown_trader(None, None), "Paul Leppard");
+        assert_eq!(shown_trader(None, None), "Guest");
         assert_eq!(
             clean_name("  Grace Hopper  ").as_deref(),
             Some("Grace Hopper")

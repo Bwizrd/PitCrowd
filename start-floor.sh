@@ -47,7 +47,7 @@
 #   FLOOR_JEV=live|rule|none   the desk's Jev mode (default: live with a key, rule without)
 #   FLOOR_PROTECTED_PORTS  space-separated ports this script must never stop
 #   OPENCRY_TARGET_DIR     a CARGO_TARGET_DIR the Rust binaries were built into
-#   OPENCRY_TRADER_NAME    the ticket trader's name (default "Paul Leppard")
+#   OPENCRY_TRADER_NAME    the ticket trader's name (default "Guest")
 
 set -uo pipefail
 

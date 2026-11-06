@@ -205,8 +205,35 @@ pub enum IngestionMode {
     Synthetic,
     /// Configurable synthetic ticks (e.g. empty scenario with 0 ticks)
     SyntheticTicks(Vec<f64>),
-    /// Live data from local cTrader REST bridge (pair 238 = XAGUSD_SB Silver)
+    /// Live bars from the floor's tape (`floor_tape`, or any server with the same `/bars`),
+    /// by the tape's symbol id (238 = XAGUSD, silver)
     LiveCTrader { url: String, bars_count: usize },
+}
+
+/// Where the floor's tape is: `OPENCRY_TAPE_URL`, as for the floor's own tools, else this machine.
+fn tape_url() -> String {
+    std::env::var("OPENCRY_TAPE_URL")
+        .unwrap_or_else(|_| "http://localhost:8083".to_string())
+        .trim_end_matches('/')
+        .to_string()
+}
+
+/// The tape's symbol for one of its ids (docs/DATA_SOURCES.md). An unknown id is passed through,
+/// so the tape answers with its own "unknown symbol" error.
+fn tape_symbol(id: u32) -> String {
+    match id {
+        241 => "XAUUSD",
+        238 => "XAGUSD",
+        205 => "NAS100",
+        220 => "US500",
+        185 => "EURUSD",
+        199 => "GBPUSD",
+        160 => "BTCUSD",
+        219 => "US30",
+        217 => "UK100",
+        _ => return id.to_string(),
+    }
+    .to_string()
 }
 
 impl IngestionMode {
@@ -217,8 +244,10 @@ impl IngestionMode {
     pub fn live_ctrader_url(pair_id: u32, timeframe: &str, bars_count: usize) -> Self {
         Self::LiveCTrader {
             url: format!(
-                "http://localhost:8000/getData?pair={}&timeframe={}&range=-1d",
-                pair_id, timeframe
+                "{}/bars?symbol={}&timeframe={}&range=-1d",
+                tape_url(),
+                tape_symbol(pair_id),
+                timeframe
             ),
             bars_count,
         }
@@ -1486,7 +1515,7 @@ fn main() {
 
     if cli.is_live {
         println!(
-            ">>> INGESTION: LIVE cTrader Bridge (pair {}, timeframe {})",
+            ">>> INGESTION: LIVE from the tape (symbol id {}, timeframe {})",
             cli.pair_id, cli.timeframe
         );
     } else {
@@ -1494,7 +1523,7 @@ fn main() {
             ">>> INGESTION: SYNTHETIC (Scenario '{}')",
             cli.scenario.as_str()
         );
-        println!("    (Pass --live to query local cTrader/Influx bridge)");
+        println!("    (Pass --live to read bars from the floor's tape on :8083)");
     }
 
     let config = cli.scenario.config();

@@ -3269,7 +3269,7 @@ mod desk {
             let names: Vec<&str> = book.traders.iter().map(|t| t.name()).collect();
             assert_eq!(
                 names,
-                vec!["Twtest", "Twtest-J", "Paul Leppard"],
+                vec!["Twtest", "Twtest-J", "Guest"],
                 "the genome and its twin are seated, and the ticket's trader"
             );
             let twin = book
@@ -3432,12 +3432,12 @@ mod desk {
             let dir = std::env::temp_dir().join(format!("ticket_test_{}", std::process::id()));
             fs::create_dir_all(&dir).unwrap();
             let (mut gp, mut book) = pit_with_twin(&dir);
-            let paul = book
+            let guest = book
                 .traders
                 .iter()
-                .position(|t| t.name() == "Paul Leppard")
+                .position(|t| t.name() == "Guest")
                 .expect("the ticket's trader is seated");
-            assert_eq!(book.traders[paul].archetype.label(), "manual");
+            assert_eq!(book.traders[guest].archetype.label(), "manual");
             let at = 1_792_800_000_000 + 10 * 3_600_000;
             // 15m gold bars with a range of 2.0: ATR 2.0.
             gp.bars[Instrument::Gold as usize] = (0..20)
@@ -3463,7 +3463,7 @@ mod desk {
 
             gp.manual_tx.send(order(1, "buy")).unwrap();
             gp.take_manual_orders(&mut book, &gold_view(&bars, at + 1_000));
-            let p = book.traders[paul].position.clone().expect("bought");
+            let p = book.traders[guest].position.clone().expect("bought");
             assert_eq!(p.entry, 2000.2, "at the ask");
             assert!(
                 (p.stop_ticks - 60.0).abs() < 1e-3,
@@ -3508,8 +3508,8 @@ mod desk {
             close.placed_ms = at + 40_500;
             gp.manual_tx.send(close).unwrap();
             gp.take_manual_orders(&mut book, &gold_view(&bars, at + 41_000));
-            assert!(book.traders[paul].position.is_none());
-            let tr = book.traders[paul].trades.last().unwrap();
+            assert!(book.traders[guest].position.is_none());
+            let tr = book.traders[guest].trades.last().unwrap();
             assert_eq!(
                 (tr.why_out.as_str(), tr.genome),
                 ("closed by hand", Some("manual"))

@@ -669,7 +669,7 @@ async fn main() {
     }
 }
 
-/// Decodes a query value: `%XX` bytes and `+` as a space (so `?trader=Paul%20Leppard` works).
+/// Decodes a query value: `%XX` bytes and `+` as a space (so `?trader=Ada%20Lovelace` works).
 fn url_decode(s: &str) -> String {
     let b = s.as_bytes();
     let mut out = Vec::with_capacity(b.len());
@@ -696,8 +696,8 @@ mod tests {
 
     #[test]
     fn a_query_value_is_decoded() {
-        assert_eq!(url_decode("Paul%20Leppard"), "Paul Leppard");
-        assert_eq!(url_decode("Paul+Leppard"), "Paul Leppard");
+        assert_eq!(url_decode("Ada%20Lovelace"), "Ada Lovelace");
+        assert_eq!(url_decode("Ada+Lovelace"), "Ada Lovelace");
         assert_eq!(url_decode("Zo%C3%AB%26Co"), "Zoë&Co");
         assert_eq!(url_decode("100%"), "100%");
         assert_eq!(url_decode("%zz"), "%zz");
