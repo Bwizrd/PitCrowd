@@ -20,7 +20,7 @@
 //! (other modules can use it for their own panels). `spawn_close_button` draws the X.
 //!
 //! Persistence: `PanelPrefs` is the serialisable snapshot of every flag. On wasm it is written
-//! to `localStorage["opencry.panels"]` whenever it changes and read back at startup; every
+//! to `localStorage["opencry.panels.v2"]` whenever it changes and read back at startup; every
 //! storage call ignores its `Result` (private mode, quota, blocked storage). Native ignores it.
 
 use bevy::prelude::*;
@@ -47,7 +47,9 @@ pub const COLUMN_GAP: f32 = 6.0;
 /// The left column is as wide as the board panel so the two sides match.
 pub const LEFT_COLUMN_W: f32 = BOARD_PANEL_W;
 
-pub const STORAGE_KEY: &str = "opencry.panels";
+/// `.v2` since panels start closed: a layout saved under the old key was mostly the old
+/// all-open default, written on the first frame, not a choice.
+pub const STORAGE_KEY: &str = "opencry.panels.v2";
 
 /// Every closeable panel. The order within each side is the top-to-bottom order.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -106,25 +108,14 @@ pub struct PanelColumn(pub ColumnSide);
 pub struct BoardExpandText;
 
 /// The flags that had no home before: the status panel and the expanded board.
-#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
+/// All closed by default, like `PanelPrefs::default`.
+#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct PanelState {
     pub status: bool,
     pub expanded: bool,
     pub ticket: bool,
     pub positions: bool,
     pub depth: bool,
-}
-
-impl Default for PanelState {
-    fn default() -> Self {
-        Self {
-            status: true,
-            expanded: false,
-            ticket: true,
-            positions: true,
-            depth: true,
-        }
-    }
 }
 
 impl PanelState {
@@ -153,7 +144,10 @@ impl PanelState {
 
 /// Open/closed state of every panel plus the expanded board, as saved. Missing fields take
 /// the defaults, so an older saved layout still loads.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// The default, a first visit, opens on the floor alone: every panel closed, each one a
+/// button away on the bottom row. (Paul, 2026-11-07: open panels spoil the main view.)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct PanelPrefs {
     pub board: bool,
@@ -165,22 +159,6 @@ pub struct PanelPrefs {
     pub ticket: bool,
     pub positions: bool,
     pub depth: bool,
-}
-
-impl Default for PanelPrefs {
-    fn default() -> Self {
-        Self {
-            board: true,
-            traders: true,
-            details: false,
-            role_key: true,
-            status: true,
-            expanded: false,
-            ticket: true,
-            positions: true,
-            depth: true,
-        }
-    }
 }
 
 impl PanelPrefs {
@@ -417,7 +395,7 @@ pub fn assemble_panel_columns(
     }
 }
 
-/// Startup: apply the saved layout, if any.
+/// Startup: apply the saved layout, else the first-visit one (`PanelPrefs::default`).
 pub fn load_panel_prefs(
     mut settings: ResMut<ChartSettings>,
     mut book: ResMut<PaperBook>,
@@ -425,10 +403,9 @@ pub fn load_panel_prefs(
     mut key: ResMut<RoleKeyVisibleState>,
     mut state: ResMut<PanelState>,
 ) {
-    if let Some(prefs) = load_prefs() {
-        info!("panels: restored layout {prefs:?}");
-        prefs.apply(&mut settings, &mut book, &mut debug, &mut key, &mut state);
-    }
+    let prefs = load_prefs().unwrap_or_default();
+    info!("panels: layout {prefs:?}");
+    prefs.apply(&mut settings, &mut book, &mut debug, &mut key, &mut state);
 }
 
 // ---------------------------------------------------------------------------
@@ -751,7 +728,22 @@ mod tests {
 
     #[test]
     fn panel_visibility_follows_the_flags_the_view_and_the_expanded_board() {
-        let d = PanelPrefs::default();
+        for id in PanelId::LEFT.iter().chain(&PanelId::RIGHT) {
+            assert!(
+                !panel_shown(*id, &PanelPrefs::default(), true),
+                "{id:?} starts closed"
+            );
+        }
+        let d = PanelPrefs {
+            board: true,
+            traders: true,
+            role_key: true,
+            status: true,
+            ticket: true,
+            positions: true,
+            depth: true,
+            ..PanelPrefs::default()
+        };
         assert!(panel_shown(PanelId::Board, &d, true));
         assert!(
             !panel_shown(PanelId::Board, &d, false),
@@ -761,10 +753,7 @@ mod tests {
             panel_shown(PanelId::RoleKey, &d, false),
             "the key stays in the market view"
         );
-        assert!(
-            !panel_shown(PanelId::Details, &d, true),
-            "details closed by default"
-        );
+        assert!(!panel_shown(PanelId::Details, &d, true), "details closed");
         assert!(panel_shown(PanelId::Traders, &d, true) && panel_shown(PanelId::Status, &d, true));
 
         let e = PanelPrefs {

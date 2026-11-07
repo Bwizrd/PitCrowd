@@ -51,7 +51,8 @@ other settings say: put your other services' ports there.
 
 ## Rules that are not obvious from the code
 
-**The Jev key** lives in `jevfloor_learning_day/.env` as `JEV_KEY=` (the relay also accepts
+**The Jev key** lives in `jevfloor_learning_day/.env` as `JEV_KEY=` (copy
+`jevfloor_learning_day/.env.example` to start; the relay also accepts
 `TYPESAFE_API_KEY`, the environment, or `jev_relay/.env`). Only the relay reads it. It is never
 printed, never put in code, and never reaches the wasm bundle: the page calls the relay, the
 relay calls Jev. Jev is paid per call (about 1,900 input tokens a read); `--jev rule` is free.

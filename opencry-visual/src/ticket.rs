@@ -31,7 +31,7 @@ use crate::ui::Selection;
 pub const STOPS: [f32; 6] = [0.5, 1.0, 1.5, 2.0, 3.0, 5.0];
 pub const TARGETS: [f32; 5] = [1.0, 1.5, 2.0, 3.0, 5.0];
 /// The trader the desk books the ticket's orders to, unless `OPENCRY_TRADER_NAME` names
-/// another when the desk starts. The project's author, so the name is a credit too.
+/// another when the desk starts, or the ticket's Change name renames it.
 pub const DEFAULT_TICKET_TRADER: &str = "Guest";
 
 /// The ticket's trader as the running desk names it, else the default.
@@ -179,7 +179,7 @@ fn take_chosen_name() -> Option<String> {
     }
 }
 
-/// The name the ticket shows: the running desk's, else this browser's, else the author's.
+/// The name the ticket shows: the running desk's, else this browser's, else the default.
 pub fn shown_trader<'a>(
     board: Option<&'a crate::desk_feed::DeskBoard>,
     local: Option<&'a str>,

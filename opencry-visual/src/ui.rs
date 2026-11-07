@@ -54,15 +54,10 @@ pub struct HudExpandedState {
 }
 
 /// Resource controlling whether the participant Role Key / Legend is visible
-#[derive(Resource, Debug, Clone)]
+/// Hidden by default: panels start closed (`panels::PanelPrefs::default`).
+#[derive(Resource, Debug, Clone, Default)]
 pub struct RoleKeyVisibleState {
     pub visible: bool,
-}
-
-impl Default for RoleKeyVisibleState {
-    fn default() -> Self {
-        Self { visible: true }
-    }
 }
 
 /// The guide (`static/explainer.html`, copied next to the app by trunk) in a new tab. Native
@@ -1504,7 +1499,7 @@ mod tests {
     #[test]
     fn test_role_key_visible_default() {
         let state = RoleKeyVisibleState::default();
-        assert!(state.visible);
+        assert!(!state.visible, "panels start closed");
     }
 
     #[test]

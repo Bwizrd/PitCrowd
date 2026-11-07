@@ -79,7 +79,7 @@ the paper desk keeps it across restarts. You can also open the floor with
 Nothing is required. Optional settings:
 
 - `JEV_KEY=` in `jevfloor_learning_day/.env` (git-ignored) to use Jev itself; only the relay
-  reads it.
+  reads it. Start from the example: `cp jevfloor_learning_day/.env.example jevfloor_learning_day/.env`.
 - `FLOOR_TAPE_ARGS` for the tape's source (`--csv DIR`, `--ingest SYMS`, `--seed N`), and
   `FLOOR_*_PORT` to move any service (`docs/SERVICES.md`).
 - `OPENCRY_EDGE_CACHE` to backtest on your own 15m history instead of `data/cache`.

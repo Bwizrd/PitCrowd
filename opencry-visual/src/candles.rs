@@ -246,7 +246,7 @@ impl Default for ChartSettings {
     fn default() -> Self {
         Self {
             timeframe: Timeframe::M5,
-            board_chart: true,
+            board_chart: false, // panels start closed (`panels::PanelPrefs::default`)
             wall_board: true,
             web_chart: false,
             deal_markers: false,

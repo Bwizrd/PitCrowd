@@ -2130,7 +2130,7 @@ impl Default for PaperBook {
         Self {
             traders: Archetype::ALL.iter().map(|a| Trader::new(*a)).collect(),
             enabled: true,
-            show: true,
+            show: false, // panels start closed (`panels::PanelPrefs::default`)
             focus: 0,
             revision: 0,
             session_start_ms: wall_clock_ms(),

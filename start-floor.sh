@@ -224,7 +224,7 @@ start_tape() {
 
 start_relay() {
   if [[ -n "$(port_pid "$RELAY_PORT")" ]]; then log "relay: already up on :$RELAY_PORT ($(relay_health))"; return 0; fi
-  have_key || log "relay: no Jev key (JEV_KEY in jevfloor_learning_day/.env) — paper logs and the desk board work, Jev reads use the rule-of-thumb stand-in"
+  have_key || log "relay: no Jev key (JEV_KEY in jevfloor_learning_day/.env; see its .env.example) — paper logs and the desk board work, Jev reads use the rule-of-thumb stand-in"
   log "relay: starting  (JEV_RELAY_BIND=127.0.0.1:$RELAY_PORT jev_relay >> ${RELAY_LOG#"$FLOOR_ROOT"/})"
   $DRY_RUN && return 0
   spawn "$RELAY_LOG" "$RELAY_DIR" env JEV_RELAY_BIND="127.0.0.1:$RELAY_PORT" "$RELAY_BIN"
