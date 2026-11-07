@@ -9,9 +9,14 @@ It runs offline out of the box: a synthetic market, no account, no API key. Real
 through one small protocol (CSV recordings, a live feed POSTed from any language, or your own
 server); see [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md).
 
+Created by Paul Leppard to learn Rust and Jev, and open-sourced to see how far others can take
+it. If you build on it, a link back is appreciated.
+
 > **Status: work in progress, published for collaboration.** This is a research and
-> visualisation project, not trading software. It places no real orders. Nothing here is
-> financial advice, and nothing in it has been shown to make money.
+> visualisation project, not trading software. It places no real orders (paper trading only).
+> Nothing here is financial advice, and nothing in it has been shown to make money. It is
+> maintained in spare time: issues and pull requests are welcome, and replies may take a few
+> days.
 
 ## Quick start
 
@@ -53,12 +58,23 @@ the paper desk keeps it across restarts. You can also open the floor with
 1. **Find better ways to use Jev.** Jev is TypeSafe's "System One" classifier. The repo has
    an evaluation harness (`evolve/`, `evolve/audit/`, `opencry-visual/src/bin/jev_score.rs`)
    and a record of what was tried. Nothing tried so far has shown Jev adding an edge over a
-   simpler rule, and [`research/web-search-2026-10-25.md`](research/web-search-2026-10-25.md)
-   found no one else who had either. Jev is optional: without a key the floor uses a free
+   simpler rule, but these are a newcomer's first experiments, and someone who knows Jev
+   better may well do much more with it.
+   [`research/web-search-2026-10-25.md`](research/web-search-2026-10-25.md) is what a web
+   search found about others' attempts. Jev is optional: without a key the floor uses a free
    rule of thumb in its place.
 2. **Make the pits more real with level-2 data.** `opencry-visual/docs/LEVEL2.md` describes
    the Bitcoin order book feed (the tape's synthetic book, or Kraken's public websocket with
    `?l2=kraken`) and lists ideas the data already supports.
+
+More directions, and small pieces to start with, are in [`ROADMAP.md`](ROADMAP.md).
+
+## Contributing
+
+Contributions of any size are welcome. [`CONTRIBUTING.md`](CONTRIBUTING.md) covers running it,
+the checks to run before a pull request, and the few house rules (it runs offline with no key,
+no secrets, no paid calls in tests, no real orders). Security problems: see
+[`SECURITY.md`](SECURITY.md).
 
 ## Layout
 
@@ -72,7 +88,7 @@ the paper desk keeps it across restarts. You can also open the floor with
 | `jevfloor_learning_day/` | A Rust-plus-Jev learning course (lessons and examples) |
 | `docs/` | Data sources, services, and the design notes the floor grew from |
 | `research/` | What a web search found about trading with Jev (2026-10-25) |
-| `ci/`, `.github/` | The checks CI runs (see [Checks](#checks)) |
+| `ci/`, `.github/` | The checks CI runs (see [Checks](#checks)), and the issue and pull request templates |
 
 ## Configuration
 
