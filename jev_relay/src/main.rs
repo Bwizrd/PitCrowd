@@ -619,7 +619,7 @@ async fn main() {
         String::new()
     });
     let cfg = Config {
-        bind: std::env::var("JEV_RELAY_BIND").unwrap_or_else(|_| "0.0.0.0:8099".into()),
+        bind: std::env::var("JEV_RELAY_BIND").unwrap_or_else(|_| "127.0.0.1:8099".into()),
         min_gap: Duration::from_millis(
             std::env::var("JEV_RELAY_MIN_GAP_MS")
                 .ok()

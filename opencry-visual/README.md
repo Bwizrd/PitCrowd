@@ -14,12 +14,12 @@ tape on :8083), plus two native binaries that run the same library code without 
 
 ## The desk board page
 
-`http://<host>:8180/desk.html` (`static/desk.html`, copied into the bundle by trunk) is the live
+`http://localhost:8180/desk.html` (`static/desk.html`, copied into the bundle by trunk) is the live
 board of the desk: every trader's closes and progress over today / 24 h / 7 d / all, equity
 curves, open positions marked to market, breakdowns by pit and group, what each question trader
 traded, and the latest closes with their reasons. Plain HTML and JavaScript, no build step: it
 polls the relay's `GET /paper/board` every 2 s and `GET /paper/trades?since_ms=` every 10 s
-(both through the door on :8099, so it works from any machine on your network).
+(both on the relay, :8099).
 
 ## The paper desk
 

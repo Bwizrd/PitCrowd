@@ -46,7 +46,7 @@ use symbols::{SYMBOLS, by_name, round_to};
 
 const BTC: usize = 6;
 const LEVELS: usize = 5;
-const USAGE: &str = "usage: floor_tape [--port 8083] [--bind 0.0.0.0] [--seed 42] [--history 30d]
+const USAGE: &str = "usage: floor_tape [--port 8083] [--bind 127.0.0.1] [--seed 42] [--history 30d]
                   [--csv DIR [--speed 1] [--warmup 1d] [--no-loop]]
                   [--ingest SYM,SYM|all] [--only SYM,SYM]
        floor_tape --write-cache DIR [--from 2025-01-01]
@@ -102,7 +102,7 @@ fn parse_args() -> Result<Args, String> {
             .ok()
             .and_then(|p| p.parse().ok())
             .unwrap_or(8083),
-        bind: "0.0.0.0".into(),
+        bind: "127.0.0.1".into(),
         seed: 42,
         history_ms: 30 * 1440 * MINUTE_MS,
         csv: None,
@@ -966,7 +966,7 @@ fn main() {
     if owner.contains(&Owner::Ingest) {
         eprintln!(
             "floor_tape: POST ticks to http://{}:{}/ingest  e.g. {{\"symbol\":\"BTCUSD\",\"bid\":100000.5,\"ask\":100001.0}}",
-            if args.bind == "0.0.0.0" {
+            if args.bind == "0.0.0.0" || args.bind == "127.0.0.1" {
                 "localhost"
             } else {
                 &args.bind

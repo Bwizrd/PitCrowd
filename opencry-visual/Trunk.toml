@@ -7,7 +7,7 @@ target = "index.html"
 watch = ["src", "index.html", "static"]
 
 [serve]
-addresses = ["127.0.0.1"]   # this machine only; start-floor.sh with FLOOR_LAN=1 serves every address
+addresses = ["127.0.0.1"]   # this machine only
 port = 8180
 open = false
 

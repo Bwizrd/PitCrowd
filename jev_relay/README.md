@@ -5,14 +5,7 @@ wasm or the page is readable by whoever loads it. This relay runs on the dev mac
 key, and forwards System One calls. It is deliberately separate from the trading bridge on :8000
 so the author's live trading never shares a process, a rate limit or a failure with the floor.
 
-    cd jev_relay && cargo run --release        # listens on 0.0.0.0:8099 when run by hand
-
-Under `start-floor.sh` the relay listens on `127.0.0.1:8099`, this machine only. With
-`FLOOR_LAN=1` on macOS, the binary moves to `127.0.0.1:8100` (`JEV_RELAY_BIND`) and
-`relay_door.mjs`, a node forwarder, owns `0.0.0.0:8099` in front of it. The macOS
-application firewall blocks incoming connections to a freshly built cargo binary started
-headless (nobody sees its dialog, and every rebuild resets the answer); node is already
-allowed, and the firewall judges the binary, not the script. Clients keep using `:8099`.
+    cd jev_relay && cargo run --release        # listens on 127.0.0.1:8099 (JEV_RELAY_BIND moves it)
 
 Key: `JEV_KEY` or `TYPESAFE_API_KEY` in the environment, else `jev_relay/.env`, else
 `jevfloor_learning_day/.env`. The key is never logged and never returned.

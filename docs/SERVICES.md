@@ -35,32 +35,7 @@ you:
 cd opencry-visual && cargo build --release --bin paper_desk --bin genome_backtest
 ```
 
-Everything listens on this machine only (`127.0.0.1`) unless you ask for more (next section).
-
-## From another device
-
-```sh
-FLOOR_LAN=1 ./start-floor.sh
-```
-
-opens the floor to other devices: a phone, another computer, or the same over a VPN such as
-Tailscale. The launcher prints the address to open. On Linux and elsewhere the services simply
-listen on every address. On macOS they cannot: the application firewall silently blocks
-incoming connections to a freshly built, ad-hoc signed binary started headless (nobody sees its
-dialog, and every rebuild resets the answer), while node is allowed. So with `FLOOR_LAN=1` on a
-Mac, three small node forwarders ("doors", raw TCP, so websockets pass through) take the outside
-ports and the services move behind them on loopback:
-
-| Door | Outside port | Forwards to | Log |
-|---|---|---|---|
-| tape door (`floor_tape/tape_door.mjs`) | 8083 | the tape on 127.0.0.1:8183 | `floor_tape/log/tape_door.out` |
-| relay door (`jev_relay/relay_door.mjs`) | 8099 | the relay on 127.0.0.1:8100 | `jev_relay/log/relay_door.out` |
-| page door (the tape door's script again) | **8188** | trunk on 8180 | `opencry-visual/log/page_door.out` |
-
-From another device on a Mac, open port **8188**. Without node the launcher falls back to binding
-the services on every address, and the firewall may then block them. Like trunk, the page door
-is never stopped by the launcher. Run `--stop` and `--restart` with or without `FLOOR_LAN`: they
-clear the doors and the services behind them either way.
+Everything listens on this machine only (`127.0.0.1`).
 
 ## Ports
 
@@ -71,8 +46,7 @@ FLOOR_TAPE_PORT=18083 FLOOR_RELAY_PORT=18099 FLOOR_TRUNK_PORT=18180 ./start-floo
 # then open http://localhost:18180/?tape=18083&relay=18099 (the launcher prints it)
 ```
 
-Behind the macOS doors, `FLOOR_TAPE_BIND_PORT` (8183), `FLOOR_RELAY_BIND_PORT` (8100) and
-`FLOOR_PAGE_DOOR_PORT` (trunk's port + 8) move too. `FLOOR_PROTECTED_PORTS="8000 8086"` lists ports the launcher must never stop, whatever the
+`FLOOR_PROTECTED_PORTS="8000 8086"` lists ports the launcher must never stop, whatever the
 other settings say: put your other services' ports there.
 
 ## Rules that are not obvious from the code
@@ -95,12 +69,12 @@ minutes. If you must, do it by hand.
 ```sh
 # tape
 cd floor_tape && cargo build --release
-nohup ./target/release/floor_tape --bind 127.0.0.1 >> log/floor_tape.out 2>&1 &
+nohup ./target/release/floor_tape >> log/floor_tape.out 2>&1 &
 curl -s localhost:8083/health | head -c 200
 
 # relay
 cd jev_relay && cargo build --release
-JEV_RELAY_BIND=127.0.0.1:8099 nohup ./target/release/jev_relay >> log/relay.out 2>&1 &
+nohup ./target/release/jev_relay >> log/relay.out 2>&1 &
 curl -s localhost:8099/health
 
 # desk

@@ -4,7 +4,7 @@
 //! from the same code the floor runs, so re-running `cargo run --bin explain` after a change
 //! to `paper.rs` or `jev.rs` keeps the page honest. trunk copies the file next to the app
 //! (`<link data-trunk rel="copy-file" href="static/explainer.html">`), so it is served at
-//! `http://<host>:8180/explainer.html`, from any machine on your network.
+//! `http://localhost:8180/explainer.html`.
 
 #[cfg(target_arch = "wasm32")]
 fn main() {}
@@ -142,7 +142,7 @@ a { color:var(--blue); }
         h.push_str("<p>The floor is a Bevy app compiled to WebAssembly and served by <code>trunk</code> on port 8180. It is a visualiser and an attention router: it never places an order and it is not the alpha. A handful of small services feed it, all on this machine, none needing an account.</p>");
         h.push_str("<table><tr><th>Service</th><th>Port</th><th>What it does</th></tr>");
         h.push_str("<tr><td>Market tape</td><td>8083</td><td><code>floor_tape</code>: prices for the nine symbols, synthetic by default or from your CSVs or live feed. Broadcasts every tick and the five-level book over a websocket, builds 1m bars from ticks (<code>/bars</code>), serves Bitcoin's Level 2 book in Kraken's message format (<code>/l2</code>), and a retail order book in OANDA's shape for gold, silver, GBP/USD and EUR/USD (synthetic symbols only).</td></tr>");
-        h.push_str("<tr><td>Jev relay</td><td>8099 (on macOS a node door in front of the relay on 127.0.0.1:8100)</td><td>Holds the Jev API key, if you have one, so it never reaches the browser, forwards <code>POST /jev</code> with a 2 s minimum gap (or answers 503 at once without a key), logs every inference, and keeps append-only logs of paper trades and decisions. Serves the desk's board at <code>GET /paper/board</code>.</td></tr>");
+        h.push_str("<tr><td>Jev relay</td><td>8099</td><td>Holds the Jev API key, if you have one, so it never reaches the browser, forwards <code>POST /jev</code> with a 2 s minimum gap (or answers 503 at once without a key), logs every inference, and keeps append-only logs of paper trades and decisions. Serves the desk's board at <code>GET /paper/board</code>.</td></tr>");
         h.push_str("<tr><td>Paper desk</td><td>-</td><td>A native binary running the same paper book as the browser, around the clock, on the tape, asking Jev (or, without a key, the floor rule) about all nine pits once a minute each. It runs the hand-written traders (<code>--keep</code> picks some) plus whatever genomes and twins sit in the pit file (<code>--pit evolve/pit.json</code>), which it re-reads every minute. While it is alive the browser shows its board and opens no positions of its own, so nothing is double counted.</td></tr>
 <tr><td>Evolve</td><td>-</td><td>A Python loop (<code>evolve/evolve.py loop --every 3600</code>) that every hour judges the seated genomes on their forward trades, cuts the failures, generates and backtests new ones (<code>genome_backtest</code>), and seats any that pass the gate by writing <code>pit.json</code>.</td></tr>");
         h.push_str("<tr><td>trunk serve</td><td>8180</td><td>Serves the app (and this page) to any browser on the machine or on your network.</td></tr></table>");

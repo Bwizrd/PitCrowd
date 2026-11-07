@@ -30,12 +30,6 @@ first build takes several minutes). `./start-floor.sh --status` shows each servi
 `start-floor.sh` is the easy way in, not a requirement: it builds what is missing and starts the
 five services in order with matching ports. `docs/SERVICES.md` shows how to run each by hand.
 
-**From another device** (a phone, a laptop, over Tailscale or any VPN): by default everything
-listens on this machine only. Start it with `FLOOR_LAN=1 ./start-floor.sh` and open the address
-the launcher prints. On a Mac, that page is on port **8188**, not 8180: the macOS firewall
-silently blocks a freshly built binary from other devices, so small node forwarders take the
-outside ports (`docs/SERVICES.md`).
-
 If Rust also came from Homebrew (`brew install rust`), that cargo cannot build for the browser;
 the launcher then uses rustup's toolchain for the page, and says so. To watch real Bitcoin instead of the synthetic one:
 

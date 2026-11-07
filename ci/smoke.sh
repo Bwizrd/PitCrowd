@@ -11,8 +11,7 @@
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-export FLOOR_TAPE_PORT="${FLOOR_TAPE_PORT:-28083}" FLOOR_TAPE_BIND_PORT="${FLOOR_TAPE_BIND_PORT:-28183}"
-export FLOOR_RELAY_PORT="${FLOOR_RELAY_PORT:-28099}" FLOOR_RELAY_BIND_PORT="${FLOOR_RELAY_BIND_PORT:-28100}"
+export FLOOR_TAPE_PORT="${FLOOR_TAPE_PORT:-28083}" FLOOR_RELAY_PORT="${FLOOR_RELAY_PORT:-28099}"
 export FLOOR_TRUNK_PORT="${FLOOR_TRUNK_PORT:-28180}" FLOOR_NO_TRUNK=1 FLOOR_JEV=none
 TAPE="http://127.0.0.1:$FLOOR_TAPE_PORT" RELAY="http://127.0.0.1:$FLOOR_RELAY_PORT"
 
@@ -76,7 +75,7 @@ echo "== stop"
 "$ROOT/start-floor.sh" --stop relay >/dev/null
 "$ROOT/start-floor.sh" --stop tape >/dev/null
 perl -e 'select(undef,undef,undef,1)'
-for p in "$FLOOR_TAPE_PORT" "$FLOOR_TAPE_BIND_PORT" "$FLOOR_RELAY_PORT" "$FLOOR_RELAY_BIND_PORT"; do
+for p in "$FLOOR_TAPE_PORT" "$FLOOR_RELAY_PORT"; do
   check "port $p is free" bash -c "! lsof -nP -iTCP:$p -sTCP:LISTEN -t >/dev/null 2>&1"
 done
 

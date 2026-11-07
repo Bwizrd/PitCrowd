@@ -18,7 +18,7 @@ cargo build --release
 ./target/release/floor_tape --write-csv ../data/sample --days 2
 ```
 
-Options: `--port 8083` (or `FLOOR_TAPE_PORT`), `--bind 0.0.0.0`, `--seed 42`, `--history 30d`
+Options: `--port 8083` (or `FLOOR_TAPE_PORT`), `--bind 127.0.0.1`, `--seed 42`, `--history 30d`
 (how much one-minute history `/bars` keeps), `--warmup 1d`, `--speed 1`, `--no-loop`,
 `--only SYM,SYM` (synthetic for just these), `--from 2021-01-01` (with `--write-cache`).
 
