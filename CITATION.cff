@@ -1,10 +1,11 @@
 cff-version: 1.2.0
 message: "If you use or build on this project, please cite it or link back to it."
-title: "JevFloor / OpenCry: an open-outcry trading floor in Rust"
+title: "PitCrowd: a live trading floor in Rust"
 abstract: >-
   A 3D open-outcry trading floor in Rust and Bevy (native and wasm) that reacts to price data,
   with paper traders, an evolving pit of strategies and an optional Jev market classifier.
 type: software
+repository-code: "https://github.com/Bwizrd/PitCrowd"
 authors:
   - given-names: Paul
     family-names: Leppard

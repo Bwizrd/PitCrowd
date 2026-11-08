@@ -101,9 +101,9 @@ a { color:var(--blue); }
         let mut h = String::with_capacity(120_000);
         let _ = write!(
             h,
-            "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>OpenCry Floor Guide</title><style>{CSS}</style></head><body><main>"
+            "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>PitCrowd Floor Guide</title><style>{CSS}</style></head><body><main>"
         );
-        h.push_str("<h1>OpenCry Floor: the guide</h1>");
+        h.push_str("<h1>PitCrowd: the guide</h1>");
         let _ = write!(
             h,
             "<p class=\"dim\">What you are looking at, how Jev works, how the paper traders trade, who they are, how the evolving pit breeds new ones and lets Jev vote on their trades, and where to look to see them trading. Generated {} from the code that runs the floor (<code>cargo run --bin explain</code>).</p>",

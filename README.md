@@ -1,4 +1,6 @@
-# JevFloor / OpenCry
+# PitCrowd
+
+**A live trading floor in Rust: the crowd in each pit reacts to the price.**
 
 A 3D open-outcry trading floor in Rust and Bevy (native and wasm). Simulated pit crowds trade
 around a market price, paper traders (hand-written, evolved "genomes" and LLM-classifier-assisted
@@ -8,6 +10,8 @@ order book as a heatmap and as liquidity walls in the pit.
 It runs offline out of the box: a synthetic market, no account, no API key. Real prices plug in
 through one small protocol (CSV recordings, a live feed POSTed from any language, or your own
 server); see [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md).
+
+(Inside the code the project is still called OpenCry: the crates are `opencry-visual` and so on.)
 
 Created by Paul Leppard to learn Rust and Jev, and open-sourced to see how far others can take
 it. If you build on it, a link back is appreciated.

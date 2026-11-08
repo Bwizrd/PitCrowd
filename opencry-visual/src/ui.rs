@@ -577,7 +577,7 @@ pub fn setup_ui(mut commands: Commands) {
         .with_children(|parent| {
             parent.spawn((
                 AnnouncementToastText,
-                Text::new("OpenCry Floor Initialized - Ready"),
+                Text::new("PitCrowd Floor Initialized - Ready"),
                 TextFont {
                     font_size: 12.0,
                     ..default()

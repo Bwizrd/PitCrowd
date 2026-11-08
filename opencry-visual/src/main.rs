@@ -69,7 +69,7 @@ fn main() {
     let mut app = App::new();
     app.add_plugins(DefaultPlugins.set(WindowPlugin {
         primary_window: Some(Window {
-            title: "OpenCry Market Floor - Phase 2 Living Floor".into(),
+            title: "PitCrowd - Live Trading Floor".into(),
             resolution: (1280, 800).into(),
             fit_canvas_to_parent: true,
             prevent_default_event_handling: true,
