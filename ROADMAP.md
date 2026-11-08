@@ -52,5 +52,4 @@ Ideas the order-book data already supports (`opencry-visual/docs/LEVEL2.md`):
 
 - One Cargo workspace for the four crates.
 - Profiling the wasm build on slower machines.
-- **good first issue:** screenshots and a short gif for the README.
 - A container image that runs the whole floor with one command.
