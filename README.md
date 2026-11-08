@@ -119,6 +119,7 @@ Nothing is required. Optional settings:
 
 - `INFLUX_URL` / `INFLUX_TOKEN` / `INFLUX_ORG` in a repo-root `.env` (or `OPENCRY_ENV_FILE`)
   only for the `replay` and `jev_score` research tools, which read recorded ticks from InfluxDB.
+  Start from `cp .env.example .env`.
 
 ## Checks
 

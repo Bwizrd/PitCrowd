@@ -106,11 +106,74 @@ POSTing a symbol that is not an ingest symbol is refused with the flag that woul
 A tick older than the newest bar's minute is dropped: send history as bars.
 
 [`adapters/kraken_btc.py`](../adapters/kraken_btc.py) is a complete example: real Bitcoin from
-Kraken's public API (no key), backfill then a quote a second, stdlib Python, sixty lines. Copy
-it for any other source. Only `history()` and `quote()` change.
+Kraken's public API (no key), backfill then a quote a second, stdlib Python, sixty lines. For any
+other source, start from [`adapters/template.py`](../adapters/template.py): only `history()`
+and `quote()` change ([Adding your own feed](#adding-your-own-feed)).
 
 Ingest is off unless `--ingest` names symbols, because anyone who can reach the port could
 post prices. The tape listens on this machine only (`127.0.0.1`).
+
+### Adding your own feed
+
+[`adapters/template.py`](../adapters/template.py) is the same program as the Kraken adapter
+with the two source-specific functions left for you to fill in. Any language works; this is
+the whole job:
+
+1. **Pick the pit.** Your instrument trades under one of the nine names above. If it is not
+   one of them (a stock, the DAX, a coin other than Bitcoin), choose the nearest pit and send
+   under that name. The floor's prices, charts and crowds follow whatever you send, but the
+   pit keeps its label and some of its tuning (the decimal places shown, the paper traders'
+   sense of a typical move), so a price far from the original instrument's can look odd. See [the limit](#the-limit-nine-pits) below.
+2. **Start the tape owning that symbol:**
+   `FLOOR_TAPE_ARGS="--ingest XAUUSD" ./start-floor.sh` (or `floor_tape --ingest XAUUSD`).
+   The other eight stay synthetic unless you name them too.
+3. **Send history first**, as one-minute bars to `/ingest/bars`. Charts and the paper desk
+   backfill from it, and the tape drops a tick older than its newest bar, so bars go before
+   quotes. A few hours is enough; none at all also works (the charts start empty).
+4. **Then send quotes**, `{"symbol","bid","ask"}` to `/ingest`, at whatever rate your source
+   gives them. Only send changes. A pit with no tick for 90 s halts as quiet, so a source that
+   updates rarely should resend the last quote now and then.
+5. **Check it arrived:** `curl localhost:8083/health` lists each symbol with
+   `"source":"ingest"`, its last bid and ask, and `lastTickAgeMs`. Every answer from `/ingest`
+   says what was taken and why anything was refused.
+6. **Optional, for backtests:** write your longer history as 15m files for the evolving pit and
+   `genome_backtest` ([section 6](#6-history-for-the-backtests)).
+
+Prices are the instrument's own (3890.12 for gold, 1.1605 for EURUSD), not pips or integers.
+Times are Unix milliseconds in UTC.
+
+### Example: a broker's API (cTrader)
+
+The author's own floor ran on prices from a cTrader demo account. That code is not in this
+repo, because it is tied to a personal account, but the shape is an adapter like any other:
+a small program holds the broker session and forwards what it receives to `/ingest`.
+
+For cTrader that program talks to Spotware's
+[Open API](https://help.ctrader.com/open-api/) (an official
+[Python SDK](https://github.com/spotware/OpenApiPy) exists). In outline:
+
+1. Register an application in the Open API portal and authorise it on your account (OAuth),
+   which gives a client id, a secret and an access token. Keep them in a git-ignored `.env`.
+2. Connect to the demo or live endpoint, authenticate the application, then the account.
+3. **History:** request one-minute trendbars for the instrument and POST them to
+   `/ingest/bars`.
+4. **Quotes:** subscribe to spot prices and POST each spot event's bid and ask to `/ingest`.
+5. **Optional depth:** subscribe to depth quotes and POST up to five levels a side as a
+   `depth` message.
+
+Check the Open API docs for the details that catch people out: prices in its messages are
+integers that need scaling to the real price, trendbars arrive as a low plus deltas, and the
+broker's symbol ids differ from the floor's (send the floor's names, never ids). The same
+pattern fits any broker or exchange with a streaming API: OANDA, Interactive Brokers, Binance,
+Alpaca. Adapters for any of these are very welcome in `adapters/`.
+
+### The limit: nine pits
+
+The floor has nine pits, and their names are fixed. Adding a tenth, or renaming one, is a code
+change today: the symbol list is written out in the tape, the floor, the paper desk, the
+backtests and the evolve scripts. Making that list configurable, so a feed can bring its own
+instruments, is the most useful single change for anyone who wants to plug in their own data,
+and it is on the [roadmap](../ROADMAP.md#3-more-real-data).
 
 ## 4. The tape protocol
 

@@ -23,8 +23,14 @@ attempt, and someone who knows Jev better may get much more from it.
 
 ## 3. More real data
 
+- **A configurable symbol list.** The nine pits are written out across the tape, the floor,
+  the paper desk, the backtests and the evolve scripts. One list (a config file, or the tape's
+  `hello`) that everything reads would let any feed bring its own instruments. This is the key
+  piece for plugging in your own data.
 - An adapter for Kraken's ETH/USD, next to `adapters/kraken_btc.py` (same public API, no
   key), plus what the tape and floor need to carry a tenth symbol.
+- Adapters for brokers and exchanges with streaming APIs: cTrader, OANDA, Interactive
+  Brokers, Binance, Alpaca (`docs/DATA_SOURCES.md`, "Adding your own feed").
 - **good first issue:** an example adapter in another language (JavaScript, Go, ...) for the
   tape's ingest protocol (`docs/DATA_SOURCES.md`).
 - Other exchanges' public order books driving the level-2 views.
