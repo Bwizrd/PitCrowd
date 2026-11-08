@@ -1,5 +1,7 @@
 # PitCrowd
 
+[![CI](https://github.com/Bwizrd/PitCrowd/actions/workflows/ci.yml/badge.svg)](https://github.com/Bwizrd/PitCrowd/actions/workflows/ci.yml)
+
 **A live trading floor in Rust: the crowd in each pit reacts to the price.**
 
 ![PitCrowd: the whole floor, then the camera flies into the gold pit as trades go up](docs/media/pitcrowd.gif)
