@@ -234,7 +234,7 @@ pub fn setup_ui(mut commands: Commands) {
                 })
                 .with_children(|row| {
                     row.spawn((
-                        Text::new("OPENCRY FLOOR"),
+                        Text::new("PITCROWD"),
                         TextFont {
                             font_size: 12.5,
                             ..default()

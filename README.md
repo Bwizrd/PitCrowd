@@ -2,6 +2,8 @@
 
 **A live trading floor in Rust: the crowd in each pit reacts to the price.**
 
+![PitCrowd: the whole floor, then the camera flies into the gold pit as trades go up](docs/media/pitcrowd.gif)
+
 A 3D open-outcry trading floor in Rust and Bevy (native and wasm). Simulated pit crowds trade
 around a market price, paper traders (hand-written, evolved "genomes" and LLM-classifier-assisted
 ones) stand on the floor and walk to the pits they trade, and a level-2 feed draws Bitcoin's
@@ -56,6 +58,15 @@ it a measuring stick for false positives, not a place to find a strategy.
 **Change name** (next to "Your name" on the ticket) and type yours. Your browser remembers it and
 the paper desk keeps it across restarts. You can also open the floor with
 `?trader=Your%20Name`, or start the desk with `OPENCRY_TRADER_NAME="Your Name"`.
+
+## Screenshots
+
+| | |
+|---|---|
+| ![The whole floor: nine pits grouped into metals, indices, forex and crypto](docs/media/floor.png) | ![Inside the silver pit: the crowd trades around the price board](docs/media/pit.png) |
+| **The floor.** Nine pits, each driven by its own price feed. | **A pit.** Traders shout, buy and sell around the price board. |
+| ![The pit with the paper traders, the price board and the trade ticket open](docs/media/panels.png) | ![Bitcoin's level 2 order book as a heatmap](docs/media/level2.png) |
+| **Panels.** The paper traders' leaderboard, the price board and the trade ticket. | **Level 2.** Bitcoin's order book as a heatmap, with orders as they are added and pulled. |
 
 ## Two open invitations
 
