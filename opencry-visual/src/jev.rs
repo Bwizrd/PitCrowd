@@ -1035,6 +1035,11 @@ impl ModelError {
                 "relay unreachable ({})",
                 e.chars().take(60).collect::<String>()
             ),
+            // The relay's answer when it has no key (`jev_relay`): the normal state for anyone
+            // without one, so say it plainly rather than as an error.
+            ModelError::Status(503, body) if body.contains("\"no_key\":true") => {
+                "no key, the rule of thumb stands in".to_string()
+            }
             ModelError::Status(code, body) => {
                 format!("HTTP {code} {}", body.chars().take(60).collect::<String>())
             }
@@ -2213,5 +2218,16 @@ mod tests {
         let mut off = JevDesk::with_model(Box::new(DeterministicModel));
         off.enabled = false;
         assert_eq!(off.board_line(Instrument::Gold, 0.0, true), "JEV: off  (J)");
+    }
+
+    #[test]
+    fn a_relay_without_a_key_reads_as_plain_words_not_an_error() {
+        let no_key = ModelError::Status(
+            503,
+            r#"{"error":"no Jev key on this relay: the floor uses its rule-of-thumb stand-in","no_key":true}"#.into(),
+        );
+        assert_eq!(no_key.short(), "no key, the rule of thumb stands in");
+        let other = ModelError::Status(503, "busy".into());
+        assert_eq!(other.short(), "HTTP 503 busy");
     }
 }

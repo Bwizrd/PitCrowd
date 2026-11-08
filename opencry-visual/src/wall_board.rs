@@ -112,14 +112,23 @@ const SYMBOL_LINE_H: f32 = 36.0;
 const SYMBOL_MIN_TOP: f32 = 46.0;
 
 /// Board transform: centred `back` units behind the pit from the camera's point of view,
-/// `y` up, turned square-on to the camera so it reads from any angle.
-pub fn board_transform(origin: Vec3, cam_pos: Vec3, p: BoardPlacement) -> Transform {
+/// `y` up, and parallel to the screen: it faces along the camera's view direction, not at the
+/// camera. Turned toward the camera's position instead, a board off to the side of the view
+/// (the Bitcoin pit, at the corner of the market view) showed up as a skewed parallelogram
+/// leaning across its pit.
+pub fn board_transform(
+    origin: Vec3,
+    cam_pos: Vec3,
+    cam_forward: Vec3,
+    p: BoardPlacement,
+) -> Transform {
     let mut away = origin - cam_pos;
     away.y = 0.0;
     let away = away.normalize_or(Vec3::Z);
     let centre = origin + away * p.back + Vec3::new(0.0, p.y, 0.0);
-    // Local +Z (the candle side) faces the camera: look away from it.
-    Transform::from_translation(centre).looking_to(centre - cam_pos, Vec3::Y)
+    // Local +Z (the candle side) faces the camera: look the way the camera looks.
+    let look = cam_forward.normalize_or(centre - cam_pos);
+    Transform::from_translation(centre).looking_to(look, Vec3::Y)
 }
 
 #[derive(Component)]
@@ -385,7 +394,12 @@ pub fn update_wall_board(
     } else {
         FOCUS_PLACEMENT
     };
-    *board_tf = board_transform(pit_3d_origin(inst), cam_tf.translation(), place);
+    *board_tf = board_transform(
+        pit_3d_origin(inst),
+        cam_tf.translation(),
+        *cam_tf.forward(),
+        place,
+    );
     *board_vis = Visibility::Inherited;
     let (bw, bh) = (place.w, place.h);
 
@@ -632,7 +646,7 @@ mod tests {
     }
 
     #[test]
-    fn board_faces_the_camera_and_keeps_its_top_up_from_any_angle() {
+    fn board_is_parallel_to_the_screen_and_keeps_its_top_up_from_any_angle() {
         let origin = Vec3::new(120.0, 0.0, -80.0);
         for &place in &[FOCUS_PLACEMENT, MARKET_PLACEMENT] {
             for pitch_deg in [6.0f32, 36.0, 58.0, 85.0] {
@@ -641,12 +655,18 @@ mod tests {
                     let r = 96.0;
                     let cam = origin
                         + Vec3::new(r * p.cos() * y.sin(), r * p.sin(), r * p.cos() * y.cos());
-                    let tf = board_transform(origin, cam, place);
-                    let to_cam = (cam - tf.translation).normalize();
-                    assert!(
-                        tf.forward().dot(to_cam) < -0.99,
-                        "local +Z faces the camera at pitch {pitch_deg} yaw {yaw_deg}"
-                    );
+                    // The camera looks at the pit, or off to one side of it (the market view,
+                    // where the pit sits near a corner of the screen).
+                    let at_pit = (origin - cam).normalize();
+                    let aside = Quat::from_rotation_y(0.5) * at_pit;
+                    for fwd in [at_pit, aside] {
+                        let tf = board_transform(origin, cam, fwd, place);
+                        assert!(
+                            tf.forward().dot(fwd) > 0.999,
+                            "the board faces along the view at pitch {pitch_deg} yaw {yaw_deg}"
+                        );
+                    }
+                    let tf = board_transform(origin, cam, at_pit, place);
                     let hi = tf.transform_point(Vec3::new(-place.w * 0.5, place.h * 0.5, 0.0));
                     let lo = tf.transform_point(Vec3::new(-place.w * 0.5, -place.h * 0.5, 0.0));
                     assert!(hi.y > lo.y, "the high corner is above the low one");
