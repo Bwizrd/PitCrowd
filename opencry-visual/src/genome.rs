@@ -1340,8 +1340,7 @@ pub fn backtest_slipped(
         };
         let mut out: Option<(f64, &'static str, i64)> = None;
         let last = (i + g.exit.max_bars).min(f.bars.len() - 1);
-        for j in i + 1..=last {
-            let b = f.bars[j];
+        for (j, &b) in f.bars.iter().enumerate().take(last + 1).skip(i + 1) {
             let spr = spread_at(j);
             // Desk prices: a long exits at the bid (the bar), a short at the ask (bar + spread).
             let (lo, hi, open, close) = if buy {

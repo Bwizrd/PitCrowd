@@ -600,19 +600,19 @@ impl PitMarket {
             return;
         }
         self.active_count = n;
-        for slot in n..SLOTS {
-            if !self.participants[slot].phase.is_idle() {
-                self.participants[slot].phase = Phase::Idle;
-                self.participants[slot].deck.clear();
-                self.participants[slot].working_resume = None;
+        for p in &mut self.participants[n..SLOTS] {
+            if !p.phase.is_idle() {
+                p.phase = Phase::Idle;
+                p.deck.clear();
+                p.working_resume = None;
             }
         }
         // Anyone whose counterparty just left stops pointing at them.
-        for slot in 0..n {
-            if let Some(cp) = self.participants[slot].phase.counterparty()
+        for p in &mut self.participants[..n] {
+            if let Some(cp) = p.phase.counterparty()
                 && cp >= n
             {
-                self.participants[slot].phase = Phase::Endorsing { remaining: 1.0 };
+                p.phase = Phase::Endorsing { remaining: 1.0 };
             }
         }
     }
@@ -1340,13 +1340,13 @@ impl PitMarket {
     /// Best resting quote on `side`: (slot, price). Best bid is highest, best ask lowest.
     fn best_quote(&self, side: Side) -> Option<(usize, i32)> {
         let mut best: Option<(usize, i32)> = None;
-        for s in 0..self.active_count {
+        for (s, p) in self.participants[..self.active_count].iter().enumerate() {
             if let Phase::Quoting {
                 side: qs,
                 price_ticks,
                 qty,
                 ..
-            } = self.participants[s].phase
+            } = p.phase
             {
                 if qs != side || qty == 0 {
                     continue;
@@ -1644,8 +1644,7 @@ impl PitMarket {
         // Pressure: what the brokers are trying to do, whether or not anyone fills them.
         let mut intent = 0.0f32;
         let mut interest = 0.0f32;
-        for i in 0..self.active_count {
-            let p = &self.participants[i];
+        for p in &self.participants[..self.active_count] {
             if let Phase::Working { side, qty_left, .. } = p.phase {
                 intent += side.sign() as f32 * qty_left as f32;
                 interest += qty_left as f32;
@@ -2201,13 +2200,13 @@ mod tests {
         let mut pit = PitMarket::new(Instrument::Gold, 19);
         run(&mut pit, 20.0, 0.9);
         pit.set_active_count(4);
-        for s in 0..4 {
-            if let Some(cp) = pit.participants[s].phase.counterparty() {
+        for p in &pit.participants[..4] {
+            if let Some(cp) = p.phase.counterparty() {
                 assert!(cp < 4);
             }
         }
-        for s in 4..SLOTS {
-            assert!(pit.participants[s].phase.is_idle());
+        for p in &pit.participants[4..SLOTS] {
+            assert!(p.phase.is_idle());
         }
     }
 
