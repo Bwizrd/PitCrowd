@@ -12,6 +12,16 @@ tape on :8083), plus two native binaries that run the same library code without 
 | `reaction_prior` | A year of 1m bars: every touch of a floor level and what price did next, written to `assets/reaction_prior.json` and compiled in as `reaction::PriorTable` (`src/bin/reaction_prior.rs`) |
 | `explain` | Regenerates the in-app guide, `static/explainer.html` |
 
+## The browser demo
+
+With `?tape=demo` (natively `OPENCRY_TAPE_URL=demo`), or on any `*.github.io` page, the floor
+needs no server: `src/demo_tape.rs` runs `floor_tape`'s synthetic market inside the page and
+answers the tape socket, `/bars`, `/orderbook` and Bitcoin's Level 2 itself, through the same
+parsers a real tape goes through. Nothing calls the relay; Jev reads with the floor rule, and
+the ticket explains that trading needs the local install. The status chip says DEMO.
+`.github/workflows/pages.yml` publishes it to GitHub Pages. To try it locally:
+`trunk serve`, then open http://localhost:8180/?tape=demo.
+
 ## The desk board page
 
 `http://localhost:8180/desk.html` (`static/desk.html`, copied into the bundle by trunk) is the live

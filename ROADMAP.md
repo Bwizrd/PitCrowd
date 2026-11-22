@@ -17,8 +17,9 @@ attempt, and someone who knows Jev better may get much more from it.
 
 ## 2. A floor you can try in the browser
 
-- **A hosted demo on GitHub Pages.** The page already builds for wasm; it needs the synthetic
-  market to run inside the page instead of in `floor_tape`, so it works with no server.
+- ~~A hosted demo on GitHub Pages.~~ Done: https://bwizrd.github.io/PitCrowd/ runs the
+  synthetic market inside the page (`opencry-visual/src/demo_tape.rs`), built and published by
+  `.github/workflows/pages.yml`. Next: a faster first load (the download is about 6 MB).
 - A mobile-friendly layout for the panels.
 
 ## 3. More real data

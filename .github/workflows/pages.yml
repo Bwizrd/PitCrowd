@@ -1,0 +1,74 @@
+name: Browser demo
+
+# Builds the floor for the browser and publishes it on GitHub Pages. On a *.github.io page the
+# floor runs its demo by itself: the synthetic market inside the page, no server, no account,
+# no key (opencry-visual/src/demo_tape.rs). Trading, the paper desk and Jev need the local
+# install.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "opencry-visual/**"
+      - "floor_tape/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  TRUNK_VERSION: v0.21.14
+
+jobs:
+  build:
+    # A fork publishes nothing unless its owner runs the workflow by hand.
+    if: ${{ !github.event.repository.fork || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: opencry-visual
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: opencry-visual
+          key: pages
+      - name: Install trunk
+        run: |
+          curl -sSfL "https://github.com/trunk-rs/trunk/releases/download/${TRUNK_VERSION}/trunk-x86_64-unknown-linux-gnu.tar.gz" \
+            | tar -xz -C "$HOME/.cargo/bin"
+          trunk --version
+      # The site lives under /<repo>/, so every asset path needs that prefix.
+      - name: Build (release, with wasm-opt)
+        run: trunk build --release --public-url "/${{ github.event.repository.name }}/" --dist ../pages-dist
+      - name: Size
+        run: |
+          for f in ../pages-dist/*.wasm; do
+            echo "$(basename "$f"): $(du -h "$f" | cut -f1), $(gzip -9 -c "$f" | wc -c | awk '{printf "%.1f MB", $1/1048576}') gzipped"
+          done
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: pages-dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

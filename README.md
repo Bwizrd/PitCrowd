@@ -6,6 +6,10 @@
 
 ![PitCrowd: the whole floor, then the camera flies into the gold pit as trades go up](docs/media/pitcrowd.gif)
 
+**[Try it in your browser](https://bwizrd.github.io/PitCrowd/)**: the floor on a synthetic
+market that runs inside the page. No install, no account, about 6 MB. Its prices are invented
+and say so; trading, the paper desk and Jev need the local install below.
+
 A 3D open-outcry trading floor in Rust and Bevy (native and wasm). Simulated pit crowds trade
 around a market price, paper traders (hand-written, evolved "genomes" and LLM-classifier-assisted
 ones) stand on the floor and walk to the pits they trade, and a level-2 feed draws Bitcoin's
