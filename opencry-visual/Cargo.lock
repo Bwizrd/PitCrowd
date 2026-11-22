@@ -2452,6 +2452,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "floor_tape"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "fnv"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3953,6 +3961,7 @@ dependencies = [
  "bevy",
  "ehttp",
  "ewebsock",
+ "floor_tape",
  "js-sys",
  "serde",
  "serde_json",

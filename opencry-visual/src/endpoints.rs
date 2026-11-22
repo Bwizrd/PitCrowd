@@ -113,6 +113,31 @@ fn service(param: &str, env: &str, port: u16) -> String {
     format!("http://{}:{port}", page_host())
 }
 
+/// The in-browser demo: the synthetic market runs inside the page instead of coming from a
+/// tape. On with `?tape=demo` (natively `OPENCRY_TAPE_URL=demo`), and by default on a
+/// `*.github.io` page, where no tape can be running.
+pub fn demo_mode() -> bool {
+    let choice = page_param("tape").or({
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            std::env::var("OPENCRY_TAPE_URL").ok()
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            None
+        }
+    });
+    is_demo(choice.as_deref(), &page_host())
+}
+
+/// The rule behind `demo_mode`, testable on any target.
+pub fn is_demo(tape: Option<&str>, host: &str) -> bool {
+    match tape.map(str::trim).filter(|v| !v.is_empty()) {
+        Some(v) => v.eq_ignore_ascii_case("demo"),
+        None => host.ends_with(".github.io"),
+    }
+}
+
 /// The tape's HTTP base (`/bars`, `/orderbook`, `/health`).
 pub fn tape_url() -> String {
     service("tape", "OPENCRY_TAPE_URL", TAPE_PORT)
@@ -171,6 +196,17 @@ pub fn bridge_url() -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_demo_is_asked_for_or_found_on_github_pages() {
+        assert!(is_demo(Some("demo"), "localhost"));
+        assert!(is_demo(Some(" Demo "), "localhost"));
+        assert!(is_demo(None, "bwizrd.github.io"));
+        assert!(!is_demo(None, "localhost"));
+        assert!(!is_demo(Some(""), "localhost"));
+        // Naming a tape wins, even on GitHub Pages.
+        assert!(!is_demo(Some("18083"), "bwizrd.github.io"));
+    }
 
     #[test]
     fn a_service_can_be_named_by_port_host_or_url() {

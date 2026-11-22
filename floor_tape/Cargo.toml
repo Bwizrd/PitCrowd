@@ -5,8 +5,19 @@ edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "The OpenCry floor's market tape: synthetic markets, CSV replay or your own feed, served on the tape protocol (ws + /bars) the floor reads"
 
+[features]
+default = ["server"]
+# The tape server (src/main.rs). The library (the synthetic market, used by the floor's
+# in-browser demo) needs none of it.
+server = ["dep:tungstenite"]
+
+[[bin]]
+name = "floor_tape"
+path = "src/main.rs"
+required-features = ["server"]
+
 [dependencies]
-tungstenite = { version = "0.24", default-features = false, features = ["handshake"] }
+tungstenite = { version = "0.24", default-features = false, features = ["handshake"], optional = true }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 

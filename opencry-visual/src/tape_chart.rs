@@ -362,7 +362,9 @@ pub fn candle_layout(
 pub fn chart_source(feed: &LiveFeed, inst: Instrument, now: f64) -> (FeedMode, &'static str) {
     match feed.mode {
         FeedMode::Live => match feed.pit_status(inst, now) {
+            PitFeedStatus::Live { .. } if feed.is_demo() => (FeedMode::Live, "DEMO prices"),
             PitFeedStatus::Live { .. } => (FeedMode::Live, "LIVE tape"),
+            _ if feed.is_demo() => (FeedMode::Live, "DEMO (HALTED - last bars)"),
             _ => (FeedMode::Live, "LIVE (HALTED - last bars)"),
         },
         FeedMode::Simulated => (FeedMode::Simulated, "SIM - pit prints"),

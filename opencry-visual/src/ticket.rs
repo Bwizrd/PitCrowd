@@ -11,6 +11,9 @@
 //! name across restarts. `?trader=Your%20Name` in the address does the same without a click,
 //! and `OPENCRY_TRADER_NAME` sets the desk's starting name.
 //!
+//! In the browser demo (`endpoints::demo_mode`) there is no desk, so the ticket sends nothing
+//! and says where to get the local install instead.
+//!
 //! Stop: a multiple of the 15m ATR (the desk's 20-spread floor still applies). Target: a
 //! multiple of the stop. Both cycle on a click. One position at a time: Close it first.
 
@@ -191,6 +194,13 @@ pub fn shown_trader<'a>(
         .unwrap_or(DEFAULT_TICKET_TRADER)
 }
 
+/// The ticket's answer in the browser demo, where there is no desk to trade with.
+pub fn demo_note(what: &str) -> String {
+    format!(
+        "{what}: not available in the browser demo. Trading needs the local install (see the README on GitHub)"
+    )
+}
+
 /// The order body for the relay. Pure, for tests.
 pub fn order_body(
     action: &str,
@@ -203,6 +213,13 @@ pub fn order_body(
 
 /// Post one body to the relay's order queue; `what` names it in the status line.
 fn post_order(body: serde_json::Value, what: String, sent: Arc<Mutex<Option<String>>>) {
+    // The browser demo has no paper desk to fill orders, so it says how to get one.
+    if crate::endpoints::demo_mode() {
+        if let Ok(mut s) = sent.lock() {
+            *s = Some(demo_note(&what));
+        }
+        return;
+    }
     let mut req = ehttp::Request::post(
         format!("{}/paper/order", relay_url()),
         serde_json::to_vec(&body).unwrap_or_default(),
@@ -560,6 +577,9 @@ pub fn update_ticket_panel(
     }
     let mut lines = Vec::new();
     match board {
+        None if crate::endpoints::demo_mode() => lines.push(
+            "Browser demo: trading needs the local install (see the README on GitHub).".to_string(),
+        ),
         None => lines.push("The desk is not running: orders will not be filled.".to_string()),
         Some(b) => {
             match b

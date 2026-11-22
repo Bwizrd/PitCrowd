@@ -607,7 +607,8 @@ pub fn update_pit_3d_overlay(
                         .map(|q| q.flow(time.elapsed_secs_f64()))
                         .unwrap_or_default();
                     format!(
-                        "LIVE {rate:.1} t/s  |  {}",
+                        "{} {rate:.1} t/s  |  {}",
+                        if feed.is_demo() { "DEMO" } else { "LIVE" },
                         crate::live_feed::tape_label(&tape)
                     )
                 }

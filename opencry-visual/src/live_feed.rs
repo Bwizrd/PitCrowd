@@ -300,6 +300,8 @@ pub struct LiveFeed {
     pub quotes: Vec<Option<LiveQuote>>,
     socket: Socket,
     next_connect_at: f64,
+    /// The in-page demo market has sent its hello (see `demo_tape`).
+    demo_open: bool,
 }
 
 impl Default for LiveFeed {
@@ -315,6 +317,7 @@ impl Default for LiveFeed {
             quotes: (0..Instrument::ALL.len()).map(|_| None).collect(),
             socket: Socket::default(),
             next_connect_at: 0.0,
+            demo_open: false,
         }
     }
 }
@@ -322,8 +325,15 @@ impl Default for LiveFeed {
 /// The tape's socket: the page's host on :8083 unless `?tape=` says otherwise; natively
 /// `OPENCRY_FEED_URL` or `OPENCRY_TAPE_URL` (see `endpoints`).
 pub fn default_feed_url() -> String {
-    crate::endpoints::feed_url()
+    if crate::endpoints::demo_mode() {
+        DEMO_FEED_URL.to_string()
+    } else {
+        crate::endpoints::feed_url()
+    }
 }
+
+/// What `LiveFeed::url` says when the prices come from the in-page demo market.
+pub const DEMO_FEED_URL: &str = "in-page demo market";
 
 impl LiveFeed {
     pub fn quote(&self, inst: Instrument) -> Option<&LiveQuote> {
@@ -335,6 +345,11 @@ impl LiveFeed {
             self.state = state;
             self.state_since = now;
         }
+    }
+
+    /// The prices come from the in-page demo market, not a tape.
+    pub fn is_demo(&self) -> bool {
+        self.url == DEMO_FEED_URL
     }
 
     pub fn socket_live(&self) -> bool {
@@ -551,17 +566,32 @@ pub fn poll_live_feed(
     mut candles: ResMut<crate::candles::CandleStore>,
 ) {
     let now = time.elapsed_secs_f64();
-    // The socket stays connected in simulated mode too, so switching back is instant.
-    feed.ensure_connected(now);
-
     let mut events = Vec::new();
-    if let Ok(guard) = feed.socket.0.lock()
-        && let Some((_, rx)) = guard.as_ref()
-    {
-        while let Some(ev) = rx.try_recv() {
-            events.push(ev);
-            if events.len() > 4096 {
-                break;
+    if let Some(demo) = crate::demo_tape::demo() {
+        // The demo market's messages arrive as if from a socket, so they take the real path.
+        if !feed.demo_open {
+            feed.demo_open = true;
+            events.push(ewebsock::WsEvent::Opened);
+            events.push(ewebsock::WsEvent::Message(ewebsock::WsMessage::Text(
+                demo.hello(),
+            )));
+        }
+        let msgs = demo.step(crate::candles::wall_clock_ms());
+        events.extend(
+            msgs.into_iter()
+                .map(|m| ewebsock::WsEvent::Message(ewebsock::WsMessage::Text(m))),
+        );
+    } else {
+        // The socket stays connected in simulated mode too, so switching back is instant.
+        feed.ensure_connected(now);
+        if let Ok(guard) = feed.socket.0.lock()
+            && let Some((_, rx)) = guard.as_ref()
+        {
+            while let Some(ev) = rx.try_recv() {
+                events.push(ev);
+                if events.len() > 4096 {
+                    break;
+                }
             }
         }
     }
@@ -693,6 +723,14 @@ pub fn feed_status_line(feed: &LiveFeed, now: f64) -> (String, Color, Color) {
                         ),
                         Color::srgba(0.55, 0.40, 0.02, 0.95),
                         Color::srgb(1.0, 0.85, 0.35),
+                    )
+                } else if feed.is_demo() {
+                    (
+                        format!(
+                            "DEMO - SYNTHETIC PRICES MADE IN YOUR BROWSER, NOT MARKET DATA  {n} pits  {rate:.1} ticks/s"
+                        ),
+                        Color::srgba(0.10, 0.20, 0.42, 0.94),
+                        Color::srgb(0.62, 0.80, 1.0),
                     )
                 } else {
                     (

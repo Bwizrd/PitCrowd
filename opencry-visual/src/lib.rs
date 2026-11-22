@@ -3,6 +3,7 @@
 
 pub mod camera;
 pub mod candles;
+pub mod demo_tape;
 pub mod depth;
 pub mod desk_feed;
 pub mod endpoints;

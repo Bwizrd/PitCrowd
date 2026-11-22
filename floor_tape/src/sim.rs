@@ -125,7 +125,9 @@ fn bridge(spec: &Spec, m: i64, open: f64, close: f64, v: f64, s: f64, rng: &mut 
 
 pub struct Sim {
     pub seed: u64,
-    /// `checkpoints[sym][d]`: the state at the start of day `d`.
+    /// The day the path starts on (0 is 2021-01-01).
+    first_day: i64,
+    /// `checkpoints[sym][d]`: the state at the start of day `first_day + d`.
     checkpoints: Vec<Vec<State>>,
 }
 
@@ -135,15 +137,24 @@ pub fn minute_of(t_ms: i64) -> i64 {
 
 impl Sim {
     pub fn new(seed: u64) -> Self {
+        Self::starting_on(seed, 0)
+    }
+
+    /// A path that starts on `first_day` instead of 2021-01-01, each symbol at its anchor.
+    /// Reaching today then costs a day's walk, not years of it: the in-browser demo starts
+    /// here. It is a different path from `new`'s (the server's), with the same character.
+    pub fn starting_on(seed: u64, first_day: i64) -> Self {
         Sim {
             seed,
+            first_day: first_day.max(0),
             checkpoints: SYMBOLS.iter().map(|s| vec![State::start(s)]).collect(),
         }
     }
 
     fn ensure_day(&mut self, sym: usize, day: i64) {
+        let day = day - self.first_day;
         while (self.checkpoints[sym].len() as i64) <= day {
-            let d = self.checkpoints[sym].len() as i64 - 1;
+            let d = self.first_day + self.checkpoints[sym].len() as i64 - 1;
             let mut st = *self.checkpoints[sym].last().unwrap();
             for m in d * DAY_MINUTES..(d + 1) * DAY_MINUTES {
                 advance(self.seed, sym, m, &mut st);
@@ -155,18 +166,20 @@ impl Sim {
     /// Every minute in `from..to` with its ticks, in order. Minutes before the path starts
     /// have none.
     pub fn range(&mut self, sym: usize, from: i64, to: i64, mut f: impl FnMut(i64, Vec<Tick>)) {
-        let from = from.max(0);
+        let from = from.max(self.first_day * DAY_MINUTES);
         if from >= to {
             return;
         }
         let day = from.div_euclid(DAY_MINUTES);
         self.ensure_day(sym, day);
-        let mut st = self.checkpoints[sym][day as usize];
+        let mut st = self.checkpoints[sym][(day - self.first_day) as usize];
         for m in day * DAY_MINUTES..from {
             advance(self.seed, sym, m, &mut st);
         }
         for m in from..to {
-            if m % DAY_MINUTES == 0 && (self.checkpoints[sym].len() as i64) == m / DAY_MINUTES {
+            if m % DAY_MINUTES == 0
+                && (self.checkpoints[sym].len() as i64) == m / DAY_MINUTES - self.first_day
+            {
                 self.checkpoints[sym].push(st);
             }
             let open = st.logp;
@@ -194,6 +207,28 @@ mod tests {
         let mut b = Sim::new(42);
         assert_eq!(b.minute(0, 3003), run[3]);
         assert_ne!(Sim::new(43).minute(0, 3003), run[3]);
+    }
+
+    #[test]
+    fn a_late_start_is_its_own_path_and_starts_at_the_anchor() {
+        let day = 1500;
+        let mut late = Sim::starting_on(42, day);
+        let first = late.minute(0, day * 1440);
+        assert!(!first.is_empty());
+        let anchor = SYMBOLS[0].anchor;
+        assert!(
+            (first[0].bid / anchor - 1.0).abs() < 0.01,
+            "{} vs {anchor}",
+            first[0].bid
+        );
+        // Minutes before its first day have no ticks, and a minute is the same alone or in a run.
+        assert!(late.minute(0, day * 1440 - 1).is_empty());
+        let mut run = Vec::new();
+        late.range(0, day * 1440 + 3000, day * 1440 + 3003, |_, t| run.push(t));
+        assert_eq!(
+            Sim::starting_on(42, day).minute(0, day * 1440 + 3002),
+            run[2]
+        );
     }
 
     #[test]
