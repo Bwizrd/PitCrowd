@@ -406,6 +406,22 @@ impl CandleStore {
         };
         self.backfill.insert(key, Backfill::InFlight);
         self.next_request_at = now + BACKFILL_MIN_GAP_SECS;
+        // The browser demo answers from the market inside the page, as a tape would.
+        if let Some(demo) = crate::demo_tape::demo() {
+            let out = demo
+                .bars(
+                    &crate::levels::tape_symbol(inst),
+                    tf.label(),
+                    tf.backfill_range(),
+                    true,
+                    wall_clock_ms(),
+                )
+                .map(|text| parse_backfill_flow(&text));
+            if let Ok(mut p) = self.pending.lock() {
+                p.push((inst, tf, out));
+            }
+            return true;
+        }
         let bridge = bridge_url();
         let source = backfill_source(inst, tf, attempts, bridge.is_some());
         let url = match source {

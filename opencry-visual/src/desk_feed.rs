@@ -623,6 +623,12 @@ pub fn poll_desk_board(time: Res<Time>, mut feed: ResMut<DeskFeed>) {
     if feed.in_flight_since.is_some() || now < feed.next_poll_at {
         return;
     }
+    // The browser demo has no desk: the in-tab paper book trades instead.
+    if crate::endpoints::demo_mode() {
+        feed.last_error = "browser demo: no desk".into();
+        feed.next_poll_at = f64::INFINITY;
+        return;
+    }
     feed.next_poll_at = now + DESK_POLL_SECS;
     feed.in_flight_since = Some(now);
     feed.polls += 1;

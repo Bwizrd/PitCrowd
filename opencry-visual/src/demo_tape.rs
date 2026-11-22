@@ -15,9 +15,9 @@ use floor_tape::demo::InPageTape;
 
 /// The demo's seed: the same market for every visitor who arrives at the same moment.
 pub const SEED: u64 = 42;
-/// One-minute bars of history made at start-up. Kept short: every day of it costs time on
-/// the page's first frame.
-pub const HISTORY_MS: i64 = 2 * 60 * 60 * 1000;
+/// One-minute bars of history made at start-up: five days, the longest a chart asks for
+/// (15m bars over `-5d`). It is made as bars, not ticks, so it costs milliseconds.
+pub const HISTORY_MS: i64 = 5 * 24 * 60 * 60 * 1000;
 /// Level 2 messages kept for a reader that has not drained them yet.
 const L2_QUEUE_MAX: usize = 5_000;
 

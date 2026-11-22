@@ -52,7 +52,8 @@ pub struct InPageTape {
 
 impl InPageTape {
     /// The market up to `now` (Unix ms), with `history_ms` of one-minute bars behind it. The
-    /// path starts a day before the history, so warming up costs about a day's walk.
+    /// path starts a day before the history, so warming up costs about a day's walk. The
+    /// history is made as bars (`Sim::range_bars`), not ticks: days of it cost milliseconds.
     pub fn new(seed: u64, now: i64, history_ms: i64) -> Self {
         let now_m = minute_of(now);
         let from_m = minute_of(now - history_ms);
@@ -61,19 +62,16 @@ impl InPageTape {
         let mut quote = vec![None; SYMBOLS.len()];
         let mut live = Vec::with_capacity(SYMBOLS.len());
         for (sym, s) in series.iter_mut().enumerate() {
-            sim.range(sym, from_m, now_m, |_, ticks| {
-                ticks.iter().for_each(|tk| _ = s.add_tick(tk))
-            });
+            let mut bars = Vec::new();
+            sim.range_bars(sym, from_m, now_m, |b| bars.push(b));
+            s.add_bars(bars);
             let cur = sim.minute(sym, now_m);
             let done = cur.partition_point(|tk| tk.t <= now);
             cur[..done].iter().for_each(|tk| _ = s.add_tick(tk));
-            quote[sym] = cur[..done].last().copied().or_else(|| {
-                s.bars.back().map(|b| Tick {
-                    t: b.t,
-                    bid: b.c,
-                    ask: b.c,
-                })
-            });
+            quote[sym] = cur[..done]
+                .last()
+                .copied()
+                .or_else(|| s.bars.back().map(quote_of));
             live.push(Live {
                 minute: now_m,
                 ticks: cur,
@@ -147,18 +145,16 @@ impl InPageTape {
         out
     }
 
-    /// Fold the minutes before `m` into the history without sending them, and resume at `m`.
+    /// Fold the minutes before `m` into the history (as bars) without sending them, and
+    /// resume at `m`.
     fn skip_to(&mut self, sym: usize, m: i64) {
         let lv = &mut self.live[sym];
         let s = &mut self.series[sym];
         lv.ticks[lv.next..].iter().for_each(|tk| _ = s.add_tick(tk));
-        let mut last = lv.ticks.last().copied();
-        self.sim.range(sym, lv.minute + 1, m, |_, ticks| {
-            ticks.iter().for_each(|tk| _ = s.add_tick(tk));
-            if let Some(tk) = ticks.last() {
-                last = Some(*tk);
-            }
-        });
+        let mut bars = Vec::new();
+        self.sim.range_bars(sym, lv.minute + 1, m, |b| bars.push(b));
+        let last = bars.last().map(quote_of).or(lv.ticks.last().copied());
+        s.add_bars(bars);
         if last.is_some() {
             self.quote[sym] = last;
         }
@@ -220,6 +216,20 @@ impl InPageTape {
     /// The Level 2 socket's first message: Bitcoin's whole book.
     pub fn l2_snapshot(&self, now: i64) -> Option<String> {
         self.l2.as_ref().map(|b| b.snapshot(now))
+    }
+}
+
+/// The quote a bar leaves behind: its close, with its average spread.
+fn quote_of(b: &crate::store::Bar) -> Tick {
+    let spread = if b.spread_n > 0 {
+        b.spread_sum / b.spread_n as f64
+    } else {
+        0.0
+    };
+    Tick {
+        t: b.t + MINUTE_MS - 1,
+        bid: b.c,
+        ask: b.c + spread,
     }
 }
 
@@ -316,5 +326,17 @@ mod tests {
             v["count"].as_u64().unwrap() >= 89,
             "the missed hour is in the history"
         );
+    }
+
+    #[test]
+    fn days_of_history_fill_the_longest_chart_quickly() {
+        let started = std::time::Instant::now();
+        let tape = InPageTape::new(42, NOW, 5 * 24 * HOUR);
+        let made = started.elapsed();
+        let body = tape.bars("US500", "15m", "-5d", true, NOW).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert!(v["count"].as_u64().unwrap() >= 479, "{}", v["count"]);
+        // Generous for a debug build: release makes the five days in a few milliseconds.
+        assert!(made.as_secs_f64() < 5.0, "took {made:?}");
     }
 }

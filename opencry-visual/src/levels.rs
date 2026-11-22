@@ -703,6 +703,16 @@ impl LevelStore {
         }
         self.oanda_inflight[i] = true;
         self.oanda_next[i] = now + OANDA_REFRESH_SECS;
+        if let Some(demo) = crate::demo_tape::demo() {
+            let out = demo
+                .orderbook(&tape_symbol(inst), crate::candles::wall_clock_ms())
+                .ok_or_else(|| "no retail book for this market in the demo".to_string())
+                .and_then(|text| parse_oanda(&text));
+            if let Ok(mut p) = self.pending.lock() {
+                p.push((inst, out));
+            }
+            return;
+        }
         let pending = self.pending.clone();
         let url = format!("{}/orderbook?symbol={}", tape_url(), tape_symbol(inst));
         ehttp::fetch(ehttp::Request::get(url), move |res| {

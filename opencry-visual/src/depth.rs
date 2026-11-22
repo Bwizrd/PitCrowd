@@ -41,6 +41,8 @@ pub fn source_name(url: Option<&str>) -> &'static str {
         Some(_) => "L2 feed",
     }
 }
+/// The Level 2 "url" in the browser demo: the book comes from the market inside the page.
+pub const DEMO_L2: &str = "in-page demo market";
 pub const SYMBOL: &str = "BTC/USD";
 pub const DEPTH: u32 = 500;
 /// Kraken's BTC/USD price step.
@@ -256,6 +258,8 @@ pub struct DepthFeed {
     backoff: f64,
     next_column_at: f64,
     pending_prints: Vec<Print>,
+    /// The browser demo's book has been opened (its snapshot read).
+    demo_open: bool,
     /// The socket to read, `None` when Level 2 is switched off.
     pub url: Option<String>,
     pub source: &'static str,
@@ -263,8 +267,17 @@ pub struct DepthFeed {
 
 impl Default for DepthFeed {
     fn default() -> Self {
-        let url = crate::endpoints::l2_url();
-        let source = source_name(url.as_deref());
+        let demo = crate::endpoints::demo_mode();
+        let url = if demo {
+            Some(DEMO_L2.to_string())
+        } else {
+            crate::endpoints::l2_url()
+        };
+        let source = if demo {
+            "the demo market"
+        } else {
+            source_name(url.as_deref())
+        };
         DepthFeed {
             url,
             source,
@@ -282,6 +295,7 @@ impl Default for DepthFeed {
             backoff: 5.0,
             next_column_at: 0.0,
             pending_prints: Vec::new(),
+            demo_open: false,
         }
     }
 }
@@ -420,7 +434,7 @@ impl DepthFeed {
 }
 
 /// System: keep the Kraken socket up, subscribe on open, fold every message in, sample the
-/// heatmap. Reconnects with a growing wait (5 s to a minute); a new snapshot resets the book.
+/// heatmap. In the browser demo the book comes from the market inside the page instead. Reconnects with a growing wait (5 s to a minute); a new snapshot resets the book.
 pub fn poll_depth_feed(time: Res<Time>, mut feed: ResMut<DepthFeed>) {
     let now = time.elapsed_secs_f64();
     let connected = feed.socket.0.lock().map(|g| g.is_some()).unwrap_or(false);
@@ -429,6 +443,20 @@ pub fn poll_depth_feed(time: Res<Time>, mut feed: ResMut<DepthFeed>) {
         return;
     };
     let source = feed.source;
+    if let Some(demo) = crate::demo_tape::demo() {
+        if !feed.demo_open {
+            if let Some(snap) = demo.l2_snapshot(crate::candles::wall_clock_ms()) {
+                feed.handle(&snap, now);
+                feed.demo_open = true;
+            }
+        } else {
+            for t in demo.take_l2() {
+                feed.handle(&t, now);
+            }
+        }
+        feed.sample(now);
+        return;
+    }
     if !connected && now >= feed.next_connect_at {
         match ewebsock::connect(url, ewebsock::Options::default()) {
             Ok(pair) => {

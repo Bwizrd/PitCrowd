@@ -115,8 +115,13 @@ fn service(param: &str, env: &str, port: u16) -> String {
 
 /// The in-browser demo: the synthetic market runs inside the page instead of coming from a
 /// tape. On with `?tape=demo` (natively `OPENCRY_TAPE_URL=demo`), and by default on a
-/// `*.github.io` page, where no tape can be running.
+/// `*.github.io` page, where no tape can be running. Decided once, at first use.
 pub fn demo_mode() -> bool {
+    static DEMO: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *DEMO.get_or_init(read_demo_mode)
+}
+
+fn read_demo_mode() -> bool {
     let choice = page_param("tape").or({
         #[cfg(not(target_arch = "wasm32"))]
         {

@@ -20,6 +20,7 @@
 //! the paper desk and the backtests have something honest-looking to run on, offline.
 
 use crate::rng::Rng;
+use crate::store::Bar;
 use crate::symbols::{SYMBOLS, Spec, round_to};
 
 /// The path starts at 2021-01-01T00:00:00Z, so the backtests have years before their 2025
@@ -163,9 +164,15 @@ impl Sim {
         }
     }
 
-    /// Every minute in `from..to` with its ticks, in order. Minutes before the path starts
-    /// have none.
-    pub fn range(&mut self, sym: usize, from: i64, to: i64, mut f: impl FnMut(i64, Vec<Tick>)) {
+    /// Walk the path across `from..to`, handing each minute its number, its opening log
+    /// price, the state after it, its generator, volatility level and season.
+    fn walk(
+        &mut self,
+        sym: usize,
+        from: i64,
+        to: i64,
+        mut f: impl FnMut(i64, f64, &State, &mut Rng, f64, f64),
+    ) {
         let from = from.max(self.first_day * DAY_MINUTES);
         if from >= to {
             return;
@@ -184,8 +191,62 @@ impl Sim {
             }
             let open = st.logp;
             let (mut rng, v, s) = advance(self.seed, sym, m, &mut st);
-            f(m, bridge(&SYMBOLS[sym], m, open, st.logp, v, s, &mut rng));
+            f(m, open, &st, &mut rng, v, s);
         }
+    }
+
+    /// Every minute in `from..to` with its ticks, in order. Minutes before the path starts
+    /// have none.
+    pub fn range(&mut self, sym: usize, from: i64, to: i64, mut f: impl FnMut(i64, Vec<Tick>)) {
+        let spec = &SYMBOLS[sym];
+        self.walk(sym, from, to, |m, open, st, rng, v, s| {
+            f(m, bridge(spec, m, open, st.logp, v, s, rng))
+        });
+    }
+
+    /// Every minute in `from..to` as a one-minute bar, without making its ticks: the same
+    /// path (each bar opens at the previous close and closes where `range`'s last tick does),
+    /// with the high, low, tick count and up/down split estimated from the minute's
+    /// volatility instead of counted. Tens of times faster than `range`, so the in-browser
+    /// demo can have days of chart history on its first frame.
+    pub fn range_bars(&mut self, sym: usize, from: i64, to: i64, mut f: impl FnMut(Bar)) {
+        let spec = &SYMBOLS[sym];
+        let sigma = minute_sigma(spec);
+        let unit = 10f64.powi(-(spec.digits as i32));
+        self.walk(sym, from, to, |m, open, st, rng, v, s| {
+            let (o, c) = (
+                round_to(open.exp(), spec.digits),
+                round_to(st.logp.exp(), spec.digits),
+            );
+            let sd = sigma * v * s;
+            let h = round_to(
+                o.max(c) * (0.5 * sd * rng.normal().abs()).exp(),
+                spec.digits,
+            );
+            let l = round_to(
+                o.min(c) * (-0.5 * sd * rng.normal().abs()).exp(),
+                spec.digits,
+            );
+            let lambda = spec.tick_rate * 60.0 * s * v.sqrt().min(3.0);
+            let n = (lambda * (0.8 + 0.4 * rng.unit()))
+                .round()
+                .clamp(1.0, 600.0) as u32;
+            let lean = 0.5 + 0.35 * ((st.logp - open) / sd.max(1e-12)).tanh();
+            let moves = n as f64 * 0.9;
+            let spread = (spec.spread * v.sqrt().clamp(0.7, 3.0)).max(unit);
+            f(Bar {
+                t: T0_MS + m * MINUTE_MS,
+                o,
+                h,
+                l,
+                c,
+                n,
+                up: (moves * lean).round() as u32,
+                down: (moves * (1.0 - lean)).round() as u32,
+                spread_sum: spread * n as f64,
+                spread_n: n,
+            });
+        });
     }
 
     pub fn minute(&mut self, sym: usize, m: i64) -> Vec<Tick> {
@@ -198,6 +259,7 @@ impl Sim {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::store::minute_start;
 
     #[test]
     fn a_minute_is_the_same_reached_alone_or_in_a_run() {
@@ -229,6 +291,30 @@ mod tests {
             Sim::starting_on(42, day).minute(0, day * 1440 + 3002),
             run[2]
         );
+    }
+
+    #[test]
+    fn quick_bars_follow_the_same_path_as_the_ticks() {
+        let mut ticks = Vec::new();
+        Sim::starting_on(42, 1500).range(2, 1500 * 1440 + 100, 1500 * 1440 + 400, |_, t| {
+            ticks.push(t)
+        });
+        let mut bars = Vec::new();
+        Sim::starting_on(42, 1500)
+            .range_bars(2, 1500 * 1440 + 100, 1500 * 1440 + 400, |b| bars.push(b));
+        assert_eq!(bars.len(), ticks.len());
+        for (i, (b, t)) in bars.iter().zip(&ticks).enumerate() {
+            assert_eq!(
+                b.c,
+                t.last().unwrap().bid,
+                "minute {i} closes where its ticks do"
+            );
+            assert!(b.h >= b.o.max(b.c) && b.l <= b.o.min(b.c) && b.n > 0);
+            assert_eq!(b.t, minute_start(t[0].t));
+            if i > 0 {
+                assert_eq!(b.o, bars[i - 1].c, "each bar opens at the previous close");
+            }
+        }
     }
 
     #[test]

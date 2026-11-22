@@ -2138,7 +2138,8 @@ impl Default for PaperBook {
             last_updates: vec![0; n],
             prev_bid: vec![0.0; n],
             next_decision_at: vec![0.0; n],
-            log_to_relay: true,
+            // The browser demo has no relay to log to.
+            log_to_relay: !crate::endpoints::demo_mode(),
             panel_request: None,
             board_focus: None,
             fly_to: None,

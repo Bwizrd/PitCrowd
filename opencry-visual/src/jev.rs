@@ -1380,6 +1380,10 @@ pub struct JevDesk {
 
 impl Default for JevDesk {
     fn default() -> Self {
+        // The browser demo has no relay (and no key), so it reads with the floor rule.
+        if crate::endpoints::demo_mode() {
+            return Self::with_model(Box::new(DeterministicModel));
+        }
         Self::with_model(Box::new(JevModel::new(relay_url())))
     }
 }

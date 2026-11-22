@@ -247,7 +247,8 @@ pub fn poll_positions(time: Res<Time>, desk: Res<DeskFeed>, mut feed: ResMut<Pos
             Err(e) => feed.last_error = Some(e),
         }
     }
-    if feed.in_flight || now < feed.next_poll {
+    // The browser demo has no relay to ask.
+    if feed.in_flight || now < feed.next_poll || crate::endpoints::demo_mode() {
         return;
     }
     feed.next_poll = now + POLL_SECS;
