@@ -24,6 +24,8 @@ const L2_QUEUE_MAX: usize = 5_000;
 pub struct DemoTape {
     tape: Mutex<InPageTape>,
     l2: Mutex<VecDeque<String>>,
+    /// Tick messages for the page's web chart, kept only while it is reading them.
+    web: Mutex<(bool, VecDeque<String>)>,
 }
 
 static DEMO: OnceLock<Option<DemoTape>> = OnceLock::new();
@@ -41,6 +43,7 @@ impl DemoTape {
         DemoTape {
             tape: Mutex::new(InPageTape::new(SEED, now_ms, HISTORY_MS)),
             l2: Mutex::new(VecDeque::new()),
+            web: Mutex::new((false, VecDeque::new())),
         }
     }
 
@@ -60,7 +63,33 @@ impl DemoTape {
             let over = q.len().saturating_sub(L2_QUEUE_MAX);
             q.drain(..over);
         }
+        if let Ok(mut web) = self.web.lock()
+            && web.0
+        {
+            let q = &mut web.1;
+            q.extend(out.tape.iter().filter(|m| m.contains("\"tick\"")).cloned());
+            let over = q.len().saturating_sub(L2_QUEUE_MAX);
+            q.drain(..over);
+        }
         out.tape
+    }
+
+    /// Tick messages since the last call, for the web chart. Reading turns the queue on;
+    /// `stop_web_ticks` turns it off.
+    pub fn take_web_ticks(&self) -> Vec<String> {
+        self.web
+            .lock()
+            .map(|mut w| {
+                w.0 = true;
+                w.1.drain(..).collect()
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn stop_web_ticks(&self) {
+        if let Ok(mut w) = self.web.lock() {
+            *w = (false, VecDeque::new());
+        }
     }
 
     /// Bitcoin's whole Level 2 book now, then everything queued since.
@@ -134,5 +163,24 @@ mod tests {
         }
         assert!(demo.take_l2().len() <= L2_QUEUE_MAX);
         assert!(demo.take_l2().is_empty());
+    }
+
+    #[test]
+    fn the_web_chart_gets_ticks_only_while_it_reads_them() {
+        let demo = DemoTape::new(NOW);
+        demo.step(NOW + 5_000);
+        assert!(demo.take_web_ticks().is_empty(), "off until first read");
+        demo.step(NOW + 10_000);
+        let ticks = demo.take_web_ticks();
+        assert!(!ticks.is_empty());
+        assert!(
+            ticks
+                .iter()
+                .all(|m| matches!(parse_tape(m), Some(TapeMessage::Tick(..))))
+        );
+        demo.stop_web_ticks();
+        demo.step(NOW + 15_000);
+        demo.stop_web_ticks();
+        assert!(demo.take_web_ticks().is_empty());
     }
 }

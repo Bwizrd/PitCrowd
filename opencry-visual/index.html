@@ -42,15 +42,81 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
+            width: min(360px, calc(100vw - 32px));
             color: #7b9bb6;
             font-size: 18px;
             font-weight: 500;
             letter-spacing: 1px;
+            text-align: center;
             pointer-events: none;
             z-index: 1000;
         }
+        #loading .bar {
+            height: 6px;
+            margin: 14px 0 8px;
+            border-radius: 3px;
+            background: #16202c;
+            overflow: hidden;
+        }
+        #loading .fill {
+            width: 0;
+            height: 100%;
+            background: #d9b340;
+            transition: width 0.2s;
+        }
+        #loading .note {
+            font-size: 13px;
+            font-weight: 400;
+            letter-spacing: 0;
+            color: #5f7a91;
+        }
     </style>
-    <link data-trunk rel="rust" data-bin="opencry-visual" />
+    <script>
+    // The loading bar: count the floor's .wasm as it downloads. A compressed response
+    // (Content-Encoding) gives its compressed length, so the full size is estimated from it
+    // (the release build compresses about 2.9 to 1) and the bar holds short of the end
+    // until the download really finishes.
+    (function () {
+        const realFetch = window.fetch.bind(window);
+        const mb = n => (n / 1048576).toFixed(1) + ' MB';
+        function show(fraction, note) {
+            const box = document.getElementById('loading');
+            if (!box) return;
+            box.querySelector('.fill').style.width = (fraction * 100).toFixed(1) + '%';
+            box.querySelector('.note').textContent = note;
+        }
+        window.fetch = async function (input, init) {
+            const url = typeof input === 'string' ? input : (input && input.url) || '';
+            const res = await realFetch(input, init);
+            if (!/\.wasm(\?|$)/.test(url) || !res.body || !window.ReadableStream) return res;
+            const length = Number(res.headers.get('Content-Length')) || 0;
+            const packed = !!res.headers.get('Content-Encoding');
+            const total = packed ? length * 2.9 : length;
+            let got = 0;
+            const reader = res.body.getReader();
+            const counted = new ReadableStream({
+                async pull(ctl) {
+                    const { done, value } = await reader.read();
+                    if (done) {
+                        show(1, 'Starting the floor...');
+                        ctl.close();
+                        return;
+                    }
+                    got += value.byteLength;
+                    ctl.enqueue(value);
+                    show(total ? Math.min(got / total, 0.97) : 0.5,
+                         total ? `Downloading ${mb(got)} of about ${mb(total)}` : `Downloading ${mb(got)}`);
+                },
+                cancel(reason) { reader.cancel(reason); },
+            });
+            return new Response(counted, { status: res.status, statusText: res.statusText, headers: res.headers });
+        };
+    })();
+    </script>
+    <!-- Release builds (trunk build --release) also run wasm-opt. The features listed are the
+         ones current Rust turns on for wasm by default, which the pinned wasm-opt does not. -->
+    <link data-trunk rel="rust" data-bin="opencry-visual" data-wasm-opt="z"
+          data-wasm-opt-params="--enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext --enable-reference-types --enable-multivalue --enable-mutable-globals" />
     <link data-trunk rel="copy-file" href="static/explainer.html" />
     <!-- the desk board page, served at /desk.html (plain HTML, polls the relay; Copy for AI; click a close to see its chart; Lena and Kit back) -->
     <link data-trunk rel="copy-file" href="static/desk.html" />
@@ -59,7 +125,7 @@
     <script src="vendor/lightweight-charts.standalone.production.js"></script>
 </head>
 <body>
-    <div id="loading">Loading PitCrowd...</div>
+    <div id="loading">Loading PitCrowd...<div class="bar"><div class="fill"></div></div><div class="note">Downloading the floor</div></div>
     <script>
         // Prevent iOS document bounce, rubber-banding, and browser-level pinch-zoom
         document.addEventListener('gesturestart', function(e) { e.preventDefault(); }, { passive: false });
@@ -144,6 +210,11 @@
                     const j = await r.json();
                     if (cur !== want || !series) return;
                     if (!r.ok) throw new Error(j.error || r.status);
+                    applyBars(j);
+                } catch (e) { note = 'backfill failed: ' + e; header(); }
+            }
+            function applyBars(j) {
+                {
                     const rows = Array.isArray(j) ? j : (j.data || []);
                     series.setData(rows.map(b => ({ time: Math.floor(b.timestamp / 1000), open: b.open, high: b.high, low: b.low, close: b.close })));
                     rate.setData(rows.map(b => ({ time: Math.floor(b.timestamp / 1000), value: b.volume || 0, color: '#3b566f' })));
@@ -158,7 +229,20 @@
                     // Show the last ~120 bars with a little room on the right, whatever zoom the
                     // chart had while it held only the live bar.
                     chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, rows.length - 120), to: rows.length + 6 });
-                } catch (e) { note = 'backfill failed: ' + e; header(); }
+                }
+            }
+            // The browser demo (?tape=demo, or a *.github.io page; src/endpoints.rs has the same
+            // rule): there is no tape, so the wasm side hands over bars and ticks itself.
+            const isDemo = () => {
+                const v = (new URLSearchParams(location.search).get('tape') || '').trim();
+                return v ? v.toLowerCase() === 'demo' : location.hostname.endsWith('.github.io');
+            };
+            function demoBars(symbol, tf, body) {
+                if (!cur || !series || cur.symbol !== symbol || cur.tf !== tf) return;
+                try { socketUp = true; applyBars(JSON.parse(body)); } catch (e) { note = 'demo bars: ' + e; header(); }
+            }
+            function demoTick(text) {
+                try { const j = JSON.parse(text); if (j.type === 'tick' && j.data) onTick(j.data); } catch (e) { }
             }
             // One tick from the tape → the bar that contains it (same rule as candles.rs: floor
             // the tick time to the timeframe, open on the first tick, extend on every other one,
@@ -222,9 +306,9 @@
                 if (changed) {
                     markers = []; series.setMarkers([]);
                     series.applyOptions({ priceFormat: { type: 'price', precision: decimals, minMove: Math.pow(10, -decimals) } });
-                    load(symbol, tf);
+                    if (!isDemo()) load(symbol, tf);
                 }
-                connect();
+                if (!isDemo()) connect();
             }
             const esc = s => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
             function header() {
@@ -234,7 +318,7 @@
                     ? `<span class="q">${socketUp ? 'waiting for a tick…' : 'connecting to tape…'}</span>`
                     : `<span class="q">bid</span> <span class="bid">${f(cur.bid)}</span>  <span class="q">ask</span> <span class="ask">${f(cur.ask)}</span>  <span class="q">spread</span> ${f(cur.spread)}`;
                 const where = esc(tapeHttp().replace(/^https?:\/\//, ""));
-                const src = socketUp ? `tape ${where}` : `<span class="warn">tape ${where} down</span>`;
+                const src = isDemo() ? 'DEMO prices made in this page' : socketUp ? `tape ${where}` : `<span class="warn">tape ${where} down</span>`;
                 const extra = (note ? `   <span class="warn">(${esc(note)})</span>` : '') + (dealsOn ? '   |   PIT DEALS (debug) as markers' : '');
                 hdr.innerHTML = `${esc(cur.title)}   ${esc(cur.tf)}   ${src}   |   ${quote}   |   lower panes: tick delta (session), ticks per bar${extra}`;
             }
@@ -260,7 +344,7 @@
                 } catch (e) { }
             }
             function setDeals(on) { dealsOn = !!on; redrawMarkers(); header(); }
-            return { show, hide, addDeal, updateFlow, setDeals };
+            return { show, hide, addDeal, updateFlow, setDeals, demoBars, demoTick };
         })();
     </script>
     <!-- The trade ticket's "Change name" box. A page dialog, not window.prompt, which browsers can

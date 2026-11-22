@@ -2,7 +2,8 @@
 //! side (index.html) owns the chart, its socket to the market tape (:8083, ticks → candles,
 //! same rule as `candles.rs`) and its backfill from the tape's `/bars`; this module only tells
 //! it what to show — the cTrader symbol id for matching ticks, the tape's symbol name for
-//! `/bars` — and hands it the pit's deals as markers. Browser only; a no-op natively.
+//! `/bars` — and hands it the pit's deals as markers. Browser only; a no-op natively. In the
+//! browser demo it also hands the chart its bars and ticks from the market inside the page.
 
 use bevy::prelude::*;
 
@@ -29,6 +30,10 @@ mod js {
         pub fn update_flow(symbol_id: u32, time_ms: f64, delta: f64, ticks: f64);
         #[wasm_bindgen(js_namespace = ["window", "__opencryChart"], js_name = setDeals)]
         pub fn set_deals(on: bool);
+        #[wasm_bindgen(js_namespace = ["window", "__opencryChart"], js_name = demoBars)]
+        pub fn demo_bars(symbol: &str, timeframe: &str, body: &str);
+        #[wasm_bindgen(js_namespace = ["window", "__opencryChart"], js_name = demoTick)]
+        pub fn demo_tick(message: &str);
     }
 }
 
@@ -39,6 +44,8 @@ mod js {
     pub fn add_deal(_symbol_id: u32, _time_ms: f64, _price: f64, _is_buy: bool) {}
     pub fn update_flow(_symbol_id: u32, _time_ms: f64, _delta: f64, _ticks: f64) {}
     pub fn set_deals(_on: bool) {}
+    pub fn demo_bars(_symbol: &str, _timeframe: &str, _body: &str) {}
+    pub fn demo_tick(_message: &str) {}
 }
 
 /// System: keep the page's chart in step with the selection, timeframe and toggle, and
@@ -70,8 +77,26 @@ pub fn sync_web_chart(
                     tf.label(),
                     instrument_decimals(inst) as u32,
                 );
+                // The browser demo hands the chart its bars and ticks; there is no tape to ask.
+                if let Some(demo) = crate::demo_tape::demo() {
+                    demo.take_web_ticks();
+                    if let Ok(body) = demo.bars(
+                        &tape_symbol(inst),
+                        tf.label(),
+                        tf.backfill_range(),
+                        false,
+                        wall_clock_ms(),
+                    ) {
+                        js::demo_bars(&tape_symbol(inst), tf.label(), &body);
+                    }
+                }
             }
-            None => js::hide(),
+            None => {
+                js::hide();
+                if let Some(demo) = crate::demo_tape::demo() {
+                    demo.stop_web_ticks();
+                }
+            }
         }
         *shown = want;
     }
@@ -79,6 +104,11 @@ pub fn sync_web_chart(
         *flow_sent = None;
         return;
     };
+    if let Some(demo) = crate::demo_tape::demo() {
+        for m in demo.take_web_ticks() {
+            js::demo_tick(&m);
+        }
+    }
     let Some(id) = symbol_id_for(inst) else {
         return;
     };
