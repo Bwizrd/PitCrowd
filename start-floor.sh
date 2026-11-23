@@ -11,11 +11,17 @@
 #   tape   :8083  floor_tape      prices: synthetic, your CSVs, or anything you POST to it
 #   relay  :8099  jev_relay       forwards Jev calls if you have a key; logs paper trades and
 #                                 serves the paper desk's board either way
-#   desk   (none) paper_desk      the paper traders, headless, around the clock (skipped if not built)
+#   desk   (none) paper_desk      the paper traders, headless, around the clock (built in the
+#                                 background on a first run, then started)
 #   evolve (none) evolve.py loop  spawns, backtests, seats and cuts genomes hourly (evolve/README.md)
 #   trunk  :8180  trunk serve     the floor in the browser — never restarted by this script
 #
 # Everything listens on this machine only (127.0.0.1): open http://localhost:8180.
+#
+# A first run needs only Rust (https://rustup.rs). It builds the tape and the relay, installs
+# trunk and the wasm target if they are missing, starts the page, and then builds the paper desk
+# and the backtester in the background (log: opencry-visual/log/desk_build.out) and starts the
+# desk and the evolving pit when that is done.
 #
 # Each service runs under nohup with its own log, is found by the port it listens on (lsof), and
 # is stopped by the pid holding that port, never by a `pkill -f` pattern.
@@ -35,6 +41,8 @@
 #   FLOOR_RELAY_PORT       8099
 #   FLOOR_TRUNK_PORT       8180     (other ports: open http://localhost:PORT/?tape=PORT&relay=PORT)
 #   FLOOR_NO_TRUNK=1       never start trunk (e.g. you serve a `trunk build` yourself)
+#   FLOOR_NO_INSTALL=1     never install trunk or the wasm target; say what is missing instead
+#   FLOOR_NO_DESK_BUILD=1  never build the paper desk and the backtester in the background
 #   FLOOR_JEV=live|rule|none   the desk's Jev mode (default: live with a key, rule without)
 #   FLOOR_PROTECTED_PORTS  space-separated ports this script must never stop
 #   OPENCRY_TARGET_DIR     a CARGO_TARGET_DIR the Rust binaries were built into
@@ -69,9 +77,12 @@ TAPE_LOG="$TAPE_DIR/log/floor_tape.out"
 RELAY_LOG="$RELAY_DIR/log/relay.out"
 DESK_LOG="$VISUAL_DIR/log/paper_desk.out"
 DESK_PID_FILE="$VISUAL_DIR/log/paper_desk.pid"
+DESK_BUILD_LOG="$VISUAL_DIR/log/desk_build.out"
+DESK_BUILD_PID_FILE="$VISUAL_DIR/log/desk_build.pid"
 EVOLVE_LOG="$EVOLVE_DIR/evolve.out"
 EVOLVE_PID_FILE="$EVOLVE_DIR/evolve.pid"
 TRUNK_LOG="$VISUAL_DIR/log/trunk.out"
+TRUNK_PID_FILE="$VISUAL_DIR/log/trunk.pid"   # trunk listens only after its first build
 
 read -r -a PROTECTED_PORTS <<< "${FLOOR_PROTECTED_PORTS:-}"
 read -r -a TAPE_ARGS <<< "${FLOOR_TAPE_ARGS:-}"
@@ -179,6 +190,7 @@ stop_tape()   { stop_port_service tape "$TAPE_PORT"; }
 
 # Detach a service with every descriptor on its log, so nothing holds this script's stdout.
 SPAWNED=""
+TRUNK_SPAWNED=0
 spawn() {  # $1 log, $2 cwd, $3.. command
   local logf="$1" cwd="$2"; shift 2
   mkdir -p "$(dirname "$logf")"
@@ -234,7 +246,7 @@ start_relay() {
 start_desk() {
   if [[ -n "$(desk_pid)" ]]; then log "desk: already running (pid $(desk_pid))"; return 0; fi
   if [[ ! -x "$DESK_BIN" ]]; then
-    log "desk: skipped — not built (cd opencry-visual && cargo build --release --bin paper_desk --bin genome_backtest; a first build takes a while)"
+    log "desk: not built yet — see the background build below"
     return 0
   fi
   local jev="${FLOOR_JEV:-}"
@@ -251,7 +263,7 @@ start_desk() {
 start_evolve() {
   if [[ -n "$(evolve_pid)" ]]; then log "evolve: already running (pid $(evolve_pid))"; return 0; fi
   if [[ ! -x "$(bin_path "$VISUAL_DIR" genome_backtest)" ]]; then
-    log "evolve: skipped — genome_backtest not built (cd opencry-visual && cargo build --release --bin genome_backtest)"
+    log "evolve: not built yet — see the background build below"
     return 0
   fi
   log "evolve: starting  (python3 -I -u evolve.py loop --every 3600 >> ${EVOLVE_LOG#"$FLOOR_ROOT"/})"
@@ -283,11 +295,58 @@ wasm_toolchain() {
   return 1
 }
 
+# trunk and the wasm target are all the page needs beyond Rust. Installed here on a first run
+# (and said so), unless FLOOR_NO_INSTALL=1; installing trunk compiles it, a few minutes once.
+ensure_web_tools() {
+  [[ "${FLOOR_NO_INSTALL:-0}" == 1 ]] && return 0
+  if ! wasm_toolchain >/dev/null && command -v rustup >/dev/null; then
+    log "trunk: adding the wasm target (rustup target add wasm32-unknown-unknown; once)"
+    $DRY_RUN || rustup target add wasm32-unknown-unknown || warn "trunk: rustup target add failed"
+  fi
+  if ! command -v trunk >/dev/null && command -v cargo >/dev/null; then
+    log "trunk: installing it (cargo install --locked trunk; once, a few minutes)"
+    $DRY_RUN || env -u CARGO_TARGET_DIR cargo install --locked trunk || warn "trunk: cargo install failed"
+  fi
+}
+
+# The paper desk and the backtester come from the floor's own crate, a long release build, so a
+# first run builds them in the background after the page has built (one cargo lock: the page
+# would otherwise wait behind it), then runs this script again to start the desk and evolve.
+desk_build_pid() { local p; p=$(cat "$DESK_BUILD_PID_FILE" 2>/dev/null) && kill -0 "$p" 2>/dev/null && echo "$p"; }
+build_desk_in_background() {
+  [[ -x "$DESK_BIN" && -x "$(bin_path "$VISUAL_DIR" genome_backtest)" ]] && return 0
+  [[ "${FLOOR_NO_DESK_BUILD:-0}" == 1 ]] && return 0
+  if [[ -n "$(desk_build_pid)" ]]; then log "desk: still building in the background (pid $(desk_build_pid)); watch ${DESK_BUILD_LOG#"$FLOOR_ROOT"/}"; return 0; fi
+  command -v cargo >/dev/null || return 0
+  log "desk: building the paper desk and the backtester in the background, after the page"
+  log "  (cd opencry-visual && cargo build --release --bin paper_desk --bin genome_backtest >> ${DESK_BUILD_LOG#"$FLOOR_ROOT"/})"
+  log "  the desk and the evolving pit start by themselves when it is done"
+  $DRY_RUN && return 0
+  # trunk only listens once its first build is done, so "it is on the port" is not the test.
+  local wait_page=0
+  [[ -n "$(port_pid "$TRUNK_PORT")" || "$TRUNK_SPAWNED" == 1 ]] && wait_page=1
+  # FLOOR_NO_DESK_BUILD=1 on the rerun: if the binaries still are not where this script looks
+  # (an OPENCRY_TARGET_DIR), it must not start another build.
+  spawn "$DESK_BUILD_LOG" "$VISUAL_DIR" env -u CARGO_TARGET_DIR FLOOR_NO_DESK_BUILD=1 \
+    WAIT_PAGE="$wait_page" PAGE="http://localhost:$TRUNK_PORT/" ROOT="$FLOOR_ROOT" bash -c '
+      if [[ $WAIT_PAGE == 1 ]]; then
+        for _ in $(seq 1 720); do
+          [[ "$(curl -s -o /dev/null --max-time 4 -w "%{http_code}" "$PAGE")" == 200 ]] && break
+          sleep 5
+        done
+      fi
+      cargo build --release --bin paper_desk --bin genome_backtest && exec "$ROOT/start-floor.sh"'
+  echo "$SPAWNED" > "$DESK_BUILD_PID_FILE"
+}
+
 start_trunk() {
   local pid; pid=$(port_pid "$TRUNK_PORT")
   if [[ -n "$pid" ]]; then log "trunk: already up on :$TRUNK_PORT (pid $pid) — leaving it alone, a browser may be attached"; return 0; fi
   if [[ "${FLOOR_NO_TRUNK:-0}" == 1 ]]; then log "trunk: FLOOR_NO_TRUNK=1 — not starting"; return 0; fi
-  command -v trunk >/dev/null || { warn "trunk: not installed (cargo install trunk; rustup target add wasm32-unknown-unknown), then: cd opencry-visual && trunk serve --port $TRUNK_PORT"; return 0; }
+  pid=$(cat "$TRUNK_PID_FILE" 2>/dev/null) && kill -0 "$pid" 2>/dev/null && {
+    log "trunk: still doing its first build (pid $pid); watch ${TRUNK_LOG#"$FLOOR_ROOT"/}"; TRUNK_SPAWNED=1; return 0; }
+  ensure_web_tools
+  command -v trunk >/dev/null || { warn "trunk: not installed (cargo install --locked trunk), then: cd opencry-visual && trunk serve --port $TRUNK_PORT"; return 0; }
   local tc
   if ! tc=$(wasm_toolchain); then
     warn "trunk: not starting — no Rust toolchain here can build for the browser. Run: rustup target add wasm32-unknown-unknown"
@@ -298,6 +357,8 @@ start_trunk() {
   log "trunk: starting  (cd opencry-visual && trunk serve --port $TRUNK_PORT >> ${TRUNK_LOG#"$FLOOR_ROOT"/})"
   $DRY_RUN && return 0
   spawn "$TRUNK_LOG" "$VISUAL_DIR" env PATH="${tc:+$tc:}$PATH" trunk serve --port "$TRUNK_PORT"
+  TRUNK_SPAWNED=1
+  echo "$SPAWNED" > "$TRUNK_PID_FILE"
   log "  trunk builds in the background (a first wasm build takes minutes); watch $TRUNK_LOG"
 }
 
@@ -310,7 +371,8 @@ row() { printf '%-8s %-6s %-7s %-12s %-24s %s\n' "$@"; }
 status() {
   local tp rp dp ep kp
   tp=$(port_pid "$TAPE_PORT"); rp=$(port_pid "$RELAY_PORT"); dp=$(desk_pid); ep=$(evolve_pid); kp=$(port_pid "$TRUNK_PORT")
-  local desk_state=not-built; [[ -x "$DESK_BIN" ]] && { [[ -n "$dp" ]] && desk_state=running || desk_state=down; }
+  local desk_state=not-built; [[ -n "$(desk_build_pid)" ]] && desk_state=building
+  [[ -x "$DESK_BIN" ]] && { [[ -n "$dp" ]] && desk_state=running || desk_state=down; }
   row SERVICE PORT PID UPTIME HEALTH LOG
   row tape "$TAPE_PORT" "${tp:--}" "$(pid_uptime "$tp")" "$([[ -n "$tp" ]] && tape_health || echo down)" "${TAPE_LOG#"$FLOOR_ROOT"/}"
   row relay "$RELAY_PORT" "${rp:--}" "$(pid_uptime "$rp")" "$([[ -n "$rp" ]] && echo "ok, $(relay_key)" || echo down)" "${RELAY_LOG#"$FLOOR_ROOT"/}"
@@ -387,6 +449,7 @@ main() {
       start_desk
       start_evolve
       start_trunk
+      build_desk_in_background
       echo
       status
       ;;

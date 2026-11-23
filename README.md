@@ -32,23 +32,26 @@ it. If you build on it, a link back is appreciated.
 
 ## Quick start
 
+You need [Rust](https://rustup.rs). Then:
+
 ```sh
-# Rust (https://rustup.rs), then trunk and the wasm target for the browser build
-cargo install trunk && rustup target add wasm32-unknown-unknown
-./start-floor.sh          # builds the tape and relay, writes synthetic history, starts it all
-# first time only, for the headless paper desk and the evolving pit (a longer build):
-(cd opencry-visual && cargo build --release --bin paper_desk --bin genome_backtest) && ./start-floor.sh
+./start-floor.sh
 ```
 
-Open <http://localhost:8180> once trunk has built the page (`opencry-visual/log/trunk.out`; the
-first build takes several minutes). `./start-floor.sh --status` shows each service, and
-[`docs/SERVICES.md`](docs/SERVICES.md) explains them.
+and open <http://localhost:8180>. That's it.
 
-`start-floor.sh` is the easy way in, not a requirement: it builds what is missing and starts the
-five services in order with matching ports. `docs/SERVICES.md` shows how to run each by hand.
+The first run takes a while, mostly compiling: on a recent Mac the page was up in under 3
+minutes and everything was running in about 6, and a slower machine will take longer. It builds the price
+feed, installs `trunk` and the WebAssembly target if you don't have them, and builds the page,
+which appears once its build is done (`opencry-visual/log/trunk.out`). Then it builds the paper
+desk and the evolving pit in the background and starts them by themselves. After that, a run takes
+seconds. `./start-floor.sh --status` shows each service, and
+[`docs/SERVICES.md`](docs/SERVICES.md) explains them and how to run each one by hand.
 
 If Rust also came from Homebrew (`brew install rust`), that cargo cannot build for the browser;
-the launcher then uses rustup's toolchain for the page, and says so. To watch real Bitcoin instead of the synthetic one:
+the launcher then uses rustup's toolchain for the page, and says so.
+
+**Real Bitcoin.** To watch real Bitcoin instead of the synthetic one:
 
 ```sh
 FLOOR_TAPE_ARGS="--ingest BTCUSD" ./start-floor.sh --restart tape

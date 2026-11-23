@@ -21,15 +21,21 @@ the port it listens on, and stopped by the pid that holds that port.
 |---|---|---|---|
 | **tape** (`floor_tape`) | 8083 | Prices for the nine pits: synthetic by default, or your CSVs (`--csv`), or whatever you POST (`--ingest`). A websocket of ticks and five-level books, `/bars`, `/book`, `/orderbook`, `/health`, and BTC Level 2 on `/l2`. Arguments from `FLOOR_TAPE_ARGS`. | `floor_tape/log/floor_tape.out` |
 | **relay** (`jev_relay`) | 8099 | Forwards `POST /jev` to Jev with a 2 s minimum gap when it has a key, and answers 503 at once when it has none (the floor then uses its rule of thumb). Either way: appends paper trades and decisions (`POST /log/<name>`), serves the desk's board (`/paper/board`) and trade queries (`/paper/trades`). | `jev_relay/log/relay.out` |
-| **desk** (`paper_desk`) | none | The paper traders, headless, around the clock, on the tape: the built-in traders plus the evolving pit's genomes (`--pit evolve/pit.json`, re-read every minute). `--jev live` with a key, `--jev rule` without (`FLOOR_JEV` overrides). Skipped with a message when not built. | `opencry-visual/log/paper_desk.out` |
-| **evolve** (`evolve.py loop`) | none | Every hour: judges seated genomes on their forward desk trades, cuts failures, backtests new genomes with `genome_backtest` on `data/cache`, and seats any that pass. Rules are pre-registered in `evolve/README.md`. Skipped when `genome_backtest` is not built. | `evolve/evolve.out` |
+| **desk** (`paper_desk`) | none | The paper traders, headless, around the clock, on the tape: the built-in traders plus the evolving pit's genomes (`--pit evolve/pit.json`, re-read every minute). `--jev live` with a key, `--jev rule` without (`FLOOR_JEV` overrides). Built in the background on a first run, then started. | `opencry-visual/log/paper_desk.out` |
+| **evolve** (`evolve.py loop`) | none | Every hour: judges seated genomes on their forward desk trades, cuts failures, backtests new genomes with `genome_backtest` on `data/cache`, and seats any that pass. Rules are pre-registered in `evolve/README.md`. Starts once `genome_backtest` is built (the same background build). | `evolve/evolve.out` |
 | **trunk** (`trunk serve`) | 8180 | Builds the wasm app and serves it. Started only when nothing holds the port, and never restarted or stopped by the launcher (a browser is usually attached). | `opencry-visual/log/trunk.out` |
 
 On first run the launcher also builds `floor_tape` and `jev_relay` if they are missing, and
 writes the synthetic 15m history (`data/cache`, about half a minute) unless `EDGE_LAB_DIR` or
-`OPENCRY_EDGE_CACHE` points elsewhere. The paper desk and `genome_backtest` are part of the
-`opencry-visual` crate and take longer to build the first time, so the launcher leaves that to
-you:
+`OPENCRY_EDGE_CACHE` points elsewhere. If `trunk` or the `wasm32-unknown-unknown` target is
+missing it installs them (`cargo install --locked trunk`, `rustup target add`), unless
+`FLOOR_NO_INSTALL=1`.
+
+The paper desk and `genome_backtest` are part of the `opencry-visual` crate, a long release
+build, so the launcher builds them in the background once the page has built (they share a
+cargo lock, and the page matters first), logging to `opencry-visual/log/desk_build.out`. When
+that finishes it runs itself again, which starts the desk and evolve. `--status` shows the desk
+as `building` meanwhile. `FLOOR_NO_DESK_BUILD=1` turns this off; to build them yourself:
 
 ```sh
 cd opencry-visual && cargo build --release --bin paper_desk --bin genome_backtest
